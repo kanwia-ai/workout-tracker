@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ChevronDown, Footprints, Moon } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ChevronDown, Footprints, Moon, LogOut, Flame } from 'lucide-react'
 import { ExerciseCard } from './ExerciseCard'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
@@ -8,7 +8,15 @@ import { TimerOverlay } from './TimerOverlay'
 import { useSession } from '../hooks/useSession'
 import { DEFAULT_SCHEDULE } from '../data/schedule'
 import { DEFAULT_WORKOUTS } from '../data/workouts'
+import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
 import type { TimerState, SessionPhase } from '../types'
+
+interface WorkoutViewProps {
+  userId: string
+  profile: { display_name: string; avatar_emoji: string; streak: number; knee_flag: boolean } | null
+  onSignOut: () => void
+  onWorkoutComplete: () => void
+}
 
 // Map exercise IDs to display names (until we have a full exercise DB)
 const EXERCISE_NAMES: Record<string, string> = {
@@ -50,15 +58,25 @@ const EXERCISE_NAMES: Record<string, string> = {
   'ex-russian-twist': 'Russian Twists',
 }
 
-export function WorkoutView() {
+export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete }: WorkoutViewProps) {
   const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1 })()
   const [selectedDay, setSelectedDay] = useState(todayIdx)
   const [timer, setTimer] = useState<TimerState | null>(null)
   const [showWarmup, setShowWarmup] = useState(false)
   const [showCooldown, setShowCooldown] = useState(false)
   const [weights, setWeights] = useState<Record<string, number>>({})
+  const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
+  const [prs, setPrs] = useState<Record<string, number>>({})
 
   const { session, startSession, switchPhase, endSession, toggleSet } = useSession()
+
+  // Load saved weights and PRs on mount
+  useEffect(() => {
+    if (userId) {
+      loadLastWeights(userId).then(setLastWeights)
+      loadPRs(userId).then(setPrs)
+    }
+  }, [userId])
 
   const schedule = DEFAULT_SCHEDULE
   const dayInfo = schedule[selectedDay]
@@ -81,16 +99,79 @@ export function WorkoutView() {
     setTimer({ seconds, label, type })
   }
 
+  // Save session to Supabase when ending workout
+  const handleEndSession = useCallback(async () => {
+    if (!session || !workout) {
+      endSession()
+      return
+    }
+
+    const endedSession = { ...session }
+    endSession()
+
+    // Save session
+    const now = new Date().toISOString()
+    await saveSession({
+      userId,
+      workoutId: workout.id,
+      workoutTitle: workout.title,
+      date: new Date().toISOString().split('T')[0],
+      startedAt: endedSession.started_at,
+      endedAt: now,
+      phases: endedSession.phases.map(p => p.ended_at ? p : { ...p, ended_at: now }),
+      completedSets: doneSets,
+      totalSets,
+    })
+
+    // Save weights and check PRs
+    for (const [exerciseId, weight] of Object.entries(weights)) {
+      if (weight > 0) {
+        await saveLastWeight(userId, exerciseId, weight)
+        const name = EXERCISE_NAMES[exerciseId] || exerciseId
+        await updatePR(userId, exerciseId, name, weight)
+      }
+    }
+
+    // Update streak
+    if (doneSets > 0) {
+      onWorkoutComplete()
+    }
+
+    // Reload weights/PRs
+    loadLastWeights(userId).then(setLastWeights)
+    loadPRs(userId).then(setPrs)
+    setWeights({})
+  }, [session, workout, userId, weights, doneSets, totalSets, endSession, onWorkoutComplete])
+
   return (
     <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
       <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
 
         {/* Header */}
-        <div className="text-center pt-3 pb-4">
-          <h1 className="text-[22px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
-            My Training Plan
-          </h1>
-          <p className="text-xs text-zinc-500 mt-1">4 gym days / 1 at-home / daily cardio</p>
+        <div className="flex items-center justify-between pt-3 pb-4">
+          <div>
+            <h1 className="text-[22px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
+              My Training Plan
+            </h1>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {profile?.display_name ? `Hey ${profile.display_name}` : '4 gym days / 1 at-home'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {(profile?.streak ?? 0) > 0 && (
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand/10 border border-brand/20">
+                <Flame size={14} className="text-brand" />
+                <span className="text-sm font-bold text-brand">{profile?.streak}</span>
+              </div>
+            )}
+            <button
+              onClick={onSignOut}
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-95 transition-all"
+              title="Sign out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Day selector */}
@@ -130,7 +211,7 @@ export function WorkoutView() {
               phases={session?.phases || []}
               onStart={() => startSession(workout.id)}
               onSwitchPhase={(phase: SessionPhase['name']) => switchPhase(phase)}
-              onEnd={endSession}
+              onEnd={handleEndSession}
             />
 
             {/* Progress */}
@@ -184,6 +265,8 @@ export function WorkoutView() {
                     onToggleSet={toggleSet}
                     onStartTimer={startTimer}
                     weight={weights[ex.exercise_id]}
+                    lastWeight={lastWeights[ex.exercise_id]}
+                    pr={prs[ex.exercise_id]}
                     onWeightChange={(id, w) => setWeights(prev => ({ ...prev, [id]: w }))}
                   />
                 ))}
