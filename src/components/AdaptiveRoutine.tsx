@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Timer, Clock, Zap, Wind, Sparkles } from 'lucide-react'
-import { buildAdaptiveWarmup, type WarmupExercise, type WarmupFocus } from '../data/warmups'
+import { buildAdaptiveWarmup, type ProgrammedWarmup, type WarmupFocus } from '../data/warmups'
 import { buildAdaptiveCooldown, type CooldownExercise } from '../data/cooldowns'
 
 type FocusArea = 'legs' | 'glutes' | 'back' | 'shoulders' | 'arms' | 'core' | 'full_body'
@@ -14,31 +14,54 @@ interface AdaptiveRoutineProps {
 
 const DURATION_OPTIONS = [5, 10, 15, 20]
 
-const FOCUS_OPTIONS: { value: WarmupFocus; label: string; icon: typeof Zap }[] = [
-  { value: 'activation', label: 'Activation', icon: Zap },
-  { value: 'dynamic', label: 'Dynamic', icon: Wind },
-  { value: 'mobility', label: 'Mobility', icon: Sparkles },
+const FOCUS_OPTIONS: { value: WarmupFocus; label: string }[] = [
+  { value: 'activation', label: 'Activation' },
+  { value: 'dynamic', label: 'Dynamic' },
+  { value: 'mobility', label: 'Mobility' },
 ]
 
+// Unified item for rendering (handles both warmup with sets and cooldown without)
+interface RoutineItem {
+  id: string
+  name: string
+  prescription: string // "2x15 reps" or "30s each side"
+  cue?: string
+  timerSeconds?: number
+}
+
 export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: AdaptiveRoutineProps) {
-  const [duration, setDuration] = useState(mode === 'warmup' ? 10 : 10)
+  const [duration, setDuration] = useState(10)
   const [focus, setFocus] = useState<WarmupFocus | undefined>(undefined)
   const [checked, setChecked] = useState<Record<string, boolean>>({})
 
-  const exercises = useMemo(() => {
+  const items: RoutineItem[] = useMemo(() => {
     if (mode === 'warmup') {
-      return buildAdaptiveWarmup({
+      const programmed = buildAdaptiveWarmup({
         targetMinutes: duration,
         workoutFocus,
         focus,
         kneeFlag,
       })
+      return programmed.map((p: ProgrammedWarmup) => ({
+        id: p.exercise.id,
+        name: p.exercise.name,
+        prescription: p.sets > 1 ? `${p.sets}x ${p.exercise.duration}` : p.exercise.duration,
+        cue: p.exercise.cues?.[0],
+        timerSeconds: p.exercise.seconds,
+      }))
     } else {
-      return buildAdaptiveCooldown({
+      const cooldowns = buildAdaptiveCooldown({
         targetMinutes: duration,
         workoutFocus,
         kneeFlag,
       })
+      return cooldowns.map((ex: CooldownExercise) => ({
+        id: ex.id,
+        name: ex.name,
+        prescription: ex.duration,
+        cue: ex.cues?.[0],
+        timerSeconds: ex.seconds,
+      }))
     }
   }, [mode, duration, workoutFocus, focus, kneeFlag])
 
@@ -53,7 +76,7 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
           Adapted for: <span className="text-zinc-300 font-medium capitalize">{focusLabel}</span>
         </div>
         <div className="text-xs text-zinc-500">
-          {completedCount}/{exercises.length}
+          {completedCount}/{items.length}
         </div>
       </div>
 
@@ -110,51 +133,52 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
       )}
 
       {/* Exercise list */}
-      <div className="space-y-1">
-        {exercises.map((ex) => {
-          const isChecked = checked[ex.id]
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isChecked = checked[item.id]
           return (
             <div
-              key={ex.id}
+              key={item.id}
               className="flex items-center gap-2.5 py-2 px-1 rounded-lg transition-opacity"
               style={{ opacity: isChecked ? 0.4 : 1 }}
             >
-              {/* Checkbox */}
               <input
                 type="checkbox"
                 checked={!!isChecked}
-                onChange={() => setChecked(prev => ({ ...prev, [ex.id]: !prev[ex.id] }))}
+                onChange={() => setChecked(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
                 className="w-4 h-4 shrink-0 accent-brand rounded"
               />
 
-              {/* Name + cue */}
               <div
                 className="flex-1 cursor-pointer"
-                onClick={() => setChecked(prev => ({ ...prev, [ex.id]: !prev[ex.id] }))}
+                onClick={() => setChecked(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
               >
-                <div
-                  className="text-[13px] font-medium"
-                  style={{
-                    textDecoration: isChecked ? 'line-through' : 'none',
-                    color: isChecked ? '#555' : '#ccc',
-                  }}
-                >
-                  {ex.name}
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className="text-[13px] font-medium"
+                    style={{
+                      textDecoration: isChecked ? 'line-through' : 'none',
+                      color: isChecked ? '#555' : '#ccc',
+                    }}
+                  >
+                    {item.name}
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-semibold whitespace-nowrap">
+                    {item.prescription}
+                  </span>
                 </div>
-                <div className="text-[11px] text-zinc-500">{ex.duration}</div>
-                {ex.cues && ex.cues.length > 0 && !isChecked && (
-                  <div className="text-[10px] text-zinc-600 mt-0.5">{ex.cues[0]}</div>
+                {item.cue && !isChecked && (
+                  <div className="text-[10px] text-zinc-600 mt-0.5">{item.cue}</div>
                 )}
               </div>
 
-              {/* Timer button */}
-              {ex.seconds && ex.seconds > 0 && onStartTimer && (
+              {item.timerSeconds && item.timerSeconds > 0 && onStartTimer && (
                 <button
-                  onClick={() => onStartTimer(ex.seconds!, ex.name, 'work')}
+                  onClick={() => onStartTimer(item.timerSeconds!, item.name, 'work')}
                   className="px-2 py-1 rounded-lg text-[11px] font-semibold border border-brand/30 text-brand bg-transparent active:scale-95 transition-transform flex items-center gap-1 shrink-0"
                 >
                   <Timer size={10} />
-                  {ex.seconds}s
+                  {item.timerSeconds}s
                 </button>
               )}
             </div>
@@ -162,8 +186,7 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
         })}
       </div>
 
-      {/* Type badge for each exercise */}
-      {exercises.length === 0 && (
+      {items.length === 0 && (
         <div className="text-center py-4 text-zinc-500 text-sm">No exercises match your criteria</div>
       )}
     </div>

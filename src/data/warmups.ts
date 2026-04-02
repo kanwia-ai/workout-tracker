@@ -5,13 +5,19 @@ export interface WarmupExercise {
   name: string
   target: BodyRegion | 'hips' | 'shoulders' | 'thoracic' | 'ankles' | 'wrists'
   type: 'dynamic_stretch' | 'activation' | 'mobility' | 'cardio'
-  duration: string // "10 each side", "30s", "15 reps"
-  seconds?: number // for timer
+  duration: string // "10 each side", "30s", "15 reps" -- per set
+  est_per_set_seconds: number // how long one set takes
+  seconds?: number // for timer (per-set, if timed)
   equipment: Equipment[]
   knee_safety: KneeSafety
   cues?: string[]
-  // Which workout focuses this is good for
   good_for: ('legs' | 'glutes' | 'back' | 'shoulders' | 'arms' | 'core' | 'full_body')[]
+}
+
+// Returned by the builder -- exercise + how many sets to do
+export interface ProgrammedWarmup {
+  exercise: WarmupExercise
+  sets: number
 }
 
 export const WARMUP_LIBRARY: WarmupExercise[] = [
@@ -22,6 +28,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'lower_body',
     type: 'activation',
     duration: '15 reps',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Squeeze glutes at top', 'Drive through heels', 'Don\'t hyperextend back'],
@@ -33,6 +40,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'activation',
     duration: '12 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Keep feet together', 'Rotate from hip, not back', 'Slow and controlled'],
@@ -44,6 +52,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'activation',
     duration: '10 steps each direction',
+    est_per_set_seconds: 30,
     equipment: ['mini_band'],
     knee_safety: 'knee_safe',
     cues: ['Stay low in quarter squat', 'Push knees out against band', 'Controlled steps'],
@@ -55,6 +64,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'activation',
     duration: '10 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Keep core tight', 'Lift from the hip', 'Don\'t shift weight to one side'],
@@ -66,6 +76,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'lower_body',
     type: 'activation',
     duration: '10 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Keep knee at 90 degrees', 'Squeeze glute at top', 'Don\'t arch lower back'],
@@ -77,6 +88,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'mobility',
     duration: '10 each direction per leg',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Big slow circles', 'Hold wall for balance', 'Full range of motion'],
@@ -88,6 +100,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'dynamic_stretch',
     duration: '10 each leg',
+    est_per_set_seconds: 40,
     seconds: 20,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
@@ -100,6 +113,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'dynamic_stretch',
     duration: '10 each leg',
+    est_per_set_seconds: 40,
     seconds: 20,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
@@ -112,6 +126,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'dynamic_stretch',
     duration: '10 each leg',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Pull knee to chest', 'Stand tall', 'Rise onto toes on standing leg'],
@@ -123,6 +138,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'lower_body',
     type: 'activation',
     duration: '8 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Extend one leg', 'Drive through planted heel', 'Keep hips level'],
@@ -134,6 +150,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'activation',
     duration: '10 steps each direction',
+    est_per_set_seconds: 30,
     equipment: ['mini_band'],
     knee_safety: 'knee_safe',
     cues: ['Quarter squat position', 'Step forward and out', 'Keep tension on band'],
@@ -145,6 +162,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'ankles',
     type: 'mobility',
     duration: '10 each direction per foot',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     good_for: ['legs', 'full_body'],
@@ -155,6 +173,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'lower_body',
     type: 'activation',
     duration: '12 each leg',
+    est_per_set_seconds: 40,
     equipment: ['resistance_band'],
     knee_safety: 'knee_safe',
     cues: ['Band behind knee', 'Lock out knee against resistance', 'Great for VMO activation'],
@@ -168,6 +187,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'shoulders',
     type: 'mobility',
     duration: '10 each direction',
+    est_per_set_seconds: 30,
     seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
@@ -180,6 +200,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'upper_body',
     type: 'activation',
     duration: '15 reps',
+    est_per_set_seconds: 30,
     equipment: ['resistance_band'],
     knee_safety: 'knee_safe',
     cues: ['Squeeze shoulder blades together', 'Arms at shoulder height', 'Controlled return'],
@@ -191,6 +212,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'shoulders',
     type: 'mobility',
     duration: '10 reps',
+    est_per_set_seconds: 30,
     equipment: ['resistance_band'],
     knee_safety: 'knee_safe',
     cues: ['Wide grip', 'Straight arms overhead and behind', 'Go slow'],
@@ -202,6 +224,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'upper_body',
     type: 'activation',
     duration: '10 reps',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Push-up position', 'Only move shoulder blades', 'Protract and retract'],
@@ -213,6 +236,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'shoulders',
     type: 'mobility',
     duration: '10 reps',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Back flat against wall', 'Slide arms up and down', 'Keep contact with wall'],
@@ -224,6 +248,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'thoracic',
     type: 'mobility',
     duration: '10 cycles',
+    est_per_set_seconds: 45,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Arch and round spine', 'Move segment by segment', 'Breathe with movement'],
@@ -235,6 +260,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'thoracic',
     type: 'mobility',
     duration: '8 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['From all fours', 'Reach under and rotate', 'Follow hand with eyes'],
@@ -246,6 +272,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'upper_body',
     type: 'activation',
     duration: '5 each position',
+    est_per_set_seconds: 45,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Lie face down', 'Lift arms in Y, T, then W shapes', 'Squeeze shoulder blades'],
@@ -257,6 +284,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'wrists',
     type: 'mobility',
     duration: '10 each direction',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     good_for: ['arms'],
@@ -269,6 +297,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'full_body',
     type: 'dynamic_stretch',
     duration: '6 reps',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Walk hands out to plank', 'Walk feet to hands', 'Keep legs as straight as possible'],
@@ -280,6 +309,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'core',
     type: 'activation',
     duration: '8 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Extend opposite arm and leg', 'Keep hips square', 'Slow and controlled'],
@@ -291,6 +321,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'core',
     type: 'activation',
     duration: '8 each side',
+    est_per_set_seconds: 40,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Back pressed to floor', 'Lower opposite arm and leg', 'Don\'t let back arch'],
@@ -302,6 +333,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'full_body',
     type: 'activation',
     duration: '20 feet forward and back',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Knees hover 1 inch off ground', 'Opposite hand and foot move together', 'Keep hips low'],
@@ -313,6 +345,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'hips',
     type: 'dynamic_stretch',
     duration: '30s each side',
+    est_per_set_seconds: 40,
     seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
@@ -325,6 +358,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'core',
     type: 'activation',
     duration: '10 each side',
+    est_per_set_seconds: 40,
     equipment: ['resistance_band'],
     knee_safety: 'knee_safe',
     cues: ['Resist rotation', 'Press band straight out from chest', 'Brace core'],
@@ -336,6 +370,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
     target: 'core',
     type: 'activation',
     duration: '10 reps',
+    est_per_set_seconds: 30,
     equipment: ['bodyweight'],
     knee_safety: 'knee_safe',
     cues: ['Lie on back, knees bent', 'Flatten lower back to floor', 'Engage deep core'],
@@ -354,8 +389,9 @@ interface BuildWarmupOptions {
   kneeFlag?: boolean
 }
 
-export function buildAdaptiveWarmup(options: BuildWarmupOptions): WarmupExercise[] {
+export function buildAdaptiveWarmup(options: BuildWarmupOptions): ProgrammedWarmup[] {
   const { targetMinutes, workoutFocus, focus, kneeFlag } = options
+  const targetSeconds = targetMinutes * 60
 
   // Filter out knee-unsafe exercises if flagged
   let pool = kneeFlag
@@ -371,48 +407,58 @@ export function buildAdaptiveWarmup(options: BuildWarmupOptions): WarmupExercise
     }
     const types = typeMap[focus]
     const focused = pool.filter(e => types.includes(e.type))
-    // Keep at least some exercises even if focus doesn't match
     if (focused.length >= 3) pool = focused
   }
 
   // Score exercises by relevance to today's workout
   const scored = pool.map(exercise => {
     let score = 0
-    for (const focus of workoutFocus) {
-      if (exercise.good_for.includes(focus)) score += 2
+    for (const f of workoutFocus) {
+      if (exercise.good_for.includes(f)) score += 2
     }
-    // Bonus for activation exercises (always good)
     if (exercise.type === 'activation') score += 1
-    // Small random factor for variety
     score += Math.random() * 0.5
     return { exercise, score }
   })
 
-  // Sort by score (most relevant first)
   scored.sort((a, b) => b.score - a.score)
 
-  // Pick exercises to fill the target time
-  // Rough estimate: ~45 seconds per exercise
-  const targetCount = Math.max(4, Math.min(12, Math.round((targetMinutes * 60) / 45)))
-
-  // Ensure variety: pick from different types
-  const selected: WarmupExercise[] = []
+  // Pick 4-6 exercises (not 12!) and give them proper volume (2 sets each)
+  // A real warm-up is fewer movements done with enough reps to actually warm up
+  const maxExercises = targetMinutes <= 5 ? 4 : targetMinutes <= 10 ? 5 : 6
+  const selected: ProgrammedWarmup[] = []
+  let totalTime = 0
   const usedTypes = new Set<string>()
 
-  // First pass: one of each type that's relevant
+  // First pass: ensure type variety (at least one activation, one mobility/dynamic)
   for (const { exercise } of scored) {
-    if (selected.length >= targetCount) break
-    if (!usedTypes.has(exercise.type) || selected.length < 3) {
-      selected.push(exercise)
-      usedTypes.add(exercise.type)
+    if (selected.length >= maxExercises) break
+    if (!usedTypes.has(exercise.type) && selected.length < 3) {
+      const sets = 2
+      const time = exercise.est_per_set_seconds * sets
+      if (totalTime + time <= targetSeconds + 30) { // small buffer
+        selected.push({ exercise, sets })
+        totalTime += time
+        usedTypes.add(exercise.type)
+      }
     }
   }
 
   // Second pass: fill remaining with highest-scored
   for (const { exercise } of scored) {
-    if (selected.length >= targetCount) break
-    if (!selected.includes(exercise)) {
-      selected.push(exercise)
+    if (selected.length >= maxExercises) break
+    if (selected.some(s => s.exercise.id === exercise.id)) continue
+
+    // Determine sets: 2 if we have time, 1 if tight
+    const timeFor2 = exercise.est_per_set_seconds * 2
+    const timeFor1 = exercise.est_per_set_seconds
+
+    if (totalTime + timeFor2 <= targetSeconds + 30) {
+      selected.push({ exercise, sets: 2 })
+      totalTime += timeFor2
+    } else if (totalTime + timeFor1 <= targetSeconds + 30) {
+      selected.push({ exercise, sets: 1 })
+      totalTime += timeFor1
     }
   }
 
