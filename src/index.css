@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #111113;
+  --color-surface-raised: #1a1a1e;
+  --color-surface-overlay: #222226;
+  --color-border-subtle: #2a2a2e;
+  --color-border-medium: #3a3a3e;
+  --color-brand: #f97316;
+  --color-brand-soft: #f9731622;
+  --color-success: #4ade80;
+  --color-success-soft: #1e3a2e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-purple-soft: #1e1b2e;
+}
+
+html, body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
