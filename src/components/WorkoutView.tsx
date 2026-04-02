@@ -94,7 +94,7 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete }: W
   const doneSets = workout
     ? workout.sections.reduce((a, s, si) =>
         a + s.exercises.reduce((b, e, ei) =>
-          b + Array.from({ length: e.sets }, (_, k) => checkedSets[`${si}-${ei}-${k}`] ? 1 : 0).reduce((x, y) => x + y, 0), 0), 0)
+          b + Array.from({ length: e.sets }, (_, k) => checkedSets[`${si}-${ei}-${k}`] ? 1 as number : 0 as number).reduce((x: number, y: number) => x + y, 0), 0), 0)
     : 0
 
   const startTimer = (seconds: number, label: string, type: 'rest' | 'work') => {

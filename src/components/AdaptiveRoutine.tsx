@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Timer, Clock, Zap, Wind, Sparkles } from 'lucide-react'
+import { Timer, Clock, Sparkles } from 'lucide-react'
 import { buildAdaptiveWarmup, type ProgrammedWarmup, type WarmupFocus } from '../data/warmups'
 import { buildAdaptiveCooldown, type CooldownExercise, type CooldownFocus } from '../data/cooldowns'
 
