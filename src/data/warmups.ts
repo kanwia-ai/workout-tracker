@@ -380,7 +380,7 @@ export const WARMUP_LIBRARY: WarmupExercise[] = [
 
 // ─── Adaptive warm-up builder ─────────────────────────────────────────────
 
-export type WarmupFocus = 'dynamic' | 'mobility' | 'activation'
+export type WarmupFocus = 'balanced' | 'dynamic' | 'mobility' | 'activation'
 
 interface BuildWarmupOptions {
   targetMinutes: number
@@ -398,16 +398,18 @@ export function buildAdaptiveWarmup(options: BuildWarmupOptions): ProgrammedWarm
     ? WARMUP_LIBRARY.filter(e => e.knee_safety !== 'knee_avoid')
     : [...WARMUP_LIBRARY]
 
-  // Filter by focus type if specified
-  if (focus) {
-    const typeMap: Record<WarmupFocus, WarmupExercise['type'][]> = {
+  // Filter by focus type if specified (balanced uses the full pool)
+  if (focus && focus !== 'balanced') {
+    const typeMap: Record<string, WarmupExercise['type'][]> = {
       dynamic: ['dynamic_stretch', 'cardio'],
       mobility: ['mobility'],
       activation: ['activation'],
     }
     const types = typeMap[focus]
-    const focused = pool.filter(e => types.includes(e.type))
-    if (focused.length >= 3) pool = focused
+    if (types) {
+      const focused = pool.filter(e => types.includes(e.type))
+      if (focused.length >= 3) pool = focused
+    }
   }
 
   // Score exercises by relevance to today's workout
@@ -430,16 +432,38 @@ export function buildAdaptiveWarmup(options: BuildWarmupOptions): ProgrammedWarm
   let totalTime = 0
   const usedTypes = new Set<string>()
 
-  // First pass: ensure type variety (at least one activation, one mobility/dynamic)
-  for (const { exercise } of scored) {
-    if (selected.length >= maxExercises) break
-    if (!usedTypes.has(exercise.type) && selected.length < 3) {
+  // First pass: ensure type variety
+  // For 'balanced' or default: guarantee at least one activation, one dynamic, one mobility
+  const requiredTypes: WarmupExercise['type'][] =
+    (!focus || focus === 'balanced')
+      ? ['activation', 'dynamic_stretch', 'mobility']
+      : []
+
+  for (const reqType of requiredTypes) {
+    const match = scored.find(s => s.exercise.type === reqType && !selected.some(sel => sel.exercise.id === s.exercise.id))
+    if (match) {
       const sets = 2
-      const time = exercise.est_per_set_seconds * sets
-      if (totalTime + time <= targetSeconds + 30) { // small buffer
-        selected.push({ exercise, sets })
+      const time = match.exercise.est_per_set_seconds * sets
+      if (totalTime + time <= targetSeconds + 30) {
+        selected.push({ exercise: match.exercise, sets })
         totalTime += time
-        usedTypes.add(exercise.type)
+        usedTypes.add(match.exercise.type)
+      }
+    }
+  }
+
+  // If no required types (focused mode), pick one of each available type
+  if (requiredTypes.length === 0) {
+    for (const { exercise } of scored) {
+      if (selected.length >= maxExercises) break
+      if (!usedTypes.has(exercise.type)) {
+        const sets = 2
+        const time = exercise.est_per_set_seconds * sets
+        if (totalTime + time <= targetSeconds + 30) {
+          selected.push({ exercise, sets })
+          totalTime += time
+          usedTypes.add(exercise.type)
+        }
       }
     }
   }

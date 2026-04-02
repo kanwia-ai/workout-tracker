@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Timer, Clock, Zap, Wind, Sparkles } from 'lucide-react'
 import { buildAdaptiveWarmup, type ProgrammedWarmup, type WarmupFocus } from '../data/warmups'
-import { buildAdaptiveCooldown, type CooldownExercise } from '../data/cooldowns'
+import { buildAdaptiveCooldown, type CooldownExercise, type CooldownFocus } from '../data/cooldowns'
 
 type FocusArea = 'legs' | 'glutes' | 'back' | 'shoulders' | 'arms' | 'core' | 'full_body'
 
@@ -14,10 +14,18 @@ interface AdaptiveRoutineProps {
 
 const DURATION_OPTIONS = [5, 10, 15, 20]
 
-const FOCUS_OPTIONS: { value: WarmupFocus; label: string }[] = [
+const WARMUP_FOCUS_OPTIONS: { value: WarmupFocus; label: string }[] = [
+  { value: 'balanced', label: 'Balanced' },
   { value: 'activation', label: 'Activation' },
   { value: 'dynamic', label: 'Dynamic' },
   { value: 'mobility', label: 'Mobility' },
+]
+
+const COOLDOWN_FOCUS_OPTIONS: { value: CooldownFocus; label: string }[] = [
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'stretch', label: 'Stretch' },
+  { value: 'mobility', label: 'Mobility' },
+  { value: 'recovery', label: 'Recovery' },
 ]
 
 // Unified item for rendering (handles both warmup with sets and cooldown without)
@@ -31,15 +39,18 @@ interface RoutineItem {
 
 export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: AdaptiveRoutineProps) {
   const [duration, setDuration] = useState(10)
-  const [focus, setFocus] = useState<WarmupFocus | undefined>(undefined)
+  const [warmupFocus, setWarmupFocus] = useState<WarmupFocus>('balanced')
+  const [cooldownFocus, setCooldownFocus] = useState<CooldownFocus>('balanced')
   const [checked, setChecked] = useState<Record<string, boolean>>({})
+
+  const activeFocus = mode === 'warmup' ? warmupFocus : cooldownFocus
 
   const items: RoutineItem[] = useMemo(() => {
     if (mode === 'warmup') {
       const programmed = buildAdaptiveWarmup({
         targetMinutes: duration,
         workoutFocus,
-        focus,
+        focus: warmupFocus,
         kneeFlag,
       })
       return programmed.map((p: ProgrammedWarmup) => ({
@@ -53,6 +64,7 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
       const cooldowns = buildAdaptiveCooldown({
         targetMinutes: duration,
         workoutFocus,
+        focus: cooldownFocus,
         kneeFlag,
       })
       return cooldowns.map((ex: CooldownExercise) => ({
@@ -63,7 +75,7 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
         timerSeconds: ex.seconds,
       }))
     }
-  }, [mode, duration, workoutFocus, focus, kneeFlag])
+  }, [mode, duration, workoutFocus, warmupFocus, cooldownFocus, kneeFlag])
 
   const completedCount = Object.values(checked).filter(Boolean).length
   const focusLabel = workoutFocus.join(', ')
@@ -100,37 +112,29 @@ export function AdaptiveRoutine({ mode, workoutFocus, kneeFlag, onStartTimer }: 
         </div>
       </div>
 
-      {/* Focus picker (warmup only) */}
-      {mode === 'warmup' && (
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles size={12} className="text-zinc-500" />
-          <div className="flex gap-1">
+      {/* Focus picker */}
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles size={12} className="text-zinc-500" />
+        <div className="flex gap-1">
+          {(mode === 'warmup' ? WARMUP_FOCUS_OPTIONS : COOLDOWN_FOCUS_OPTIONS).map(f => (
             <button
-              onClick={() => { setFocus(undefined); setChecked({}) }}
+              key={f.value}
+              onClick={() => {
+                if (mode === 'warmup') setWarmupFocus(f.value as WarmupFocus)
+                else setCooldownFocus(f.value as CooldownFocus)
+                setChecked({})
+              }}
               className="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95"
               style={{
-                background: !focus ? '#f97316' : '#2a2a2e',
-                color: !focus ? '#fff' : '#666',
+                background: activeFocus === f.value ? (mode === 'warmup' ? '#f97316' : '#60a5fa') : '#2a2a2e',
+                color: activeFocus === f.value ? '#fff' : '#666',
               }}
             >
-              Auto
+              {f.label}
             </button>
-            {FOCUS_OPTIONS.map(f => (
-              <button
-                key={f.value}
-                onClick={() => { setFocus(f.value); setChecked({}) }}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                style={{
-                  background: focus === f.value ? '#f97316' : '#2a2a2e',
-                  color: focus === f.value ? '#fff' : '#666',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
-      )}
+      </div>
 
       {/* Exercise list */}
       <div className="space-y-0.5">

@@ -324,32 +324,47 @@ export const COOLDOWN_LIBRARY: CooldownExercise[] = [
 
 // ─── Adaptive cool-down builder ───────────────────────────────────────────
 
+export type CooldownFocus = 'balanced' | 'stretch' | 'mobility' | 'recovery'
+
 interface BuildCooldownOptions {
   targetMinutes: number
   workoutFocus: ('legs' | 'glutes' | 'back' | 'shoulders' | 'arms' | 'core' | 'full_body')[]
+  focus?: CooldownFocus
   kneeFlag?: boolean
   hasFoamRoller?: boolean
 }
 
 export function buildAdaptiveCooldown(options: BuildCooldownOptions): CooldownExercise[] {
-  const { targetMinutes, workoutFocus, kneeFlag, hasFoamRoller = false } = options
+  const { targetMinutes, workoutFocus, focus, kneeFlag, hasFoamRoller = false } = options
 
   let pool = kneeFlag
     ? COOLDOWN_LIBRARY.filter(e => e.knee_safety !== 'knee_avoid')
     : [...COOLDOWN_LIBRARY]
 
-  // Filter out foam roller exercises if not available
   if (!hasFoamRoller) {
     pool = pool.filter(e => e.type !== 'foam_roll')
+  }
+
+  // Filter by focus type (balanced uses full pool)
+  if (focus && focus !== 'balanced') {
+    const typeMap: Record<string, CooldownExercise['type'][]> = {
+      stretch: ['static_stretch'],
+      mobility: ['mobility'],
+      recovery: ['recovery', 'foam_roll'],
+    }
+    const types = typeMap[focus]
+    if (types) {
+      const focused = pool.filter(e => types.includes(e.type))
+      if (focused.length >= 3) pool = focused
+    }
   }
 
   // Score by relevance
   const scored = pool.map(exercise => {
     let score = 0
-    for (const focus of workoutFocus) {
-      if (exercise.good_for.includes(focus)) score += 2
+    for (const f of workoutFocus) {
+      if (exercise.good_for.includes(f)) score += 2
     }
-    // Always include at least one recovery exercise
     if (exercise.type === 'recovery') score += 1
     score += Math.random() * 0.5
     return { exercise, score }
@@ -357,14 +372,25 @@ export function buildAdaptiveCooldown(options: BuildCooldownOptions): CooldownEx
 
   scored.sort((a, b) => b.score - a.score)
 
-  // Estimate ~50 seconds per stretch
-  const targetCount = Math.max(4, Math.min(10, Math.round((targetMinutes * 60) / 50)))
-
+  // For balanced/default: ensure variety across types
+  const maxExercises = targetMinutes <= 5 ? 4 : targetMinutes <= 10 ? 6 : 8
   const selected: CooldownExercise[] = []
+  const usedTypes = new Set<string>()
 
-  // Ensure at least one stretch for the primary worked area
+  // First pass: one of each type for balanced
+  if (!focus || focus === 'balanced') {
+    for (const reqType of ['static_stretch', 'mobility', 'recovery'] as const) {
+      const match = scored.find(s => s.exercise.type === reqType && !selected.includes(s.exercise))
+      if (match) {
+        selected.push(match.exercise)
+        usedTypes.add(match.exercise.type)
+      }
+    }
+  }
+
+  // Fill remaining with highest-scored
   for (const { exercise } of scored) {
-    if (selected.length >= targetCount) break
+    if (selected.length >= maxExercises) break
     if (!selected.includes(exercise)) {
       selected.push(exercise)
     }
@@ -372,7 +398,7 @@ export function buildAdaptiveCooldown(options: BuildCooldownOptions): CooldownEx
 
   // Always end with deep breathing if time allows
   const breathing = COOLDOWN_LIBRARY.find(e => e.id === 'cd-deep-breathing')
-  if (breathing && !selected.includes(breathing) && selected.length < targetCount) {
+  if (breathing && !selected.includes(breathing) && selected.length < maxExercises) {
     selected.push(breathing)
   }
 
