@@ -5,9 +5,11 @@ import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
 import { DaySelector } from './DaySelector'
 import { TimerOverlay } from './TimerOverlay'
+import { AdaptiveRoutine } from './AdaptiveRoutine'
 import { useSession } from '../hooks/useSession'
 import { DEFAULT_SCHEDULE } from '../data/schedule'
 import { DEFAULT_WORKOUTS } from '../data/workouts'
+import { WORKOUT_FOCUS } from '../data/workout-focus'
 import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
 import type { TimerState, SessionPhase } from '../types'
 
@@ -223,26 +225,21 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete }: W
               estMinutes={workout.est_minutes}
             />
 
-            {/* Warm-Up toggle */}
+            {/* Adaptive Warm-Up */}
             <button
               onClick={() => setShowWarmup(!showWarmup)}
               className="w-full flex justify-between items-center bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3 text-sm font-semibold text-zinc-300"
             >
-              <span>{'🔥'} Warm-Up (~5 min)</span>
+              <span>{'🔥'} Warm-Up</span>
               <ChevronDown size={16} className={`transition-transform ${showWarmup ? 'rotate-180' : ''}`} />
             </button>
             {showWarmup && (
-              <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3 text-sm text-zinc-400">
-                <p className="text-xs text-zinc-500 mb-2">Adaptive warm-ups coming in Phase 2! For now:</p>
-                <ul className="space-y-1.5 text-[13px]">
-                  <li>Light cardio (3 min bike or walk)</li>
-                  <li>Leg swings front-to-back (20s each)</li>
-                  <li>Leg swings side-to-side (20s each)</li>
-                  <li>Arm circles (30s)</li>
-                  <li>Cat-cow stretches (10 reps)</li>
-                  <li>Bodyweight squats (10 reps)</li>
-                </ul>
-              </div>
+              <AdaptiveRoutine
+                mode="warmup"
+                workoutFocus={WORKOUT_FOCUS[workout.id] || ['full_body']}
+                kneeFlag={profile?.knee_flag}
+                onStartTimer={startTimer}
+              />
             )}
 
             {/* Exercise sections */}
@@ -273,26 +270,21 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete }: W
               </div>
             ))}
 
-            {/* Cool-Down toggle */}
+            {/* Adaptive Cool-Down */}
             <button
               onClick={() => setShowCooldown(!showCooldown)}
               className="w-full flex justify-between items-center bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3 text-sm font-semibold text-zinc-300"
             >
-              <span>{'🧊'} Cool-Down (~5 min)</span>
+              <span>{'🧊'} Cool-Down</span>
               <ChevronDown size={16} className={`transition-transform ${showCooldown ? 'rotate-180' : ''}`} />
             </button>
             {showCooldown && (
-              <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3 text-sm text-zinc-400">
-                <p className="text-xs text-zinc-500 mb-2">Adaptive cool-downs coming in Phase 2! For now:</p>
-                <ul className="space-y-1.5 text-[13px]">
-                  <li>Standing quad stretch (30s each)</li>
-                  <li>Standing hamstring stretch (30s each)</li>
-                  <li>Cross-body shoulder stretch (30s each)</li>
-                  <li>Child's pose (45s)</li>
-                  <li>Seated spinal twist (30s each)</li>
-                  <li>Deep breathing (60s)</li>
-                </ul>
-              </div>
+              <AdaptiveRoutine
+                mode="cooldown"
+                workoutFocus={WORKOUT_FOCUS[workout.id] || ['full_body']}
+                kneeFlag={profile?.knee_flag}
+                onStartTimer={startTimer}
+              />
             )}
 
             {/* Sleep reminder */}
