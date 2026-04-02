@@ -10,7 +10,7 @@ PATH = "/home/runner/$REPL_SLUG/node_modules/.bin:$PATH"
 
 [deployment]
 run = ["sh", "-c", "npm run build && npx serve dist -s -l 3000"]
-build = ["bash", "-c", "npm install --legacy-peer-deps && npm run build"]
+build = ["npm", "run", "build"]
 deploymentTarget = "static"
 publicDir = "dist"
 
