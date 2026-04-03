@@ -12,12 +12,31 @@ interface Profile {
   last_workout_date: string | null
 }
 
+// Dev bypass: skip auth entirely in development
+const DEV_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === 'true'
+const DEV_PROFILE: Profile = {
+  id: 'dev-user',
+  email: 'dev@localhost',
+  display_name: 'Kyra',
+  avatar_emoji: '💪',
+  knee_flag: true,
+  streak: 0,
+  last_workout_date: null,
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (DEV_BYPASS) {
+      setUser({ id: 'dev-user' } as User)
+      setProfile(DEV_PROFILE)
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
