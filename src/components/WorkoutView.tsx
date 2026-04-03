@@ -5,7 +5,6 @@ import { SessionBar } from './SessionBar'
 import { DaySelector } from './DaySelector'
 import { TimerOverlay } from './TimerOverlay'
 import { AdaptiveRoutine } from './AdaptiveRoutine'
-import { WeeklyRecap } from './WeeklyRecap'
 import { ProtocolSection } from './ProtocolSection'
 import { PainCheckIn } from './PainCheckIn'
 import { useSession } from '../hooks/useSession'
@@ -13,7 +12,6 @@ import { useProtocol } from '../hooks/useProtocol'
 import { QUAD_PROTOCOL } from '../data/protocols'
 import { DEFAULT_SCHEDULE } from '../data/schedule'
 import { WORKOUT_FOCUS } from '../data/workout-focus'
-import { MOCK_WEEKLY_RECAP } from '../data/mock-progress'
 import { getProgramWeek, getPeriodConfig, buildWorkoutForDay, initProgramIfNeeded, PROGRAM } from '../data/program'
 import { getExerciseById } from '../data/exercises'
 import { ExerciseDetail } from './ExerciseDetail'
@@ -39,7 +37,6 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
   const [weights, setWeights] = useState<Record<string, number>>({})
   const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
   const [_prs, setPrs] = useState<Record<string, number>>({})
-  const [showRecap, setShowRecap] = useState(true)
   const [showPainCheckIn, setShowPainCheckIn] = useState(false)
   const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>({})
   const [viewingExercise, setViewingExercise] = useState<Exercise | null>(null)
@@ -227,17 +224,6 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
           </div>
           <span className="text-[11px] text-zinc-600">{period.intensity}</span>
         </div>
-
-        {/* Weekly recap */}
-        {showRecap && (
-          <div className="mt-3">
-            <WeeklyRecap
-              data={MOCK_WEEKLY_RECAP}
-              onDismiss={() => setShowRecap(false)}
-              onViewProgress={onNavigateProgress}
-            />
-          </div>
-        )}
 
         {/* Daily cardio banner */}
         <button
