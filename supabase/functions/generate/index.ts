@@ -3,9 +3,14 @@
 // response. Runs as a Deno edge function; do not import Node-only modules.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
+const JSON_HEADERS = { 'content-type': 'application/json' }
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405,
+      headers: { ...JSON_HEADERS, allow: 'POST' },
+    })
   }
   const body = await req.json().catch(() => null) as { op?: string; payload?: unknown } | null
   if (!body || typeof body.op !== 'string') {

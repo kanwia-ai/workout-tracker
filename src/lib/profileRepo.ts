@@ -53,18 +53,35 @@ export async function syncProfileUp(userId: string): Promise<void> {
 
 /**
  * Fetch the cloud copy of a user's profile, persist it locally, and return it.
- * Returns null if no cloud row exists. After saving locally, immediately
- * marks the local row as synced (we just pulled it from the source of truth).
+ * Returns null if no cloud row exists. Throws on Supabase errors so callers
+ * can distinguish "not found" (null) from "network failed" (throw).
+ *
+ * Refuses to overwrite a dirty local row — if the user has unsynced local
+ * edits, those win and this pull is a no-op that returns the local profile.
+ * TODO: compare updated_at and offer last-write-wins or a merge prompt before MVP ships.
  */
 export async function pullProfileFromCloud(userId: string): Promise<UserProgramProfile | null> {
-  const { data } = await supabase
+  const localRow = await db.userProgramProfiles.get(userId)
+  if (localRow && !localRow.synced) {
+    // Local has unsynced edits — don't clobber.
+    return UserProgramProfileSchema.parse(JSON.parse(localRow.profile_json))
+  }
+
+  const { data, error } = await supabase
     .from('user_program_profiles')
-    .select('profile')
+    .select('profile, updated_at')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
+  if (error) throw error
   if (!data) return null
+
   const profile = UserProgramProfileSchema.parse(data.profile)
-  await saveProfileLocal(userId, profile)
-  await db.userProgramProfiles.update(userId, { synced: true })
+  // Single write: validated profile + synced flag in one put.
+  await db.userProgramProfiles.put({
+    user_id: userId,
+    profile_json: JSON.stringify(profile),
+    updated_at: data.updated_at ?? new Date().toISOString(),
+    synced: true,
+  })
   return profile
 }

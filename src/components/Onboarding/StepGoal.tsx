@@ -31,14 +31,15 @@ export function StepGoal({ value, onNext }: Props) {
               key={opt.id}
               type="button"
               onClick={() => onNext(opt.id)}
-              className={`p-4 rounded-2xl text-left border transition ${
+              aria-pressed={selected}
+              className={`min-h-[56px] p-4 rounded-2xl text-left border-2 transition active:scale-[0.98] ${
                 selected
-                  ? 'border-brand bg-brand/10'
+                  ? 'border-brand bg-brand/10 ring-2 ring-brand/50'
                   : 'border-border-subtle bg-surface-raised'
               }`}
             >
               <div className="font-bold">{opt.title}</div>
-              <div className="text-sm text-zinc-500">{opt.blurb}</div>
+              <div className="text-sm text-zinc-400">{opt.blurb}</div>
             </button>
           )
         })}

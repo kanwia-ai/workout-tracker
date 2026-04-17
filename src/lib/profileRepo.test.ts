@@ -96,17 +96,21 @@ describe('profileRepo', () => {
   })
 
   describe('pullProfileFromCloud', () => {
-    it('fetches from supabase, saves locally, marks synced, returns profile', async () => {
-      const single = vi.fn().mockResolvedValue({ data: { profile: VALID_PROFILE }, error: null })
-      const eq = vi.fn().mockReturnValue({ single })
+    function mockCloudProfile(data: unknown, error: unknown = null) {
+      const maybeSingle = vi.fn().mockResolvedValue({ data, error })
+      const eq = vi.fn().mockReturnValue({ maybeSingle })
       const select = vi.fn().mockReturnValue({ eq })
       vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
+      return { select, eq, maybeSingle }
+    }
 
+    it('fetches from supabase, saves locally, marks synced, returns profile', async () => {
+      const mocks = mockCloudProfile({ profile: VALID_PROFILE, updated_at: '2026-04-17T00:00:00Z' })
       const result = await pullProfileFromCloud('user-1')
 
       expect(supabase.from).toHaveBeenCalledWith('user_program_profiles')
-      expect(select).toHaveBeenCalledWith('profile')
-      expect(eq).toHaveBeenCalledWith('user_id', 'user-1')
+      expect(mocks.select).toHaveBeenCalledWith('profile, updated_at')
+      expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-1')
       expect(result).toEqual(VALID_PROFILE)
 
       const row = await db.userProgramProfiles.get('user-1')
@@ -116,15 +120,28 @@ describe('profileRepo', () => {
     })
 
     it('returns null when no row exists in cloud', async () => {
-      const single = vi.fn().mockResolvedValue({ data: null, error: null })
-      const eq = vi.fn().mockReturnValue({ single })
-      const select = vi.fn().mockReturnValue({ eq })
-      vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
-
+      mockCloudProfile(null)
       const result = await pullProfileFromCloud('user-1')
       expect(result).toBeNull()
       const row = await db.userProgramProfiles.get('user-1')
       expect(row).toBeUndefined()
+    })
+
+    it('throws when supabase returns an error', async () => {
+      mockCloudProfile(null, { message: 'network down' })
+      await expect(pullProfileFromCloud('user-1')).rejects.toBeTruthy()
+    })
+
+    it('refuses to clobber unsynced local edits — returns local profile instead', async () => {
+      const localProfile: UserProgramProfile = { ...VALID_PROFILE, goal: 'rehab' }
+      await saveProfileLocal('user-1', localProfile)  // synced: false
+
+      const from = vi.spyOn(supabase, 'from')
+      const result = await pullProfileFromCloud('user-1')
+      expect(from).not.toHaveBeenCalled()
+      expect(result).toEqual(localProfile)
+      const row = await db.userProgramProfiles.get('user-1')
+      expect(row?.synced).toBe(false)
     })
   })
 })

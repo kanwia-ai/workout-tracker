@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { UserProgramProfile } from '../../types/profile'
+import { UserProgramProfileSchema, type UserProgramProfile } from '../../types/profile'
 import { StepGoal } from './StepGoal'
 
 type PartialProfile = Partial<UserProgramProfile>
@@ -34,9 +34,18 @@ export function OnboardingFlow({ onComplete }: Props) {
     setDraft(merged)
     if (idx < STEPS.length - 1) {
       setStep(STEPS[idx + 1])
-    } else {
-      onComplete(merged as UserProgramProfile)
+      return
     }
+    // Final step — validate before handing off. Failure jumps back to step 0
+    // so the user can correct missing fields instead of silently crashing
+    // downstream inside saveProfileLocal.
+    const parsed = UserProgramProfileSchema.safeParse(merged)
+    if (!parsed.success) {
+      console.warn('onboarding completion validation failed', parsed.error.message)
+      setStep(STEPS[0])
+      return
+    }
+    onComplete(parsed.data)
   }
 
   return (

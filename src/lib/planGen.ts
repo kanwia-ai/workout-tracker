@@ -95,12 +95,17 @@ export async function generatePlan(
     partialSchema,
   )
 
-  const meso = MesocycleSchema.parse({
+  const merged = {
     ...raw,
     user_id: userId,
     generated_at: new Date().toISOString(),
     profile_snapshot: profile,
-  })
+  }
+  const result = MesocycleSchema.safeParse(merged)
+  if (!result.success) {
+    throw new Error(`generatePlan: merged mesocycle failed validation — ${result.error.message}`)
+  }
+  const meso = result.data
 
   await db.mesocycles.put({
     id: meso.id,
@@ -113,4 +118,43 @@ export async function generatePlan(
   })
 
   return meso
+}
+
+/**
+ * Load a persisted mesocycle from Dexie, unmarshaling the JSON-stringified
+ * sessions and profile_snapshot fields, and re-validating the shape. Returns
+ * null if no row exists for `id`. Throws if stored JSON is malformed or the
+ * unmarshaled object fails `MesocycleSchema` validation (indicates migration
+ * bug or schema drift).
+ *
+ * Task 3.2's `usePlan` hook should route through this helper rather than
+ * casting the raw Dexie row.
+ */
+export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
+  const row = await db.mesocycles.get(id)
+  if (!row) return null
+  const candidate = {
+    id: row.id,
+    user_id: row.user_id,
+    generated_at: row.generated_at,
+    length_weeks: row.length_weeks,
+    sessions: JSON.parse(row.sessions_json),
+    profile_snapshot: JSON.parse(row.profile_snapshot_json),
+  }
+  return MesocycleSchema.parse(candidate)
+}
+
+/**
+ * Load the most-recently-generated mesocycle for a user. Returns null when
+ * the user has no plan yet (first-time user, or they've never onboarded).
+ */
+export async function loadLatestMesocycleForUser(userId: string): Promise<Mesocycle | null> {
+  const row = await db.mesocycles
+    .where('user_id')
+    .equals(userId)
+    .reverse()
+    .sortBy('generated_at')
+  const latest = row[row.length - 1]
+  if (!latest) return null
+  return loadMesocycle(latest.id)
 }
