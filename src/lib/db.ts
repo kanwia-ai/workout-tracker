@@ -86,6 +86,19 @@ interface LocalProfile {
   synced: boolean
 }
 
+// Generated mesocycle (training block). `sessions` and `profile_snapshot` are
+// JSON-stringified to avoid needing per-field schema migrations as the plan
+// shape evolves. Indexed fields kept flat for Dexie querying.
+interface LocalMesocycle {
+  id: string
+  user_id: string
+  generated_at: string
+  length_weeks: number
+  sessions_json: string             // JSON-stringified PlannedSession[]
+  profile_snapshot_json: string     // JSON-stringified UserProgramProfile
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -94,6 +107,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   userWeights: EntityTable<LocalUserWeight, 'id'>
   exerciseLibrary: EntityTable<LibraryExercise, 'id'>
   userProgramProfiles: EntityTable<LocalProfile, 'user_id'>
+  mesocycles: EntityTable<LocalMesocycle, 'id'>
 }
 
 db.version(1).stores({
@@ -123,5 +137,16 @@ db.version(3).stores({
   userProgramProfiles: 'user_id, updated_at, synced',
 })
 
+db.version(4).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle }
