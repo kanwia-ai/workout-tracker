@@ -1,10 +1,14 @@
+// DO NOT rename fields or enum values — the Gemini prompt and the edge-function
+// JSON Schema mirror reference these identifiers verbatim. Adding values is safe.
 import { z } from 'zod'
 
 export const Goal = z.enum(['glutes', 'strength', 'longevity', 'aesthetics', 'rehab', 'general_fitness'])
 export const Equipment = z.enum(['full_gym', 'home_weights', 'bands_only', 'bodyweight_only', 'cable_machine', 'barbell'])
-export const Severity = z.enum(['avoid', 'modify', 'ok'])
+// 'chronic' covers ongoing conditions that shape programming but aren't acute (e.g., chronic lower back pain).
+export const Severity = z.enum(['avoid', 'modify', 'chronic', 'ok'])
 export const BodyPart = z.enum([
-  'left_meniscus', 'right_meniscus', 'lower_back', 'hip_flexors',
+  'left_meniscus', 'right_meniscus', 'left_knee', 'right_knee',
+  'lower_back', 'upper_back', 'hip_flexors',
   'left_shoulder', 'right_shoulder', 'left_trap', 'right_trap',
   'wrist', 'ankle', 'neck', 'elbow', 'other',
 ])
