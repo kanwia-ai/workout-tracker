@@ -78,6 +78,14 @@ interface LibraryExercise {
   rawId: string                  // original free-exercise-db id, used to build image URLs
 }
 
+// TODO(1.2): supabase migration pending — run `supabase db push` once CLI is linked.
+interface LocalProfile {
+  user_id: string   // PK
+  profile_json: string  // JSON-stringified UserProgramProfile
+  updated_at: string
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -85,6 +93,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   personalRecords: EntityTable<LocalPersonalRecord, 'id'>
   userWeights: EntityTable<LocalUserWeight, 'id'>
   exerciseLibrary: EntityTable<LibraryExercise, 'id'>
+  userProgramProfiles: EntityTable<LocalProfile, 'user_id'>
 }
 
 db.version(1).stores({
@@ -104,5 +113,15 @@ db.version(2).stores({
   exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
 })
 
+db.version(3).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile }
