@@ -26,18 +26,18 @@ export const PlannedSessionSchema = z.object({
   ordinal: z.number().int().min(1),   // position within the week (1..N)
   focus: z.array(MuscleGroup).min(1),
   title: z.string(),
-  estimated_minutes: z.number().int(),
+  estimated_minutes: z.number().int().min(10).max(180),
   exercises: z.array(PlannedExerciseSchema).min(1),
   status: SessionStatus,
-  intended_date: z.string().optional(),   // hint only
+  intended_date: z.string().optional(),   // hint only — YYYY-MM-DD or ISO, not validated strictly
 })
 
 export const MesocycleSchema = z.object({
   id: z.string(),
   user_id: z.string(),
-  generated_at: z.string(),
+  generated_at: z.string().datetime(),    // ISO 8601 timestamp
   length_weeks: z.number().int().min(3).max(12),
-  sessions: z.array(PlannedSessionSchema),
+  sessions: z.array(PlannedSessionSchema).min(1),
   profile_snapshot: z.unknown(),   // copy of UserProgramProfile at gen time
 })
 

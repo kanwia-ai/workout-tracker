@@ -14,13 +14,23 @@ function makePlannedExercise(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+const FOCUS_ROTATION = [
+  ['glutes', 'hamstrings'],
+  ['chest', 'triceps'],
+  ['back', 'biceps'],
+  ['full_body'],
+  ['rehab', 'mobility'],
+  ['quads', 'core'],
+]
+
 function makeSession(week: number, ordinal: number, id: string) {
-  return {
+  const focus = FOCUS_ROTATION[(week + ordinal) % FOCUS_ROTATION.length]
+  const session: Record<string, unknown> = {
     id,
     week_number: week,
     ordinal,
-    focus: ['glutes', 'hamstrings'] as const,
-    title: `Week ${week} — Lower A`,
+    focus,
+    title: `Week ${week} — Session ${ordinal}`,
     estimated_minutes: 55,
     exercises: [
       makePlannedExercise(),
@@ -51,8 +61,12 @@ function makeSession(week: number, ordinal: number, id: string) {
       }),
     ],
     status: 'upcoming' as const,
-    intended_date: `2026-04-${String(week * 7 + ordinal).padStart(2, '0')}`,
   }
+  // Exercise half the sessions with intended_date present, half absent, to exercise optionality.
+  if ((week + ordinal) % 2 === 0) {
+    session.intended_date = `2026-04-${String(week * 7 + ordinal).padStart(2, '0')}`
+  }
+  return session
 }
 
 describe('MesocycleSchema', () => {
@@ -74,22 +88,67 @@ describe('MesocycleSchema', () => {
     expect(() => MesocycleSchema.parse(plan)).not.toThrow()
     const parsed: Mesocycle = MesocycleSchema.parse(plan)
     expect(parsed.sessions).toHaveLength(18)
-    expect(parsed.sessions[0].focus).toContain('glutes')
+    // Focus rotation includes non-anatomical groups
+    const allFocus = parsed.sessions.flatMap(s => s.focus)
+    expect(allFocus).toContain('glutes')
+    expect(allFocus).toContain('rehab')
+    expect(allFocus).toContain('full_body')
+    // Some sessions have intended_date, some don't — schema tolerates both
+    const withDate = parsed.sessions.filter(s => s.intended_date).length
+    expect(withDate).toBeGreaterThan(0)
+    expect(withDate).toBeLessThan(parsed.sessions.length)
   })
 })
 
-describe('PlannedSessionSchema', () => {
-  it('rejects a session with 0 exercises', () => {
-    const bad = PlannedSessionSchema.safeParse({
-      id: 's-empty',
-      week_number: 1,
-      ordinal: 1,
-      focus: ['full_body'],
-      title: 'Empty session',
-      estimated_minutes: 30,
-      exercises: [],
+describe('PlannedSessionSchema rejections', () => {
+  const baseSession = {
+    id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
+    title: 'x', estimated_minutes: 45,
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
+    status: 'upcoming',
+  } as const
+
+  it('rejects empty exercises array', () => {
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, exercises: [] }).success).toBe(false)
+  })
+  it('rejects unknown muscle group in focus', () => {
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, focus: ['legs'] }).success).toBe(false)
+  })
+  it('rejects estimated_minutes below 10', () => {
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, estimated_minutes: 5 }).success).toBe(false)
+  })
+  it('rejects sets=0', () => {
+    const bad = { ...baseSession, exercises: [{ ...baseSession.exercises[0], sets: 0 }] }
+    expect(PlannedSessionSchema.safeParse(bad).success).toBe(false)
+  })
+  it('rejects rir above 5', () => {
+    const bad = { ...baseSession, exercises: [{ ...baseSession.exercises[0], rir: 6 }] }
+    expect(PlannedSessionSchema.safeParse(bad).success).toBe(false)
+  })
+})
+
+describe('MesocycleSchema rejections', () => {
+  const baseMeso = {
+    id: 'm-1', user_id: 'u-1', generated_at: '2026-04-17T00:00:00Z',
+    length_weeks: 6, profile_snapshot: {},
+    sessions: [{
+      id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
+      title: 'x', estimated_minutes: 45,
+      exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
       status: 'upcoming',
-    })
-    expect(bad.success).toBe(false)
+    }],
+  }
+
+  it('rejects length_weeks below 3', () => {
+    expect(MesocycleSchema.safeParse({ ...baseMeso, length_weeks: 2 }).success).toBe(false)
+  })
+  it('rejects length_weeks above 12', () => {
+    expect(MesocycleSchema.safeParse({ ...baseMeso, length_weeks: 13 }).success).toBe(false)
+  })
+  it('rejects non-ISO generated_at', () => {
+    expect(MesocycleSchema.safeParse({ ...baseMeso, generated_at: 'tomorrow' }).success).toBe(false)
+  })
+  it('rejects empty sessions array', () => {
+    expect(MesocycleSchema.safeParse({ ...baseMeso, sessions: [] }).success).toBe(false)
   })
 })
