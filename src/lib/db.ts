@@ -61,12 +61,30 @@ interface LocalUserWeight {
   synced: boolean
 }
 
+// Public-domain exercise library (yuhonas/free-exercise-db, 873 entries).
+// Seeded once on first load; see src/data/seedExerciseLibrary.ts
+interface LibraryExercise {
+  id: string                     // prefixed with "fedb:" to avoid collisions with curated IDs
+  name: string
+  force: string | null
+  level: string | null
+  mechanic: string | null
+  equipment: string | null
+  primaryMuscles: string[]
+  secondaryMuscles: string[]
+  instructions: string[]
+  category: string | null
+  imageCount: number
+  rawId: string                  // original free-exercise-db id, used to build image URLs
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
   cardioLogs: EntityTable<LocalCardioLog, 'id'>
   personalRecords: EntityTable<LocalPersonalRecord, 'id'>
   userWeights: EntityTable<LocalUserWeight, 'id'>
+  exerciseLibrary: EntityTable<LibraryExercise, 'id'>
 }
 
 db.version(1).stores({
@@ -77,5 +95,14 @@ db.version(1).stores({
   userWeights: 'id, user_id, exercise_id, date, synced',
 })
 
+db.version(2).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise }

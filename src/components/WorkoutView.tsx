@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ChevronDown, ChevronRight, Footprints, Moon, LogOut, Flame, Plus, BarChart3, Check, Timer, TrendingUp, RefreshCw, X } from 'lucide-react'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
@@ -18,6 +18,34 @@ import { ExerciseDetail } from './ExerciseDetail'
 import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
 import type { TimerState, SessionPhase, Exercise } from '../types'
 
+const SELECTED_DAY_KEY = 'workout-tracker:selected-day'
+const HAS_USED_KEY = 'workout-tracker:has-used'
+const CHECKED_SETS_KEY = (workoutId: string) => `workout-tracker:checked-sets:${workoutId}`
+const WEIGHTS_KEY = (workoutId: string) => `workout-tracker:weights:${workoutId}`
+const SELECTED_DAY_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+function loadSelectedDay(fallback: number): number {
+  try {
+    const raw = localStorage.getItem(SELECTED_DAY_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as { day: number; savedAt: string }
+    const age = Date.now() - new Date(parsed.savedAt).getTime()
+    if (age > SELECTED_DAY_MAX_AGE_MS) return fallback
+    return typeof parsed.day === 'number' ? parsed.day : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function loadStoredRecord<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
+
 interface WorkoutViewProps {
   userId: string
   profile: { display_name: string; avatar_emoji: string; streak: number; knee_flag: boolean } | null
@@ -30,20 +58,33 @@ interface WorkoutViewProps {
 
 export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onNavigateToCapture, onNavigateCardio, onNavigateProgress }: WorkoutViewProps) {
   const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1 })()
-  const [selectedDay, setSelectedDay] = useState(todayIdx)
+  const initialSelectedDay = (() => loadSelectedDay(todayIdx))()
+  const initialWorkoutId = DEFAULT_SCHEDULE[initialSelectedDay]?.workout_id ?? null
+  const [selectedDay, setSelectedDay] = useState<number>(initialSelectedDay)
   const [timer, setTimer] = useState<TimerState | null>(null)
   const [showWarmup, setShowWarmup] = useState(false)
   const [showCooldown, setShowCooldown] = useState(false)
-  const [weights, setWeights] = useState<Record<string, number>>({})
+  const [weights, setWeights] = useState<Record<string, number>>(() =>
+    initialWorkoutId ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(initialWorkoutId)) || {} : {}
+  )
   const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
   const [_prs, setPrs] = useState<Record<string, number>>({})
   const [showPainCheckIn, setShowPainCheckIn] = useState(false)
-  const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>({})
+  const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>(() =>
+    initialWorkoutId ? loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(initialWorkoutId)) || {} : {}
+  )
   const [viewingExercise, setViewingExercise] = useState<Exercise | null>(null)
   const [skippedExercises, setSkippedExercises] = useState<Set<number>>(new Set())
   const [swaps, setSwaps] = useState<Record<number, number>>({}) // exerciseIdx -> swap offset
+  const [hasUsed, setHasUsed] = useState<boolean>(() => localStorage.getItem(HAS_USED_KEY) === 'true')
+  const hydratedForRef = useRef<string | null>(initialWorkoutId)
 
-  const { session, startSession, switchPhase, endSession } = useSession()
+  const { session, startSession, switchPhase, endSession, clearSession } = useSession()
+
+  // Persist selectedDay with 24h TTL
+  useEffect(() => {
+    localStorage.setItem(SELECTED_DAY_KEY, JSON.stringify({ day: selectedDay, savedAt: new Date().toISOString() }))
+  }, [selectedDay])
   const { logPain } = useProtocol(QUAD_PROTOCOL.id, QUAD_PROTOCOL.total_weeks)
 
   // Initialize program week tracking
@@ -60,6 +101,46 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
   const schedule = DEFAULT_SCHEDULE
   const dayInfo = schedule[selectedDay]
   const workoutId = dayInfo.workout_id
+
+  // Re-hydrate checkedSets/weights on day switch.
+  // Ref gate ensures write effects below skip the racing commit that runs with stale state.
+  useEffect(() => {
+    if (!workoutId) {
+      hydratedForRef.current = null
+      setCheckedSets({})
+      setWeights({})
+      return
+    }
+    if (hydratedForRef.current === workoutId) return
+    const savedChecked = loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(workoutId)) || {}
+    const savedWeights = loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(workoutId)) || {}
+    setCheckedSets(savedChecked)
+    setWeights(savedWeights)
+    hydratedForRef.current = workoutId
+  }, [workoutId])
+
+  useEffect(() => {
+    if (!workoutId || hydratedForRef.current !== workoutId) return
+    localStorage.setItem(CHECKED_SETS_KEY(workoutId), JSON.stringify(checkedSets))
+  }, [workoutId, checkedSets])
+
+  useEffect(() => {
+    if (!workoutId || hydratedForRef.current !== workoutId) return
+    localStorage.setItem(WEIGHTS_KEY(workoutId), JSON.stringify(weights))
+  }, [workoutId, weights])
+
+  // First-time flag: mark used when a session starts
+  useEffect(() => {
+    if (session && !hasUsed) {
+      localStorage.setItem(HAS_USED_KEY, 'true')
+      setHasUsed(true)
+    }
+  }, [session, hasUsed])
+
+  const pickFirstNonRestDay = useCallback(() => {
+    const firstNonRest = schedule.findIndex(d => !d.is_rest_day)
+    if (firstNonRest >= 0) setSelectedDay(firstNonRest)
+  }, [schedule])
 
   // Build dynamic workout based on program week
   const programWeek = getProgramWeek()
@@ -120,6 +201,10 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
     const endedSession = { ...session }
     endSession()
     setCheckedSets({})
+    if (workoutId) {
+      localStorage.removeItem(CHECKED_SETS_KEY(workoutId))
+      localStorage.removeItem(WEIGHTS_KEY(workoutId))
+    }
 
     const now = new Date().toISOString()
     await saveSession({
@@ -147,6 +232,7 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
     loadLastWeights(userId).then(setLastWeights)
     loadPRs(userId).then(setPrs)
     setWeights({})
+    clearSession()
 
     // Pain check-in on lower body days
     const focus = workoutId ? WORKOUT_FOCUS[workoutId] || [] : []
@@ -216,6 +302,18 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
           onSelect={setSelectedDay}
         />
 
+        {selectedDay !== todayIdx && (
+          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500 px-1">
+            <span>Viewing {schedule[selectedDay].day_label} — not today</span>
+            <button
+              onClick={() => setSelectedDay(todayIdx)}
+              className="text-brand font-semibold active:scale-95 transition-transform"
+            >
+              Jump to today
+            </button>
+          </div>
+        )}
+
         {/* Program week + phase badge */}
         <div className="flex items-center gap-2 mt-3">
           <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${phaseColors[period.phase] || 'bg-zinc-800 text-zinc-300'}`}>
@@ -244,6 +342,14 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
             <div className="text-5xl mb-3">{'😴'}</div>
             <div className="text-xl font-bold">Rest Day</div>
             <div className="text-zinc-400 text-sm mt-1.5">Cardio, stretch, and sleep!</div>
+            {!hasUsed && (
+              <button
+                onClick={pickFirstNonRestDay}
+                className="mt-5 px-4 py-2 rounded-xl bg-brand text-white font-bold text-sm active:scale-95 transition-transform"
+              >
+                Pick a day to start →
+              </button>
+            )}
           </div>
         )}
 

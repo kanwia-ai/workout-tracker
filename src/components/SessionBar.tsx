@@ -29,6 +29,12 @@ const PHASE_COLORS: Record<SessionPhase['name'], string> = {
   'cardio': '#4ade80',
   'cool-down': '#60a5fa',
 }
+const MIN_PHASE_SECONDS: Record<SessionPhase['name'], number> = {
+  'warm-up': 180,
+  'lifts': 600,
+  'cardio': 300,
+  'cool-down': 60,
+}
 
 function formatTime(seconds: number): string {
   const mm = Math.floor(seconds / 60)
@@ -65,6 +71,16 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
 
   const currentLapStart = phases.length > 0 ? phases[phases.length - 1].started_at : null
   const currentLapElapsed = currentLapStart ? Math.floor((now - new Date(currentLapStart).getTime()) / 1000) : 0
+
+  const skippingEarly = (() => {
+    if (!confirmPhase || !currentPhase) return null
+    const curIdx = PHASES.indexOf(currentPhase)
+    const nextIdx = PHASES.indexOf(confirmPhase)
+    if (nextIdx <= curIdx) return null
+    const min = MIN_PHASE_SECONDS[currentPhase]
+    if (currentLapElapsed >= min) return null
+    return { phase: currentPhase, elapsed: currentLapElapsed, min }
+  })()
 
   const handlePhaseClick = (phase: SessionPhase['name']) => {
     if (phase === currentPhase) return // Already on this phase
@@ -172,25 +188,32 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
 
       {/* Phase switch confirmation */}
       {confirmPhase && (
-        <div className="flex items-center justify-between bg-surface-overlay rounded-xl px-3 py-2 mb-2 border border-border-medium">
-          <span className="text-xs text-zinc-300">
-            Switch to <span className="font-bold" style={{ color: PHASE_COLORS[confirmPhase] }}>{PHASE_LABELS[confirmPhase]}</span>?
-          </span>
-          <div className="flex gap-1.5">
-            <button
-              onClick={confirmSwitch}
-              className="px-3 py-1 rounded-lg text-xs font-bold text-white active:scale-95 transition-transform"
-              style={{ background: PHASE_COLORS[confirmPhase] }}
-            >
-              Yes
-            </button>
-            <button
-              onClick={() => setConfirmPhase(null)}
-              className="px-2 py-1 rounded-lg text-xs font-bold text-zinc-400 bg-border-subtle active:scale-95 transition-transform"
-            >
-              No
-            </button>
+        <div className="bg-surface-overlay rounded-xl px-3 py-2 mb-2 border border-border-medium">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-300">
+              Switch to <span className="font-bold" style={{ color: PHASE_COLORS[confirmPhase] }}>{PHASE_LABELS[confirmPhase]}</span>?
+            </span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={confirmSwitch}
+                className="px-3 py-1 rounded-lg text-xs font-bold text-white active:scale-95 transition-transform"
+                style={{ background: PHASE_COLORS[confirmPhase] }}
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmPhase(null)}
+                className="px-2 py-1 rounded-lg text-xs font-bold text-zinc-400 bg-border-subtle active:scale-95 transition-transform"
+              >
+                No
+              </button>
+            </div>
           </div>
+          {skippingEarly && (
+            <div className="mt-1.5 text-[11px] text-amber-400">
+              {PHASE_LABELS[skippingEarly.phase]} only ran for {formatTime(skippingEarly.elapsed)} — skip anyway?
+            </div>
+          )}
         </div>
       )}
 
