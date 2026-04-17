@@ -78,6 +78,35 @@ describe('getToday', () => {
     }
     expect(getToday(allDone)).toBeNull()
   })
+
+  it('prefers an in_progress session over later upcoming sessions', () => {
+    const plan = makeFixture()
+    // Mark w3/o2 as in_progress (later than the natural "next upcoming" at w2/o1)
+    const withInProgress: Mesocycle = {
+      ...plan,
+      sessions: plan.sessions.map(s =>
+        s.week_number === 3 && s.ordinal === 2
+          ? { ...s, status: 'in_progress' as const }
+          : s
+      ),
+    }
+    const today = getToday(withInProgress)
+    expect(today?.week_number).toBe(3)
+    expect(today?.ordinal).toBe(2)
+    expect(today?.status).toBe('in_progress')
+  })
+
+  it('tolerates an unsorted sessions array', () => {
+    const sessions: PlannedSession[] = [
+      makeSession(2, 1, 'upcoming'),
+      makeSession(1, 1, 'completed'),
+      makeSession(1, 2, 'completed'),
+    ]
+    const plan = makePlan(sessions)
+    const today = getToday(plan)
+    expect(today?.week_number).toBe(2)
+    expect(today?.ordinal).toBe(1)
+  })
 })
 
 describe('getWeekView', () => {

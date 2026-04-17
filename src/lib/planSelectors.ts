@@ -1,14 +1,31 @@
 import type { Mesocycle, PlannedSession } from '../types/plan'
 
+function sortedSessions(meso: Mesocycle): PlannedSession[] {
+  // Defensive: LLM output order is not guaranteed. Sort by (week, ordinal).
+  return [...meso.sessions].sort((a, b) =>
+    a.week_number !== b.week_number
+      ? a.week_number - b.week_number
+      : a.ordinal - b.ordinal
+  )
+}
+
 /**
- * The "today" session is the first session in the plan whose status is still
- * `upcoming`. Progress-based, not date-based — if the user skips days the plan
- * just resumes from wherever they left off. Null when the plan is missing or
- * every session has been completed/skipped/in_progress.
+ * The "today" session:
+ *   1. An in-progress session (user started and hasn't finished) takes priority.
+ *   2. Otherwise, the first upcoming session in (week, ordinal) order.
+ *   3. Null when the plan is missing or everything is completed/skipped.
+ *
+ * Progress-based, not date-based — if the user skips days the plan just
+ * resumes from wherever they left off.
  */
 export function getToday(meso: Mesocycle | null): PlannedSession | null {
   if (!meso) return null
-  return meso.sessions.find(s => s.status === 'upcoming') ?? null
+  const sessions = sortedSessions(meso)
+  return (
+    sessions.find(s => s.status === 'in_progress') ??
+    sessions.find(s => s.status === 'upcoming') ??
+    null
+  )
 }
 
 /**
