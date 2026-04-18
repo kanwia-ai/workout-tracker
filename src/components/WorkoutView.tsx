@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon, RefreshCw } from 'lucide-react'
+import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon, RefreshCw, Info } from 'lucide-react'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
 import { DayStrip } from './DayStrip'
 import { RoutineSlot } from './RoutineSlot'
+import { ExerciseInfoSheet } from './ExerciseInfoSheet'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { getToday } from '../lib/planSelectors'
@@ -173,6 +174,7 @@ export function WorkoutView({
   // exercise the user is currently swapping. `null` means the sheet is closed.
   const [cachedProfile, setCachedProfile] = useState<UserProgramProfile | null>(null)
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
+  const [infoLibraryId, setInfoLibraryId] = useState<string | null>(null)
 
   useEffect(() => {
     // Load on mount / when userId changes. App.tsx doesn't pass the profile
@@ -472,6 +474,14 @@ export function WorkoutView({
                 estMinutes={selectedSession.estimated_minutes}
               />
 
+              {/* Session preamble — surfaces engine's rationale for placing this session today */}
+              {selectedSession.rationale && (
+                <div className="bg-brand/10 border border-brand/20 rounded-2xl px-4 py-3">
+                  <div className="text-xs uppercase tracking-wide text-brand/80 mb-1">📍 Today's focus</div>
+                  <div className="text-sm text-zinc-200 leading-snug">{selectedSession.rationale}</div>
+                </div>
+              )}
+
               {/* Warmup slot (auto-generates on first view, locked until regenerate) */}
               {cachedProfile && (
                 <RoutineSlot session={selectedSession} kind="warmup" profile={cachedProfile} />
@@ -497,6 +507,15 @@ export function WorkoutView({
                             <div className={`text-[13px] font-semibold ${isCompleted ? 'text-zinc-500 line-through' : ''}`}>
                               {ex.name}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setInfoLibraryId(ex.library_id)}
+                              className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 active:scale-90 transition-colors"
+                              aria-label={`Info about ${ex.name}`}
+                              title="Exercise info"
+                            >
+                              <Info size={14} />
+                            </button>
                             <button
                               type="button"
                               onClick={() => setSwapIndex(ei)}
@@ -608,6 +627,9 @@ export function WorkoutView({
           onRequest={handleSwapRequest}
         />
       )}
+
+      {/* Exercise info overlay */}
+      <ExerciseInfoSheet libraryId={infoLibraryId} onClose={() => setInfoLibraryId(null)} />
     </div>
   )
 }
