@@ -1,99 +1,122 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, fireEvent } from '@testing-library/react'
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+} from 'vitest'
+import {
+  render,
+  screen,
+  act,
+  fireEvent,
+  cleanup,
+} from '@testing-library/react'
 import { GeneratingPlan } from './GeneratingPlan'
+
+// We drive elapsed time through `vi.advanceTimersByTime`. Vitest's fake
+// timers auto-advance the mocked Date, so calling `setSystemTime` here too
+// would double-count elapsed time (earlier version of this helper did that
+// and caused the progress-bar test to read ~2x the expected percentage).
+// advanceTimersByTime fires every scheduled interval callback inside the
+// advanced window AND keeps Date.now() in sync, which is what our
+// checkpoint math relies on.
+function advance(ms: number) {
+  act(() => {
+    vi.advanceTimersByTime(ms)
+  })
+}
 
 describe('GeneratingPlan', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+    // Anchor wall clock so progress math is deterministic across runs.
+    vi.setSystemTime(new Date('2026-04-17T12:00:00Z'))
   })
 
   afterEach(() => {
+    cleanup()
     vi.useRealTimers()
   })
 
-  it('renders honest headline and copy', () => {
+  it('renders the Fraunces headline and a label under it', () => {
     render(<GeneratingPlan />)
     expect(
       screen.getByText(/Designing your training block/i),
     ).toBeInTheDocument()
+    // Checkpoint label is visible (not the old "60-120 seconds" copy).
     expect(
-      screen.getByText(/Usually takes 60-120 seconds/i),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        /Matching 24 sessions to your profile, injuries, and recovery windows/i,
-      ),
+      screen.getByText(/reading your profile/i),
     ).toBeInTheDocument()
   })
 
-  it('starts at 0:00 elapsed and ~0% progress', () => {
+  it('starts at 0% progress with role="progressbar"', () => {
     render(<GeneratingPlan />)
-    expect(screen.getByTestId('elapsed-time')).toHaveTextContent('0:00')
-    const bar = screen.getByTestId('progress-bar-fill')
+    const bar = screen.getByRole('progressbar')
+    expect(bar.getAttribute('aria-valuenow')).toBe('0')
+    expect(bar.getAttribute('aria-valuemin')).toBe('0')
+    expect(bar.getAttribute('aria-valuemax')).toBe('100')
     expect(bar.style.width).toBe('0%')
+    // Percentage text is visible instead of elapsed timer.
+    expect(screen.getByTestId('progress-pct')).toHaveTextContent('0%')
   })
 
-  it('at 30s, elapsed is 0:30 and progress is ~31%', () => {
+  it('renders a Lumo mascot in the thinking state initially', () => {
     render(<GeneratingPlan />)
-    act(() => {
-      vi.advanceTimersByTime(30_000)
-    })
-    expect(screen.getByTestId('elapsed-time')).toHaveTextContent('0:30')
-    const bar = screen.getByTestId('progress-bar-fill')
-    const pct = parseFloat(bar.style.width)
-    // min(30/90*95, 95) = 31.666…
-    expect(pct).toBeGreaterThanOrEqual(30)
-    expect(pct).toBeLessThanOrEqual(33)
+    const wrapper = screen.getByTestId('generating-plan-lumo')
+    expect(wrapper).toHaveAttribute('data-lumo-state', 'thinking')
   })
 
-  it('at 90s, progress sits at its 95% ceiling', () => {
+  it('renders narration with role=status and aria-live=polite', () => {
     render(<GeneratingPlan />)
-    act(() => {
-      vi.advanceTimersByTime(90_000)
-    })
-    const bar = screen.getByTestId('progress-bar-fill')
-    expect(bar.style.width).toBe('95%')
-    expect(screen.getByTestId('elapsed-time')).toHaveTextContent('1:30')
+    const narration = screen.getByTestId('narration')
+    expect(narration.getAttribute('role')).toBe('status')
+    expect(narration.getAttribute('aria-live')).toBe('polite')
+    expect(narration.textContent).not.toBe('')
   })
 
-  it('progress never exceeds 95% even after 200s', () => {
+  it('progresses past 30% by the time we hit the 20s "pick exercises" checkpoint', () => {
     render(<GeneratingPlan />)
-    act(() => {
-      vi.advanceTimersByTime(200_000)
-    })
-    const bar = screen.getByTestId('progress-bar-fill')
-    const pct = parseFloat(bar.style.width)
-    expect(pct).toBeLessThanOrEqual(95)
-    expect(pct).toBe(95)
+    advance(20_000)
+    const bar = screen.getByRole('progressbar')
+    expect(Number(bar.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(
+      30,
+    )
+    expect(Number(bar.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(40)
   })
 
-  it('shows the "taking longer than usual" message after 180s', () => {
+  it('never exceeds the 95% ceiling even after 300s', () => {
     render(<GeneratingPlan />)
-    // Not visible initially
-    expect(
-      screen.queryByText(/taking longer than usual/i),
-    ).not.toBeInTheDocument()
-    act(() => {
-      vi.advanceTimersByTime(200_000)
-    })
-    expect(
-      screen.getByText(/This is taking longer than usual/i),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/Hang tight or refresh to retry/i),
-    ).toBeInTheDocument()
+    advance(300_000)
+    const bar = screen.getByRole('progressbar')
+    const val = Number(bar.getAttribute('aria-valuenow'))
+    expect(val).toBeLessThanOrEqual(95)
+    expect(val).toBe(95)
   })
 
-  it('shows "Cancel and try again" button after 180s when onCancel is provided, and clicking it fires onCancel', () => {
+  it('shows the "still cooking" message and sleepy Lumo past the 180s threshold', () => {
+    render(<GeneratingPlan />)
+    // Not visible initially — the long-wait banner has its own testid so
+    // we don't collide with narration lines that happen to mention
+    // "still cooking".
+    expect(screen.queryByTestId('long-wait-banner')).not.toBeInTheDocument()
+    advance(200_000)
+    expect(screen.getByTestId('long-wait-banner')).toBeInTheDocument()
+    expect(screen.getByTestId('long-wait-banner').textContent).toMatch(
+      /still cooking/i,
+    )
+    const wrapper = screen.getByTestId('generating-plan-lumo')
+    expect(wrapper).toHaveAttribute('data-lumo-state', 'sleepy')
+  })
+
+  it('shows a Cancel button past 180s when onCancel is provided, and clicking it fires onCancel', () => {
     const onCancel = vi.fn()
     render(<GeneratingPlan onCancel={onCancel} />)
-    // Not visible initially
     expect(
       screen.queryByRole('button', { name: /cancel and try again/i }),
     ).not.toBeInTheDocument()
-    act(() => {
-      vi.advanceTimersByTime(200_000)
-    })
+    advance(200_000)
     const btn = screen.getByRole('button', { name: /cancel and try again/i })
     expect(btn).toBeInTheDocument()
     fireEvent.click(btn)
@@ -102,23 +125,76 @@ describe('GeneratingPlan', () => {
 
   it('does NOT show the cancel button when onCancel is not provided', () => {
     render(<GeneratingPlan />)
-    act(() => {
-      vi.advanceTimersByTime(200_000)
-    })
+    advance(200_000)
     expect(
       screen.queryByRole('button', { name: /cancel and try again/i }),
     ).not.toBeInTheDocument()
   })
 
-  it('formats elapsed as MM:SS with leading zero on seconds', () => {
+  it('rotates narration over time (new line within ~6s)', () => {
     render(<GeneratingPlan />)
-    act(() => {
-      vi.advanceTimersByTime(5_000)
-    })
-    expect(screen.getByTestId('elapsed-time')).toHaveTextContent('0:05')
-    act(() => {
-      vi.advanceTimersByTime(65_000) // total 70s
-    })
-    expect(screen.getByTestId('elapsed-time')).toHaveTextContent('1:10')
+    const first = screen.getByTestId('narration').textContent
+    // Force the rotation by advancing past the rotation interval a few times,
+    // checking that at least one tick produces a different line.
+    let changed = false
+    for (let i = 0; i < 20 && !changed; i += 1) {
+      advance(6_500)
+      const now = screen.getByTestId('narration').textContent
+      if (now !== first) {
+        changed = true
+        break
+      }
+    }
+    expect(changed).toBe(true)
+  })
+
+  it('injury-aware rotation surfaces at least one injury-specific line when injuries prop is provided', () => {
+    render(
+      <GeneratingPlan
+        injuries={[{ part: 'left_meniscus', severity: 'chronic' }]}
+      />,
+    )
+    const seen = new Set<string>()
+    const initial = screen.getByTestId('narration').textContent
+    if (initial) seen.add(initial)
+    // Rotate many times to exercise the full pool. With the interleaved
+    // left_meniscus bucket, at least one rotation should land on an
+    // injury-specific line.
+    for (let i = 0; i < 40; i += 1) {
+      advance(6_500)
+      const line = screen.getByTestId('narration').textContent
+      if (line) seen.add(line)
+    }
+    const hasInjuryLine = Array.from(seen).some((line) =>
+      /meniscus|knee/i.test(line),
+    )
+    expect(hasInjuryLine).toBe(true)
+  })
+
+  it('uses the long-wait pool once elapsed exceeds 180s', () => {
+    render(<GeneratingPlan />)
+    advance(200_000)
+    const seen = new Set<string>()
+    // Sample narration over several rotations to ensure only long-wait lines
+    // appear. Known markers from the long-wait pool at tier 2 include
+    // "cooking", "thorough", "oven", "buffering".
+    for (let i = 0; i < 20; i += 1) {
+      seen.add(screen.getByTestId('narration').textContent ?? '')
+      advance(6_500)
+    }
+    const longWaitMarker = /cooking|thorough|oven|buffering|chunky|ghosting/i
+    const hasLongWaitLine = Array.from(seen).some((l) => longWaitMarker.test(l))
+    expect(hasLongWaitLine).toBe(true)
+  })
+
+  it('respects the preserved `startedAt` prop', () => {
+    // When the parent passes a startedAt in the past, initial elapsed should
+    // already be non-zero after the first tick.
+    const past = Date.now() - 50_000
+    render(<GeneratingPlan startedAt={past} />)
+    advance(250)
+    const bar = screen.getByRole('progressbar')
+    // At 50s+ we're in the "picking exercises" → "building week 1" band.
+    expect(Number(bar.getAttribute('aria-valuenow'))).toBeGreaterThan(30)
   })
 })

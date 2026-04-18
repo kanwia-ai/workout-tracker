@@ -64,6 +64,20 @@ type CopyShape = {
    * (~180s). Softer / more patient voice than `generatingPlan`.
    */
   readonly generatingPlanLong: readonly string[];
+
+  // ── Onboarding pools (v2 rebuild) ──────────────────────────────────────
+  /** Welcome screen greeting lines. 10+/8+/6+ by tier. */
+  readonly onboardingWelcome: readonly string[];
+  /** Goal-step speech bubbles. 8+ per tier. */
+  readonly onboardingGoal: readonly string[];
+  /** Injury-step speech bubbles. 8+ per tier. Supports {injury}. */
+  readonly onboardingInjuries: readonly string[];
+  /** Acknowledgements when the user skips an optional step. 5+ per tier. */
+  readonly onboardingSkipOk: readonly string[];
+  /** Confirm-step summary intros. 8+ per tier. Supports {name}. */
+  readonly onboardingConfirm: readonly string[];
+  /** Easter egg: tapping a completed footprint. 4+ per tier. */
+  readonly onboardingFootprintTap: readonly string[];
 };
 
 /**
@@ -516,6 +530,65 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'still in progress.',
       'finalizing.',
     ],
+    // Tier 0: onboarding welcome (6+ entries).
+    onboardingWelcome: [
+      'hi. setup first.',
+      'first time. quick setup.',
+      'profile setup.',
+      'short questionnaire.',
+      'a few questions.',
+      'new plan setup.',
+      'build profile.',
+    ],
+    // Tier 0: onboarding goal prompt (8+ entries).
+    onboardingGoal: [
+      'what do you want.',
+      'pick a goal.',
+      'primary goal.',
+      'what are we optimizing for.',
+      'pick one.',
+      'top priority.',
+      'main focus.',
+      'clearest goal first.',
+    ],
+    // Tier 0: onboarding injuries (8+ entries).
+    onboardingInjuries: [
+      'injuries. anything active.',
+      'flag anything sore.',
+      'list what to avoid.',
+      'acknowledge or skip.',
+      'anything to program around.',
+      'any pain or limits.',
+      'add them here.',
+      'flag injuries.',
+    ],
+    // Tier 0: skip ack (5+ entries).
+    onboardingSkipOk: [
+      'skipped. defaults applied.',
+      'noted. moving on.',
+      'skipped.',
+      'default used.',
+      'ok. next.',
+      'defaulted.',
+    ],
+    // Tier 0: confirm (8+ entries).
+    onboardingConfirm: [
+      'review below.',
+      'final check.',
+      'confirm profile.',
+      '{name}. review.',
+      'ready to generate.',
+      'last pass.',
+      'everything correct.',
+      'confirm and submit.',
+    ],
+    // Tier 0: footprint tap easter egg (4+ entries).
+    onboardingFootprintTap: [
+      'step complete.',
+      'already done.',
+      'done. keep going.',
+      'logged.',
+    ],
   },
   1: {
     greetMorning: 'Good morning, {name} \u273F',
@@ -678,6 +751,72 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'Hang tight, friend.',
       'I promise this is worth it.',
       'Deep-breathing, still working.',
+    ],
+    // Tier 1: onboarding welcome (8+ entries).
+    onboardingWelcome: [
+      "nice to meet you. let's build your plan.",
+      "hi. quick setup and we're off.",
+      "hey. i'll ask a few things, then we lift.",
+      "first time? easy. a few questions.",
+      "let's get you set up.",
+      "start here. short questionnaire, then a plan.",
+      "good to see you. setup first.",
+      "hi. i need a handful of details.",
+      'welcome. quick profile setup.',
+      'ready when you are — a few questions first.',
+    ],
+    // Tier 1: onboarding goal (8+ entries).
+    onboardingGoal: [
+      "what are we aiming for?",
+      "pick the closest fit — we can tune later.",
+      "what's the main goal?",
+      "one goal first, then the details.",
+      'what do you want out of training?',
+      "closest to the truth wins.",
+      "pick your north star.",
+      "top priority, be honest.",
+      "what's the job of your training?",
+    ],
+    // Tier 1: onboarding injuries (8+ entries).
+    onboardingInjuries: [
+      "anything tweaky we should dodge?",
+      "anything sore, flared, or off-limits?",
+      "tell me what to program around.",
+      "any pain to respect?",
+      "anything you don't want to load?",
+      "flag injuries here — we'll adapt.",
+      "anything history-of-issues?",
+      "anything off? i'll program around it.",
+      "what should we be careful with?",
+    ],
+    // Tier 1: skip ack (5+ entries).
+    onboardingSkipOk: [
+      "skipped for now — defaults are fine.",
+      "no worries, defaults applied.",
+      "we'll come back to this.",
+      "ok, moving on.",
+      "fine. next question.",
+      "filling blanks with sensible defaults.",
+    ],
+    // Tier 1: confirm (8+ entries).
+    onboardingConfirm: [
+      "{name}, here's what i heard. look right?",
+      "double-check before we generate.",
+      "here's the summary. good?",
+      "confirm and i'll build your plan.",
+      'review below and hit go when ready.',
+      "one last look, {name}.",
+      'all set? generate when ready.',
+      "i got all this. confirm?",
+      'ready to build when you are.',
+    ],
+    // Tier 1: footprint tap (4+ entries).
+    onboardingFootprintTap: [
+      "already logged — nice work.",
+      "that one's in the bank.",
+      "done step. keep going.",
+      "nice, you cleared that.",
+      'logged already, keep rolling.',
     ],
   },
   2: {
@@ -868,7 +1007,7 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
     ],
     // Tier 2: cheeky plan-generation narration (25+ entries per spec).
     generatingPlan: [
-      "reading your profile like it\u2019s gossip.",
+      "scanning your profile like it\u2019s gossip.",
       'matching 873 exercises to your actual body.',
       "picking exercises that won\u2019t hate your knees.",
       'building the perfect plan for a tight bum.',
@@ -912,6 +1051,79 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "almost there, i\u2019m not ghosting you.",
       "i swear i\u2019m not buffering.",
       'quality control, not procrastination.',
+    ],
+    // Tier 2: onboarding welcome (10+ entries).
+    onboardingWelcome: [
+      "alright let's do this.",
+      "hi hi. quick setup, then we lift.",
+      "hello menace. i need some details.",
+      "nice to meet you. i\u2019ll be annoying about questions.",
+      "okay. a few questions, then a plan.",
+      "hi. don\u2019t worry, this is fast.",
+      "hello. let\u2019s make you a real program.",
+      "hi. a few questions. honest answers please.",
+      "okay. setup time. don\u2019t overthink it.",
+      "hi. i\u2019ll make this quick, promise.",
+      "hello you. a few details and we\u2019re off.",
+      'ready? a handful of questions, then fun.',
+    ],
+    // Tier 2: onboarding goal (8+ entries).
+    onboardingGoal: [
+      "what\u2019s the goal? be honest.",
+      "pick one. it\u2019s fine to change later.",
+      'what are we actually training for?',
+      'clearest goal wins.',
+      'pick the one that\u2019s true today.',
+      'one goal. don\u2019t pick three.',
+      'what\u2019s the north star here?',
+      'the truthful answer works best.',
+      'what do you want, seriously.',
+      'goal time. no wishy-washy.',
+    ],
+    // Tier 2: onboarding injuries (8+ entries).
+    onboardingInjuries: [
+      "anything tweaky we should dodge?",
+      "tell me where the skeletons are.",
+      "anything sore, flared, or dramatic?",
+      "i'll program around it. just tell me.",
+      "what hurts? i won\u2019t rat.",
+      "anything been acting up lately?",
+      "no shame. list the bad boys.",
+      "honest answer: what\u2019s cranky?",
+      'what are we tiptoeing around today?',
+      "nothing tweaky is okay to miss \u2014 be thorough.",
+    ],
+    // Tier 2: skip ack (5+ entries).
+    onboardingSkipOk: [
+      "fine, i\u2019ll fill in the blanks.",
+      "skipping. i\u2019ll pick sensible defaults.",
+      "noted. moving on.",
+      "ok menace. defaults applied.",
+      "skipped. i got you.",
+      "not today? fine. defaults on.",
+      "leaving it blank, defaults on.",
+    ],
+    // Tier 2: confirm (8+ entries).
+    onboardingConfirm: [
+      "{name}, this is what i heard.",
+      "okay. this look right?",
+      "last look. does this match reality?",
+      "let me read this back. correct me.",
+      "hit go and i\u2019ll build it.",
+      "{name}, confirm and we lift.",
+      "final check. no take-backs after.",
+      'ready? this is what i\u2019ll work from.',
+      'confirm or go back. your call.',
+      "alright. you ready for me to build this?",
+    ],
+    // Tier 2: footprint tap (4+ entries).
+    onboardingFootprintTap: [
+      "already handled that one.",
+      "that step? already yours.",
+      "done. nothing to see here.",
+      "checked off, menace.",
+      "you already told me that one.",
+      'already in the bank, love.',
     ],
   },
 };

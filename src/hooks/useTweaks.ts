@@ -23,11 +23,24 @@
  * We accept both the literal `EDITMODE:SET` message and the bare
  * `__edit_mode_set_keys` echo as synonyms so a host using either wiring
  * lands the same tweak patch.
+ *
+ * ── Theme persistence ───────────────────────────────────────────────────
+ * Beyond the design-tool host protocol, this hook also persists Kyra's
+ * theme preference to localStorage and supports a `'system'` pseudo-theme
+ * that follows `prefers-color-scheme`. The user-selected mode lives under
+ * `workout-tracker:theme-preference` as `'dark'|'light'|'system'`. The
+ * *resolved* theme (what CSS vars actually use) is always one of the two
+ * concrete values and is exposed via `themeMode` so the Settings toggle
+ * can highlight "System" while CSS still paints dark or light.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { applyTheme } from '../lib/theme'
+import { applyTheme, type Theme } from '../lib/theme'
 import { DEFAULT_TWEAKS, mergeTweaks, type Tweaks } from '../lib/tweaks'
+
+export type ThemeMode = 'dark' | 'light' | 'system'
+export const THEME_PREF_KEY = 'workout-tracker:theme-preference'
+export const CHEEK_PREF_KEY = 'workout-tracker:cheek-preference'
 
 type EditModeSetMessage =
   | { type: 'EDITMODE:SET'; payload?: Partial<Tweaks> }
@@ -45,10 +58,89 @@ function extractTweakPatch(data: unknown): Partial<Tweaks> | null {
   return null
 }
 
+function isThemeMode(v: unknown): v is ThemeMode {
+  return v === 'dark' || v === 'light' || v === 'system'
+}
+
+/** Read a persisted ThemeMode from localStorage. Defaults to 'dark'. */
+function readStoredMode(): ThemeMode {
+  if (typeof window === 'undefined') return 'dark'
+  try {
+    const raw = window.localStorage?.getItem(THEME_PREF_KEY)
+    if (isThemeMode(raw)) return raw
+  } catch {
+    // localStorage can throw when access is denied (incognito + safari etc.).
+  }
+  return 'dark'
+}
+
+/**
+ * Read a persisted cheek level from localStorage. Returns null if not set
+ * or unreadable so the caller can fall through to the initial default.
+ */
+function readStoredCheek(): 0 | 1 | 2 | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage?.getItem(CHEEK_PREF_KEY)
+    if (raw === '0' || raw === '1' || raw === '2') {
+      return Number(raw) as 0 | 1 | 2
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+/** Read the current OS-level color scheme via matchMedia. */
+function readSystemTheme(): Theme {
+  if (typeof window === 'undefined' || !window.matchMedia) return 'dark'
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light'
+  } catch {
+    return 'dark'
+  }
+}
+
+/** Resolve a mode → concrete theme to apply to CSS vars. */
+function resolveTheme(mode: ThemeMode): Theme {
+  return mode === 'system' ? readSystemTheme() : mode
+}
+
 export type SetTweaks = (patchOrUpdater: Partial<Tweaks> | ((t: Tweaks) => Tweaks)) => void
 
-export function useTweaks(initial: Tweaks = DEFAULT_TWEAKS): [Tweaks, SetTweaks] {
-  const [tweaks, setTweaksState] = useState<Tweaks>(initial)
+export interface UseTweaksResult {
+  tweaks: Tweaks
+  setTweaks: SetTweaks
+  /** User-facing selection: 'dark' | 'light' | 'system'. */
+  themeMode: ThemeMode
+  /** Setter for the user-facing selection. Persists to localStorage. */
+  setThemeMode: (mode: ThemeMode) => void
+}
+
+/**
+ * The hook returns a tuple for legacy callers (`[tweaks, setTweaks]`) with
+ * the extended surface (`themeMode`, `setThemeMode`) attached as
+ * named properties on the same array. This keeps `const [t, s] = useTweaks()`
+ * working everywhere while letting the Settings screen reach for
+ * `.themeMode` / `.setThemeMode` without a second hook call.
+ */
+export type UseTweaksReturn = [Tweaks, SetTweaks] & UseTweaksResult
+
+export function useTweaks(initial: Tweaks = DEFAULT_TWEAKS): UseTweaksReturn {
+  // Seed the user's theme preference from localStorage BEFORE the first
+  // render so the initial applyTheme paints the right palette and we don't
+  // flash the wrong theme for a tick.
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readStoredMode())
+  const [tweaks, setTweaksState] = useState<Tweaks>(() => {
+    const storedCheek = readStoredCheek()
+    return {
+      ...initial,
+      theme: resolveTheme(readStoredMode()),
+      ...(storedCheek !== null && { cheek: storedCheek, cheekiness: storedCheek }),
+    }
+  })
 
   // Keep the latest tweaks in a ref so the message handler (bound once) can
   // always merge against current state without triggering re-subscribes.
@@ -60,6 +152,33 @@ export function useTweaks(initial: Tweaks = DEFAULT_TWEAKS): [Tweaks, SetTweaks]
   useEffect(() => {
     applyTheme(tweaks.theme, tweaks)
   }, [tweaks])
+
+  // When in 'system' mode, subscribe to prefers-color-scheme and flip the
+  // resolved theme on the fly. The `themeMode` state stays 'system' the
+  // whole time so the Settings UI still shows that segment highlighted.
+  useEffect(() => {
+    if (themeMode !== 'system') return
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mql = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => {
+      const next = readSystemTheme()
+      setTweaksState((prev) => (prev.theme === next ? prev : { ...prev, theme: next }))
+    }
+    // Safari <14 uses addListener / removeListener. Modern browsers use
+    // addEventListener('change', ...). Cover both to be safe.
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onChange)
+    } else if (typeof (mql as unknown as { addListener?: (cb: () => void) => void }).addListener === 'function') {
+      ;(mql as unknown as { addListener: (cb: () => void) => void }).addListener(onChange)
+    }
+    return () => {
+      if (typeof mql.removeEventListener === 'function') {
+        mql.removeEventListener('change', onChange)
+      } else if (typeof (mql as unknown as { removeListener?: (cb: () => void) => void }).removeListener === 'function') {
+        ;(mql as unknown as { removeListener: (cb: () => void) => void }).removeListener(onChange)
+      }
+    }
+  }, [themeMode])
 
   // Mount: announce availability to the host, subscribe to incoming edits.
   useEffect(() => {
@@ -94,5 +213,25 @@ export function useTweaks(initial: Tweaks = DEFAULT_TWEAKS): [Tweaks, SetTweaks]
     })
   }, [])
 
-  return [tweaks, setTweaks]
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode)
+    try {
+      window.localStorage?.setItem(THEME_PREF_KEY, mode)
+    } catch {
+      // Persistence is best-effort — don't crash the UI on a denied write.
+    }
+    const resolved = resolveTheme(mode)
+    setTweaksState((prev) =>
+      prev.theme === resolved ? prev : { ...prev, theme: resolved },
+    )
+  }, [])
+
+  // Build the tuple-with-named-fields return shape. The tuple indices keep
+  // existing `[tweaks, setTweaks]` destructuring callers working.
+  const result = [tweaks, setTweaks] as unknown as UseTweaksReturn
+  result.tweaks = tweaks
+  result.setTweaks = setTweaks
+  result.themeMode = themeMode
+  result.setThemeMode = setThemeMode
+  return result
 }

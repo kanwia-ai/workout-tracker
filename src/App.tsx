@@ -21,6 +21,8 @@ import { CardioPage } from './components/CardioPage'
 import { BottomNav, type AppView } from './components/BottomNav'
 import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
+import { AppHeader } from './components/AppHeader'
+import { SettingsScreen } from './components/Settings'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { saveProfileLocal, syncProfileUp } from './lib/profileRepo'
 import { generatePlan } from './lib/planGen'
@@ -30,10 +32,12 @@ import type { UserProgramProfile } from './types/profile'
 
 function App() {
   // Wire the Lumo theme + EDITMODE postMessage protocol at the root. This
-  // applies CSS vars on mount and keeps them in sync with host edits. No
-  // components depend on the tweaks yet (parallel Lumo work is landing in
-  // sibling tasks) — this is the plumbing only.
-  useTweaks()
+  // applies CSS vars on mount and keeps them in sync with host edits. The
+  // hook also persists the user's theme preference across reloads and
+  // exposes `themeMode` / `setThemeMode` so the Settings screen can flip
+  // between dark, light, and system-follows-OS.
+  const tweaksApi = useTweaks()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const {
     user,
@@ -194,18 +198,33 @@ function App() {
   // Views without bottom nav
   const showBottomNav = !['capture'].includes(view)
 
+  if (settingsOpen) {
+    return (
+      <SettingsScreen
+        tweaks={tweaksApi.tweaks}
+        setTweaks={tweaksApi.setTweaks}
+        themeMode={tweaksApi.themeMode}
+        setThemeMode={tweaksApi.setThemeMode}
+        onClose={() => setSettingsOpen(false)}
+      />
+    )
+  }
+
   return (
     <>
       {view === 'workout' && (
-        <WorkoutView
-          userId={user.id}
-          profile={profile}
-          onSignOut={signOut}
-          onWorkoutComplete={updateStreak}
-          onNavigateToCapture={() => setView('capture')}
-          onNavigateCardio={() => setView('cardio')}
-          onNavigateProgress={() => setView('progress')}
-        />
+        <>
+          <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
+          <WorkoutView
+            userId={user.id}
+            profile={profile}
+            onSignOut={signOut}
+            onWorkoutComplete={updateStreak}
+            onNavigateToCapture={() => setView('capture')}
+            onNavigateCardio={() => setView('cardio')}
+            onNavigateProgress={() => setView('progress')}
+          />
+        </>
       )}
 
       {view === 'exercises' && (
