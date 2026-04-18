@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { UserProgramProfileSchema, type UserProgramProfile } from '../../types/profile'
 import { StepGoal } from './StepGoal'
+import { StepFrequency } from './StepFrequency'
+import { StepExperience } from './StepExperience'
+import { StepEquipment } from './StepEquipment'
+import { StepInjuries } from './StepInjuries'
+import { StepTimeAndSex } from './StepTimeAndSex'
+import { StepPosture } from './StepPosture'
+import { StepConfirm } from './StepConfirm'
 
 type PartialProfile = Partial<UserProgramProfile>
 
@@ -59,13 +66,45 @@ export function OnboardingFlow({ onComplete }: Props) {
       {step === 'goal' && (
         <StepGoal value={draft.goal} onNext={(goal) => next({ goal })} />
       )}
-      {step === 'frequency' && <div>TODO — StepFrequency</div>}
-      {step === 'experience' && <div>TODO — StepExperience</div>}
-      {step === 'equipment' && <div>TODO — StepEquipment</div>}
-      {step === 'injuries' && <div>TODO — StepInjuries</div>}
-      {step === 'time_sex' && <div>TODO — StepTimeAndSex</div>}
-      {step === 'posture' && <div>TODO — StepPosture</div>}
-      {step === 'confirm' && <div>TODO — StepConfirm</div>}
+      {step === 'frequency' && (
+        <StepFrequency
+          value={draft.sessions_per_week}
+          onNext={(sessions_per_week) => next({ sessions_per_week })}
+        />
+      )}
+      {step === 'experience' && (
+        <StepExperience
+          value={draft.training_age_months}
+          onNext={(training_age_months) => next({ training_age_months })}
+        />
+      )}
+      {step === 'equipment' && (
+        <StepEquipment
+          value={draft.equipment}
+          onNext={(equipment) => next({ equipment })}
+        />
+      )}
+      {step === 'injuries' && (
+        <StepInjuries
+          value={draft.injuries}
+          onNext={(injuries) => next({ injuries })}
+        />
+      )}
+      {step === 'time_sex' && (
+        <StepTimeAndSex
+          value={{ time_budget_min: draft.time_budget_min, sex: draft.sex }}
+          onNext={(patch) => next(patch)}
+        />
+      )}
+      {step === 'posture' && (
+        <StepPosture
+          value={draft.posture_notes}
+          onNext={(posture_notes) => next({ posture_notes })}
+        />
+      )}
+      {step === 'confirm' && (
+        <StepConfirm draft={draft} onNext={() => next({})} />
+      )}
     </div>
   )
 }
