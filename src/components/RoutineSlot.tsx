@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, RefreshCw, AlertTriangle, X } from 'lucide-react'
+import { Loader2, RefreshCw, AlertTriangle, X, ChevronDown } from 'lucide-react'
 import type { PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import type { RoutineKind } from '../lib/routines'
@@ -34,6 +34,22 @@ const KIND_LABELS: Record<RoutineKind, string> = {
   cardio: 'cardio',
 }
 
+// Per-kind accent mapping. Design (screens.jsx) pairs warm-up with sun and
+// cool-down with mint; cardio isn't in the original SessionScreen, so it
+// takes the remaining distinct accent (plum) to stay visually distinct.
+const KIND_ACCENTS: Record<RoutineKind, string> = {
+  warmup: 'var(--accent-sun)',
+  cooldown: 'var(--accent-mint)',
+  cardio: 'var(--accent-plum)',
+}
+
+// Human-readable title used in the accordion header (e.g. "warm-up").
+const KIND_HEADER: Record<RoutineKind, string> = {
+  warmup: 'warm-up',
+  cooldown: 'cool-down',
+  cardio: 'cardio',
+}
+
 interface Props {
   session: PlannedSession
   kind: RoutineKind
@@ -49,15 +65,30 @@ function formatDuration(seconds: number): string {
   return `${mm}:${ss}`
 }
 
+// Detect `prefers-reduced-motion: reduce` so the chevron rotation + expand
+// transitions can be suppressed. Safe in SSR / jsdom without matchMedia.
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 export function RoutineSlot({ session, kind, profile }: Props) {
   const { routine, loading } = useRoutine(session.id, kind)
   const [picking, setPicking] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Accordion starts open so a freshly-generated routine is visible without
+  // an extra tap. User can collapse to get it out of the way.
+  const [expanded, setExpanded] = useState(true)
+  const reducedMotion = prefersReducedMotion()
 
   // Guard the auto-generate effect so we only fire once per (session, kind)
   // absence. Without this we'd re-fire on every render that keeps routine=null.
   const didAutoFire = useRef(false)
+
+  const accent = KIND_ACCENTS[kind]
 
   async function doGenerate(minutes: number, focusTag?: string) {
     setGenerating(true)
@@ -101,13 +132,20 @@ export function RoutineSlot({ session, kind, profile }: Props) {
       ? `Regenerating ${KIND_LABELS[kind]}…`
       : `Building your ${KIND_LABELS[kind]}…`
     return (
-      <section className="p-4 rounded-2xl bg-surface-raised border border-border-subtle">
+      <section
+        className="rounded-2xl px-[14px] py-3 mb-[10px]"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+        }}
+      >
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 text-sm text-zinc-400"
+          className="flex items-center gap-2 text-sm"
+          style={{ color: 'var(--lumo-text-sec)' }}
         >
-          <Loader2 size={16} className="text-brand animate-spin" />
+          <Loader2 size={16} className="animate-spin" style={{ color: accent }} />
           <span>{copy}</span>
         </div>
       </section>
@@ -116,15 +154,24 @@ export function RoutineSlot({ session, kind, profile }: Props) {
 
   if (error) {
     return (
-      <section className="p-4 rounded-2xl bg-surface-raised border border-red-900/40">
+      <section
+        className="rounded-2xl px-[14px] py-3 mb-[10px]"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+        }}
+      >
         <div className="flex items-start gap-2 mb-3">
-          <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-          <div className="text-sm text-red-300">Failed to build {KIND_LABELS[kind]}</div>
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#f87171' }} />
+          <div className="text-sm" style={{ color: '#fca5a5' }}>
+            Failed to build {KIND_LABELS[kind]}
+          </div>
         </div>
         <button
           type="button"
           onClick={() => doGenerate(DEFAULT_MINUTES[kind])}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand text-black font-bold text-sm active:scale-95 transition"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
+          style={{ background: 'var(--brand)', color: '#fff' }}
         >
           <RefreshCw size={14} /> Retry
         </button>
@@ -133,44 +180,137 @@ export function RoutineSlot({ session, kind, profile }: Props) {
   }
 
   // Ready state (routine is non-null, nothing pending, no error)
+  const exerciseCount = routine!.exercises.length
+  const sub = `${exerciseCount} ${exerciseCount === 1 ? 'move' : 'moves'}`
+
   return (
-    <section className="p-4 rounded-2xl bg-surface-raised border border-border-subtle">
-      <header className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-extrabold text-zinc-100">{routine!.title}</h3>
+    <section
+      className="rounded-[18px] mb-[10px]"
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        padding: '12px 14px',
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {/* Tap header to expand/collapse. Button on the left spans title +
+            subline so the whole row is one big tap target — except for the
+            regenerate icon which is its own button on the right. */}
         <button
           type="button"
-          onClick={() => setPicking(true)}
-          aria-label={`Regenerate ${KIND_LABELS[kind]}`}
-          className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-surface transition"
+          onClick={() => setExpanded(e => !e)}
+          aria-expanded={expanded}
+          className="flex items-center gap-[10px] bg-transparent border-0 p-0 flex-1 min-w-0 text-left cursor-pointer"
+          style={{ color: 'var(--lumo-text)' }}
         >
-          <RefreshCw size={14} />
+          <span
+            aria-hidden="true"
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: accent, boxShadow: `0 0 8px ${accent}` }}
+          />
+          <span className="flex flex-col min-w-0">
+            <span
+              className="text-[14px] font-bold truncate"
+              style={{
+                color: accent,
+                fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              {KIND_HEADER[kind]}
+            </span>
+            <span
+              className="text-[11px] mt-[1px] truncate tabular-nums"
+              style={{ color: 'var(--lumo-text-ter)' }}
+            >
+              {sub}
+            </span>
+          </span>
         </button>
-      </header>
-      <ul className="space-y-2">
-        {routine!.exercises.map((ex, i) => {
-          const primary =
-            typeof ex.duration_seconds === 'number'
-              ? formatDuration(ex.duration_seconds)
-              : (ex.reps ?? '')
-          return (
-            <li key={`${ex.name}-${i}`} className="text-sm">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-zinc-200 font-semibold">{ex.name}</span>
-                {primary && (
-                  <span className="text-zinc-400 tabular-nums text-xs">{primary}</span>
-                )}
-              </div>
-              {ex.notes && (
-                <div className="text-xs text-zinc-500 mt-0.5 italic">{ex.notes}</div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            aria-label={`Regenerate ${KIND_LABELS[kind]}`}
+            title="Regenerate"
+            className="p-1.5 rounded-lg transition active:scale-95"
+            style={{ color: 'var(--lumo-text-ter)' }}
+          >
+            <RefreshCw size={14} />
+          </button>
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              color: 'var(--lumo-text-ter)',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: reducedMotion ? 'none' : 'transform 200ms ease',
+            }}
+          />
+        </div>
+      </div>
+
+      {expanded && (
+        <div
+          className="mt-[10px] pt-[10px]"
+          style={{ borderTop: '1px solid var(--lumo-border)' }}
+        >
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] truncate"
+               style={{ color: 'var(--lumo-text-ter)' }}>
+            {routine!.title}
+          </div>
+          <ul className="flex flex-col">
+            {routine!.exercises.map((ex, i) => {
+              const primary =
+                typeof ex.duration_seconds === 'number'
+                  ? formatDuration(ex.duration_seconds)
+                  : (ex.reps ?? '')
+              return (
+                <li
+                  key={`${ex.name}-${i}`}
+                  className="flex items-baseline justify-between gap-3 text-[13px]"
+                  style={{
+                    padding: '8px 4px',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--lumo-border)',
+                  }}
+                >
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="truncate" style={{ color: 'var(--lumo-text)' }}>
+                      {ex.name}
+                    </span>
+                    {ex.notes && (
+                      <span
+                        className="text-[11px] mt-0.5 truncate"
+                        style={{
+                          color: 'var(--lumo-text-sec)',
+                          fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        {ex.notes}
+                      </span>
+                    )}
+                  </div>
+                  {primary && (
+                    <span
+                      className="text-[11px] shrink-0 tabular-nums"
+                      style={{ color: 'var(--lumo-text-ter)' }}
+                    >
+                      {primary}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       {picking && (
         <RegeneratePicker
           kind={kind}
+          accent={accent}
           onConfirm={doGenerate}
           onCancel={() => setPicking(false)}
         />
@@ -183,77 +323,122 @@ export function RoutineSlot({ session, kind, profile }: Props) {
 // Intentional UX: the picker requires both a minute chip AND an explicit
 // "Yes, replace" confirm before firing generateRoutine. Per Kyra's note, a
 // single accidental tap on a chip should never overwrite the saved routine.
+// Chips only appear here — never in the main accordion view.
 
 interface PickerProps {
   kind: RoutineKind
+  accent: string
   onConfirm: (minutes: number, focusTag?: string) => void
   onCancel: () => void
 }
 
-function RegeneratePicker({ kind, onConfirm, onCancel }: PickerProps) {
+function RegeneratePicker({ kind, accent, onConfirm, onCancel }: PickerProps) {
   const [minutes, setMinutes] = useState<number>(DEFAULT_MINUTES[kind])
   const [focusTag, setFocusTag] = useState<string | undefined>(undefined)
+  const reducedMotion = prefersReducedMotion()
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center"
       role="dialog"
       aria-modal="true"
       aria-label={`Regenerate ${KIND_LABELS[kind]}`}
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
     >
       <div
-        className="w-full max-w-lg bg-surface-raised border-t border-x border-border-subtle rounded-t-3xl p-5 pb-8"
-        style={{ animation: 'routine-picker-slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+        className="w-full max-w-lg rounded-t-3xl p-5 pb-8"
+        style={{
+          background: 'var(--lumo-raised)',
+          borderTop: '1px solid var(--lumo-border)',
+          borderLeft: '1px solid var(--lumo-border)',
+          borderRight: '1px solid var(--lumo-border)',
+          animation: reducedMotion
+            ? 'none'
+            : 'routine-picker-slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
       >
         <style>{`@keyframes routine-picker-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
-        <div className="mx-auto w-10 h-1 rounded-full bg-zinc-700 mb-4" aria-hidden="true" />
+        <div
+          className="mx-auto w-10 h-1 rounded-full mb-4"
+          aria-hidden="true"
+          style={{ background: 'var(--lumo-border-strong)' }}
+        />
 
-        <h2 className="text-lg font-extrabold mb-1">Regenerate {KIND_LABELS[kind]}</h2>
-        <p className="text-sm text-zinc-500 mb-4">Pick a length + optional focus.</p>
+        <h2
+          className="text-lg font-extrabold mb-1"
+          style={{
+            color: 'var(--lumo-text)',
+            fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
+            fontStyle: 'italic',
+          }}
+        >
+          Regenerate {KIND_LABELS[kind]}
+        </h2>
+        <p className="text-sm mb-4" style={{ color: 'var(--lumo-text-sec)' }}>
+          Pick a length + optional focus.
+        </p>
 
         <div className="mb-4">
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Minutes</div>
+          <div
+            className="text-xs uppercase tracking-wide mb-2"
+            style={{ color: 'var(--lumo-text-ter)' }}
+          >
+            Minutes
+          </div>
           <div className="flex flex-wrap gap-2">
-            {MINUTE_CHIPS[kind].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMinutes(m)}
-                aria-pressed={minutes === m}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition ${
-                  minutes === m
-                    ? 'bg-brand text-black border-brand'
-                    : 'bg-surface text-zinc-300 border-border-subtle hover:border-brand/60'
-                }`}
-              >
-                {m} min
-              </button>
-            ))}
+            {MINUTE_CHIPS[kind].map(m => {
+              const selected = minutes === m
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMinutes(m)}
+                  aria-pressed={selected}
+                  className="px-3 py-2 rounded-xl text-sm font-semibold transition tabular-nums"
+                  style={{
+                    background: selected ? accent : 'var(--lumo-bg)',
+                    color: selected ? '#1A0F2A' : 'var(--lumo-text-sec)',
+                    border: `1px solid ${selected ? accent : 'var(--lumo-border)'}`,
+                  }}
+                >
+                  {m} min
+                </button>
+              )
+            })}
           </div>
         </div>
 
         <div className="mb-5">
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Focus</div>
+          <div
+            className="text-xs uppercase tracking-wide mb-2"
+            style={{ color: 'var(--lumo-text-ter)' }}
+          >
+            Focus
+          </div>
           <div className="flex flex-wrap gap-2">
-            {FOCUS_CHIPS[kind].map(f => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFocusTag(prev => (prev === f ? undefined : f))}
-                aria-pressed={focusTag === f}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition ${
-                  focusTag === f
-                    ? 'bg-brand text-black border-brand'
-                    : 'bg-surface text-zinc-300 border-border-subtle hover:border-brand/60'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+            {FOCUS_CHIPS[kind].map(f => {
+              const selected = focusTag === f
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFocusTag(prev => (prev === f ? undefined : f))}
+                  aria-pressed={selected}
+                  className="px-3 py-2 rounded-xl text-sm font-semibold transition"
+                  style={{
+                    background: selected ? accent : 'var(--lumo-bg)',
+                    color: selected ? '#1A0F2A' : 'var(--lumo-text-sec)',
+                    border: `1px solid ${selected ? accent : 'var(--lumo-border)'}`,
+                  }}
+                >
+                  {f}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        <p className="text-xs text-zinc-400 mb-3">
+        <p className="text-xs mb-3" style={{ color: 'var(--lumo-text-sec)' }}>
           Replace current {KIND_LABELS[kind]}?
         </p>
 
@@ -261,14 +446,20 @@ function RegeneratePicker({ kind, onConfirm, onCancel }: PickerProps) {
           <button
             type="button"
             onClick={() => onConfirm(minutes, focusTag)}
-            className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-brand text-black font-bold active:scale-95 transition"
+            className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl font-bold active:scale-95 transition"
+            style={{ background: 'var(--brand)', color: '#fff' }}
           >
             <RefreshCw size={14} /> Yes, replace
           </button>
           <button
             type="button"
             onClick={onCancel}
-            className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-surface border border-border-subtle text-zinc-200 font-semibold active:scale-95 transition"
+            className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl font-semibold active:scale-95 transition"
+            style={{
+              background: 'var(--lumo-bg)',
+              border: '1px solid var(--lumo-border)',
+              color: 'var(--lumo-text-sec)',
+            }}
           >
             <X size={14} /> Cancel
           </button>
