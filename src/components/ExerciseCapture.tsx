@@ -13,7 +13,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type CaptureMode = 'choose' | 'url' | 'screenshot'
-type FlowStep = 'input' | 'loading' | 'review' | 'save-target' | 'done'
+type FlowStep = 'input' | 'loading' | 'review' | 'done'
 
 interface ExerciseCaptureProps {
   onBack: () => void
