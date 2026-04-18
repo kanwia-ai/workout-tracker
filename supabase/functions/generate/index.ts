@@ -454,6 +454,39 @@ Deno.serve(async (req) => {
             { status: 502, headers: JSON_HEADERS },
           )
         }
+        // Server-side post-validation — the routineSchema requires `name` only
+        // and leaves duration_seconds vs reps as prompt-enforced. Gemini
+        // occasionally returns an exercise with neither (or reps=""), which
+        // leaves the client with nothing to render. Reject here so a retry
+        // has a chance of producing a clean routine.
+        try {
+          const parsed = JSON.parse(r.text) as {
+            exercises?: { name?: string; duration_seconds?: number; reps?: string }[]
+          }
+          const invalid: { index: number; name: string }[] = []
+          const exercises = parsed.exercises ?? []
+          for (let i = 0; i < exercises.length; i++) {
+            const ex = exercises[i]
+            const hasDuration = typeof ex.duration_seconds === 'number'
+            const hasReps = typeof ex.reps === 'string' && ex.reps.trim().length > 0
+            if (!hasDuration && !hasReps) {
+              invalid.push({ index: i, name: ex.name ?? '(unnamed)' })
+            }
+          }
+          if (invalid.length > 0) {
+            return new Response(
+              JSON.stringify({
+                error: `gemini returned ${invalid.length} routine exercise(s) missing both duration_seconds and reps`,
+                invalid,
+              }),
+              { status: 502, headers: JSON_HEADERS },
+            )
+          }
+        } catch (parseErr) {
+          // r.text was not valid JSON despite responseSchema; let the client
+          // handle via its own Zod validation.
+          console.warn('post-validate JSON parse failed', parseErr)
+        }
         return new Response(r.text, { headers: JSON_HEADERS })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

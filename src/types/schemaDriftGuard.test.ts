@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { MuscleGroup, SessionStatus, PlannedExerciseSchema } from './plan'
+import { MuscleGroup, SessionStatus, PlannedExerciseSchema, PlannedSessionSchema } from './plan'
 
 const EDGE_SCHEMAS_PATH = resolve(
   import.meta.dirname ?? process.cwd(),
@@ -55,6 +55,22 @@ describe('edge schema enum drift guard', () => {
       .filter(Boolean)
       .sort()
     const zodKeys = Object.keys(PlannedExerciseSchema.shape).sort()
+    expect(edgeKeys).toEqual(zodKeys)
+  })
+
+  it('plannedSessionSchema property set matches PlannedSessionSchema keys', () => {
+    // Same drift-guard pattern as plannedExerciseSchema above. The session
+    // schema is nested inside mesocycleSchema and consumed by generate_plan
+    // — if a field is added to the Zod PlannedSessionSchema without a
+    // matching edge-side entry, Gemini silently omits it.
+    const match = source.match(/plannedSessionSchema\s*=\s*\{[\s\S]*?propertyOrdering:\s*\[([^\]]+)\]/)
+    if (!match) throw new Error('could not locate plannedSessionSchema propertyOrdering')
+    const edgeKeys = match[1]
+      .split(',')
+      .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
+      .filter(Boolean)
+      .sort()
+    const zodKeys = Object.keys(PlannedSessionSchema.shape).sort()
     expect(edgeKeys).toEqual(zodKeys)
   })
 })

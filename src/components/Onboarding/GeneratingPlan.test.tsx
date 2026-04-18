@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { GeneratingPlan } from './GeneratingPlan'
 
 describe('GeneratingPlan', () => {
@@ -82,6 +82,32 @@ describe('GeneratingPlan', () => {
     expect(
       screen.getByText(/Hang tight or refresh to retry/i),
     ).toBeInTheDocument()
+  })
+
+  it('shows "Cancel and try again" button after 180s when onCancel is provided, and clicking it fires onCancel', () => {
+    const onCancel = vi.fn()
+    render(<GeneratingPlan onCancel={onCancel} />)
+    // Not visible initially
+    expect(
+      screen.queryByRole('button', { name: /cancel and try again/i }),
+    ).not.toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(200_000)
+    })
+    const btn = screen.getByRole('button', { name: /cancel and try again/i })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT show the cancel button when onCancel is not provided', () => {
+    render(<GeneratingPlan />)
+    act(() => {
+      vi.advanceTimersByTime(200_000)
+    })
+    expect(
+      screen.queryByRole('button', { name: /cancel and try again/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('formats elapsed as MM:SS with leading zero on seconds', () => {

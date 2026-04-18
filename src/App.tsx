@@ -47,6 +47,11 @@ function App() {
   // signs out or switches accounts mid-generation, the stale promise's
   // setters are dropped so they can't clobber the new session's state.
   const genTokenRef = useRef(0)
+  // Profile captured at the start of a generation run so the cancel handler
+  // can surface the retry screen with the same profile pre-loaded. We can't
+  // actually abort the in-flight fetch (out of scope), but we can stop
+  // showing the loading screen and let the user trigger a fresh retry.
+  const generatingProfileRef = useRef<UserProgramProfile | null>(null)
 
   // Reset generation state whenever the authed user changes so a previous
   // user's error/pending doesn't bleed into a new sign-in.
@@ -74,6 +79,7 @@ function App() {
   async function runGeneration(profile: UserProgramProfile, userId: string) {
     const gen = ++genTokenRef.current
     const stale = () => genTokenRef.current !== gen
+    generatingProfileRef.current = profile
     setGenerationError(null)
     setIsGenerating(true)
     try {
@@ -88,6 +94,19 @@ function App() {
       setPendingProfile(profile)
       setGenerationError(friendlyGenerationError(err))
       setIsGenerating(false)
+    }
+  }
+
+  function handleCancelGeneration() {
+    // Invalidate any in-flight generation so its setters are dropped when it
+    // eventually resolves — the fetch itself keeps running but can't clobber
+    // the retry screen state.
+    genTokenRef.current += 1
+    const captured = generatingProfileRef.current
+    setIsGenerating(false)
+    if (captured) {
+      setPendingProfile(captured)
+      setGenerationError('Cancelled — try again when you\'re ready.')
     }
   }
 
@@ -134,7 +153,7 @@ function App() {
     }
 
     if (isGenerating) {
-      return <GeneratingPlan />
+      return <GeneratingPlan onCancel={handleCancelGeneration} />
     }
 
     return (

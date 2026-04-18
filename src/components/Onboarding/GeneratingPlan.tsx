@@ -21,7 +21,17 @@ function formatElapsed(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-export function GeneratingPlan() {
+export interface GeneratingPlanProps {
+  /**
+   * Optional escape hatch shown once elapsed exceeds the slow-warning
+   * threshold. Tapping the button fires this callback — it does NOT abort the
+   * in-flight fetch (out of scope), it just lets the parent flip to the
+   * error/retry screen so the user isn't stuck staring at a spinner forever.
+   */
+  onCancel?: () => void
+}
+
+export function GeneratingPlan({ onCancel }: GeneratingPlanProps = {}) {
   const [elapsedMs, setElapsedMs] = useState(0)
 
   useEffect(() => {
@@ -74,6 +84,15 @@ export function GeneratingPlan() {
         <p className="mt-6 text-sm text-amber-400 max-w-sm">
           This is taking longer than usual. Hang tight or refresh to retry.
         </p>
+      )}
+
+      {showSlowWarning && onCancel && (
+        <button
+          onClick={onCancel}
+          className="mt-4 px-5 py-2 rounded-2xl bg-surface-raised text-zinc-200 text-sm font-semibold hover:bg-zinc-700"
+        >
+          Cancel and try again
+        </button>
       )}
     </div>
   )

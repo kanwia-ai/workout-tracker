@@ -33,7 +33,7 @@ export function buildRoutinePrompt(input: BuildRoutinePromptInput): string {
 RULES:
 - Respect the user's injuries (see profile): apply the same meniscus / lower-back / shoulder modifications used in the main program (no deep knee flexion on meniscus; no loaded spinal flexion on lower back; no barbell overhead / upright rows on shoulder).
 - Tailor the selections to the sessionFocus muscle groups.
-- Return 3-8 exercises sized for a ${minutes}-minute block. Minimum 2, maximum 12.
+- Return 2-12 exercises sized for a ${minutes}-minute block.
 - Each exercise must have a name plus EITHER duration_seconds (for holds, cardio intervals, isometrics) OR reps (for movement drills, mobility flows, activation work). Optional short notes when form cue matters.
 - Title the routine in 4-6 words (e.g., "Lower-body dynamic warm-up", "Zone-2 bike flush").
 - Do not invent equipment the user doesn't have — follow profile.equipment.
