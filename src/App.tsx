@@ -10,6 +10,7 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './hooks/useAuth'
+import { useTweaks } from './hooks/useTweaks'
 import { WorkoutView } from './components/WorkoutView'
 import { LoginScreen } from './components/LoginScreen'
 import { ExerciseBrowser } from './components/ExerciseBrowser'
@@ -28,6 +29,12 @@ import type { ExtractedExercise } from './lib/gemini'
 import type { UserProgramProfile } from './types/profile'
 
 function App() {
+  // Wire the Lumo theme + EDITMODE postMessage protocol at the root. This
+  // applies CSS vars on mount and keeps them in sync with host edits. No
+  // components depend on the tweaks yet (parallel Lumo work is landing in
+  // sibling tasks) — this is the plumbing only.
+  useTweaks()
+
   const {
     user,
     profile,

@@ -15,6 +15,31 @@
   --color-purple-soft: #1e1b2e;
 }
 
+/*
+ * Lumo design tokens (dark defaults). Light-theme values are swapped in at
+ * runtime by src/lib/theme.ts::applyTheme via document.documentElement inline
+ * styles; these :root rules exist so first-paint (before React mounts) still
+ * has every variable defined.
+ * Keep in sync with THEMES.dark in src/lib/theme.ts.
+ */
+:root {
+  --lumo-bg: #0B0B0F;
+  --lumo-raised: #18181F;
+  --lumo-overlay: #242430;
+  --lumo-border: #242430;
+  --lumo-border-strong: #2A2A36;
+  --lumo-text: #F2F2F6;
+  --lumo-text-sec: #8A8A99;
+  --lumo-text-ter: #55556A;
+  --lumo-input-bg: #0B0B0F;
+  --accent-plum: #C9A0FF;
+  --accent-mint: #6EE7C7;
+  --accent-sun: #FFD86E;
+  --accent-blush: #FF9AA2;
+  --brand: #FF7A45;
+  --mascot-color: #FFB4C6;
+}
+
 html, body {
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
