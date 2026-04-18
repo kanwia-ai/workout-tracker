@@ -3,9 +3,15 @@
 // response. Runs as a Deno edge function; do not import Node-only modules.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from 'npm:@google/genai@^1'
-import { mesocycleSchema, pingSchema, swapExerciseSchema } from './schemas.ts'
+import { mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
+import { buildRoutinePrompt, type RoutineKind } from './prompts/generateRoutine.ts'
+
+const ROUTINE_KINDS: readonly RoutineKind[] = ['warmup', 'cooldown', 'cardio']
+function isRoutineKind(v: unknown): v is RoutineKind {
+  return typeof v === 'string' && (ROUTINE_KINDS as readonly string[]).includes(v)
+}
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -16,7 +22,7 @@ const CORS_HEADERS = {
 const JSON_HEADERS = { 'content-type': 'application/json', ...CORS_HEADERS }
 
 // Ops that require the Gemini SDK. Keep in sync as new LLM-backed ops land.
-const GEMINI_OPS = new Set(['ping', 'generate_plan', 'swap_exercise'])
+const GEMINI_OPS = new Set(['ping', 'generate_plan', 'swap_exercise', 'generate_routine'])
 
 // Hard cap on serialized exercise-pool size. Gemini 2.5 Flash tolerates large
 // inputs, but the pool is untrusted client input and we don't want a runaway
@@ -364,6 +370,89 @@ Deno.serve(async (req) => {
           // r.text was not valid JSON despite responseSchema; let the client
           // handle via its own Zod validation.
           console.warn('post-validate JSON parse failed', parseErr)
+        }
+        return new Response(r.text, { headers: JSON_HEADERS })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return new Response(JSON.stringify({ error: message }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    if (body.op === 'generate_routine') {
+      // Validate payload shape before handing off to Gemini. Same
+      // defense-in-depth pattern as generate_plan / swap_exercise.
+      const payload = (body.payload ?? {}) as {
+        profile?: unknown
+        sessionFocus?: unknown
+        kind?: unknown
+        minutes?: unknown
+        focusTag?: unknown
+      }
+      if (!payload.profile || typeof payload.profile !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.profile is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (
+        !Array.isArray(payload.sessionFocus) ||
+        !payload.sessionFocus.every((v) => typeof v === 'string')
+      ) {
+        return new Response(
+          JSON.stringify({ error: 'payload.sessionFocus is required and must be a string[]' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!isRoutineKind(payload.kind)) {
+        return new Response(
+          JSON.stringify({
+            error: `payload.kind must be one of: ${ROUTINE_KINDS.join(', ')}`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (
+        typeof payload.minutes !== 'number' ||
+        !Number.isFinite(payload.minutes) ||
+        payload.minutes < 3 ||
+        payload.minutes > 60
+      ) {
+        return new Response(
+          JSON.stringify({ error: 'payload.minutes must be a number between 3 and 60' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (payload.focusTag !== undefined && typeof payload.focusTag !== 'string') {
+        return new Response(
+          JSON.stringify({ error: 'payload.focusTag must be a string when provided' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      try {
+        const prompt = buildRoutinePrompt({
+          profile: payload.profile,
+          sessionFocus: payload.sessionFocus as string[],
+          kind: payload.kind,
+          minutes: Math.round(payload.minutes),
+          focusTag: payload.focusTag as string | undefined,
+        })
+        const r = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: routineSchema,
+          },
+        })
+        if (!r.text) {
+          return new Response(
+            JSON.stringify({ error: 'gemini returned empty response (blocked or no candidates)' }),
+            { status: 502, headers: JSON_HEADERS },
+          )
         }
         return new Response(r.text, { headers: JSON_HEADERS })
       } catch (err) {

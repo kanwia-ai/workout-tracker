@@ -103,3 +103,33 @@ export const swapExerciseSchema = {
   required: ['replacement', 'reason'],
   propertyOrdering: ['replacement', 'reason'],
 } as const
+
+// Routine response — warmup / cooldown / cardio content attached to a main
+// session. Each exercise carries EITHER duration_seconds (holds, cardio
+// intervals) OR reps (movement drills, activation) — enforced by the prompt,
+// not the schema (Gemini's JSON Schema subset doesn't support `anyOf` on
+// mutually-exclusive fields). Client-side Zod can tighten this further.
+export const routineSchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    exercises: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 12,
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          duration_seconds: { type: 'integer', minimum: 10, maximum: 900 },
+          reps: { type: 'string' },
+          notes: { type: 'string' },
+        },
+        required: ['name'],
+        propertyOrdering: ['name', 'duration_seconds', 'reps', 'notes'],
+      },
+    },
+  },
+  required: ['title', 'exercises'],
+  propertyOrdering: ['title', 'exercises'],
+} as const

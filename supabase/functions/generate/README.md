@@ -120,3 +120,46 @@ Error responses:
   wrong shape, or if the pool JSON exceeds the server-side size cap.
 - `502` if Gemini returns empty, hallucinates a `library_id` not in the pool,
   or returns an exercise already completed in this session.
+
+## Smoke test `generate_routine`
+
+Default-generates warmup / cooldown / cardio content for a single session. The
+`kind` field selects the rule set (warmup = dynamic mobility + activation,
+cooldown = light cardio + static stretching, cardio = zone-2 or short
+intervals). `minutes` must be 3-60. `sessionFocus` is the same MuscleGroup
+string array used in the main plan. `focusTag` is optional (e.g., "mobility",
+"activation", "zone-2").
+
+```bash
+curl -X POST https://<project-ref>.supabase.co/functions/v1/generate \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer <anon-key>" \
+  -d '{
+    "op": "generate_routine",
+    "payload": {
+      "kind": "warmup",
+      "minutes": 10,
+      "sessionFocus": ["glutes", "hamstrings"],
+      "focusTag": "activation",
+      "profile": {
+        "goal": "glutes",
+        "sessions_per_week": 4,
+        "training_age_months": 18,
+        "equipment": ["full_gym"],
+        "injuries": [{ "part": "left_meniscus", "severity": "modify" }],
+        "time_budget_min": 60,
+        "sex": "female",
+        "posture_notes": "desk worker, tight hip flexors"
+      }
+    }
+  }'
+```
+
+Expected: JSON with `title` (4-6 words) and `exercises` (2-12 entries, each
+with `name` plus either `duration_seconds` or `reps`, and optional `notes`).
+
+Error responses:
+- `400` if `profile`, `sessionFocus`, `kind`, or `minutes` are missing / wrong
+  shape, if `kind` is not one of `warmup|cooldown|cardio`, or if `minutes` is
+  outside `[3, 60]`.
+- `502` if Gemini returns an empty response or the call throws.
