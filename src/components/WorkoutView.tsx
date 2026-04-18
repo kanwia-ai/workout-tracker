@@ -9,8 +9,11 @@ import { getToday, getWeekView } from '../lib/planSelectors'
 import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
 import { loadProfileLocal } from '../lib/profileRepo'
 import { generatePlan } from '../lib/planGen'
+import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
+import { SwapSheet } from './SwapSheet'
 import type { TimerState, SessionPhase } from '../types'
-import type { PlannedSession } from '../types/plan'
+import type { PlannedSession, PlannedExercise } from '../types/plan'
+import type { UserProgramProfile } from '../types/profile'
 
 // ─── localStorage keys ────────────────────────────────────────────────────
 // Session selection is no longer date-based — we persist the session *id*
@@ -142,6 +145,59 @@ export function WorkoutView({
   }, [userId])
 
   const { session, startSession, switchPhase, endSession, clearSession } = useSession()
+
+  // ─── Swap state ──────────────────────────────────────────────────────────
+  // We keep the cached profile (for swap prompts) and the index of the
+  // exercise the user is currently swapping. `null` means the sheet is closed.
+  const [cachedProfile, setCachedProfile] = useState<UserProgramProfile | null>(null)
+  const [swapIndex, setSwapIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    // Load on mount / when userId changes. App.tsx doesn't pass the profile
+    // through, so we fetch it locally from Dexie here (it was persisted
+    // during onboarding and/or pulled from Supabase by the auth hook).
+    let cancelled = false
+    loadProfileLocal(userId)
+      .then(p => {
+        if (!cancelled) setCachedProfile(p)
+      })
+      .catch(err => {
+        console.error('WorkoutView: failed to load profile for swap', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
+  const handleSwapRequest = useCallback(
+    async (reason: SwapReason) => {
+      if (!cachedProfile) throw new Error('Profile not loaded yet — try again in a moment.')
+      if (!selectedSession || swapIndex == null) {
+        throw new Error('No active session or exercise selected for swap.')
+      }
+      return requestSwap({
+        profile: cachedProfile,
+        session: selectedSession,
+        exerciseIndex: swapIndex,
+        reason,
+      })
+    },
+    [cachedProfile, selectedSession, swapIndex],
+  )
+
+  const handleSwapAccept = useCallback(
+    async (replacement: PlannedExercise) => {
+      if (!plan || !selectedSession || swapIndex == null) return
+      try {
+        await applySwap(plan.id, selectedSession.id, swapIndex, replacement)
+      } catch (err) {
+        console.error('applySwap failed', err)
+      } finally {
+        setSwapIndex(null)
+      }
+    },
+    [plan, selectedSession, swapIndex],
+  )
 
   // Re-hydrate checkedSets/weights when the selected session changes.
   // The ref gate ensures the write effects below skip the racing commit that
@@ -450,8 +506,19 @@ export function WorkoutView({
                 <div key={`${ex.library_id}-${ei}`} className={`py-2.5 ${ei > 0 ? 'border-t border-zinc-800/50' : ''}`}>
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[13px] font-semibold ${isCompleted ? 'text-zinc-500 line-through' : ''}`}>
-                        {ex.name}
+                      <div className="flex items-center gap-1.5">
+                        <div className={`text-[13px] font-semibold ${isCompleted ? 'text-zinc-500 line-through' : ''}`}>
+                          {ex.name}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSwapIndex(ei)}
+                          className="p-1 rounded-md text-zinc-500 hover:text-brand active:scale-90 transition-colors"
+                          aria-label={`Swap ${ex.name}`}
+                          title="Swap this exercise"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
                       </div>
                       <div className="text-[11px] text-zinc-600">
                         {ex.sets}×{ex.reps} @RIR {ex.rir} · {ex.rest_seconds}s rest · {ex.role}
@@ -522,6 +589,17 @@ export function WorkoutView({
           label={timer.label}
           type={timer.type}
           onClose={() => setTimer(null)}
+        />
+      )}
+
+      {/* Swap sheet */}
+      {swapIndex != null && selectedSession && selectedSession.exercises[swapIndex] && (
+        <SwapSheet
+          open
+          currentExercise={selectedSession.exercises[swapIndex]}
+          onDismiss={() => setSwapIndex(null)}
+          onAccept={handleSwapAccept}
+          onRequest={handleSwapRequest}
         />
       )}
     </div>
