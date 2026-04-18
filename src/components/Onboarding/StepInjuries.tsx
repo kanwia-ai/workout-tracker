@@ -1,12 +1,17 @@
-import { useRef, useState } from 'react'
+// StepInjuries — required safety step. User must either declare injuries or
+// explicitly acknowledge "none". Logic preserved from v1; styling is Lumo'd
+// (CSS vars, speech bubble, brand tokens).
+
+import { useRef, useState, useMemo } from 'react'
+import { StepChrome } from './StepChrome'
 import { BodyPart, Severity, type UserProgramProfile } from '../../types/profile'
+import { pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../../lib/copy'
+import type { LumoState } from '../Lumo'
 
 type Injury = UserProgramProfile['injuries'][number]
 type BodyPartValue = Injury['part']
 type SeverityValue = Injury['severity']
 
-// Internal row shape carries a stable React key so add/remove doesn't reuse
-// DOM nodes between different rows (which breaks focus + IME state on <input>).
 interface InjuryRow extends Injury {
   __rowId: string
 }
@@ -14,6 +19,7 @@ interface InjuryRow extends Injury {
 interface Props {
   value?: Injury[]
   onNext: (injuries: Injury[]) => void
+  cheek?: CheekLevel
 }
 
 const BODY_PART_LABELS: Record<BodyPartValue, string> = {
@@ -52,10 +58,15 @@ function makeRowId(): string {
 }
 
 function emptyInjury(): InjuryRow {
-  return { __rowId: makeRowId(), part: BODY_PART_OPTIONS[0], severity: 'modify', note: '' }
+  return {
+    __rowId: makeRowId(),
+    part: BODY_PART_OPTIONS[0],
+    severity: 'modify',
+    note: '',
+  }
 }
 
-export function StepInjuries({ value, onNext }: Props) {
+export function StepInjuries({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
   const idCounter = useRef(0)
   const [injuries, setInjuries] = useState<InjuryRow[]>(() => {
     if (value && value.length > 0) {
@@ -63,12 +74,15 @@ export function StepInjuries({ value, onNext }: Props) {
     }
     return [emptyInjury()]
   })
-  // Reference idCounter so TS doesn't drop the ref when crypto.randomUUID is present.
   void idCounter
+  const bubble = useMemo(
+    () => pickCopy('onboardingInjuries', cheek),
+    [cheek],
+  )
 
   const updateRow = (rowId: string, patch: Partial<Injury>) => {
     setInjuries((rows) =>
-      rows.map((r) => (r.__rowId === rowId ? { ...r, ...patch } : r))
+      rows.map((r) => (r.__rowId === rowId ? { ...r, ...patch } : r)),
     )
   }
 
@@ -85,7 +99,6 @@ export function StepInjuries({ value, onNext }: Props) {
   }
 
   const submit = () => {
-    // Strip __rowId + empty notes so the payload matches the zod schema.
     const cleaned: Injury[] = injuries.map((r) => {
       const out: Injury = { part: r.part, severity: r.severity }
       if (r.note && r.note.trim().length > 0) out.note = r.note.trim()
@@ -94,17 +107,26 @@ export function StepInjuries({ value, onNext }: Props) {
     onNext(cleaned)
   }
 
-  return (
-    <div>
-      <h1 className="text-2xl font-extrabold mb-1">Any injuries we should know about?</h1>
-      <p className="text-zinc-500 mb-6">
-        Anything tweaky, flared, or off-limits. We'll program around it.
-      </p>
+  // Lumo reacts sadly if the user has >=3 issues. Small touch of empathy.
+  const lumoState: LumoState = injuries.length >= 3 ? 'sad' : 'thinking'
 
+  return (
+    <StepChrome
+      lumoState={lumoState}
+      bubbleText={bubble}
+      title="Any injuries we should respect?"
+      subtitle="This one's important — nothing tweaky is okay to miss. Add each, or tap 'none'."
+    >
       <button
         type="button"
         onClick={skipAll}
-        className="w-full min-h-[48px] mb-6 p-3 rounded-2xl border-2 border-border-subtle bg-surface-raised font-semibold active:scale-[0.98]"
+        className="w-full min-h-[48px] mb-5 p-3 rounded-2xl font-semibold active:scale-[0.98]"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '2px dashed var(--lumo-border)',
+          color: 'var(--lumo-text)',
+        }}
+        data-testid="step-injuries-none"
       >
         I don't have any — skip
       </button>
@@ -113,17 +135,26 @@ export function StepInjuries({ value, onNext }: Props) {
         {injuries.map((row, idx) => (
           <div
             key={row.__rowId}
-            className="p-4 rounded-2xl border-2 border-border-subtle bg-surface-raised grid gap-3"
+            className="p-4 rounded-2xl grid gap-3"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '2px solid var(--lumo-border)',
+              color: 'var(--lumo-text)',
+            }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wide text-zinc-400">
+              <span
+                className="text-xs uppercase tracking-wide font-bold"
+                style={{ color: 'var(--lumo-text-ter)' }}
+              >
                 Injury {idx + 1}
               </span>
               {injuries.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeRow(row.__rowId)}
-                  className="text-sm text-zinc-400 hover:text-zinc-200 min-h-[44px] px-2"
+                  className="text-sm min-h-[44px] px-2"
+                  style={{ color: 'var(--lumo-text-sec)' }}
                   aria-label={`Remove injury ${idx + 1}`}
                 >
                   Remove
@@ -132,13 +163,23 @@ export function StepInjuries({ value, onNext }: Props) {
             </div>
 
             <label className="block">
-              <span className="block text-sm text-zinc-400 mb-1">Body part</span>
+              <span
+                className="block text-sm mb-1"
+                style={{ color: 'var(--lumo-text-sec)' }}
+              >
+                Body part
+              </span>
               <select
                 value={row.part}
                 onChange={(e) =>
                   updateRow(row.__rowId, { part: e.target.value as BodyPartValue })
                 }
-                className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"
+                className="w-full min-h-[48px] px-3 rounded-xl"
+                style={{
+                  background: 'var(--lumo-bg)',
+                  border: '1.5px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                }}
               >
                 {BODY_PART_OPTIONS.map((p) => (
                   <option key={p} value={p}>
@@ -149,13 +190,23 @@ export function StepInjuries({ value, onNext }: Props) {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-zinc-400 mb-1">Severity</span>
+              <span
+                className="block text-sm mb-1"
+                style={{ color: 'var(--lumo-text-sec)' }}
+              >
+                Severity
+              </span>
               <select
                 value={row.severity}
                 onChange={(e) =>
                   updateRow(row.__rowId, { severity: e.target.value as SeverityValue })
                 }
-                className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"
+                className="w-full min-h-[48px] px-3 rounded-xl"
+                style={{
+                  background: 'var(--lumo-bg)',
+                  border: '1.5px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                }}
               >
                 {SEVERITY_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -166,8 +217,12 @@ export function StepInjuries({ value, onNext }: Props) {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-zinc-400 mb-1">
-                Note <span className="text-zinc-500">(optional)</span>
+              <span
+                className="block text-sm mb-1"
+                style={{ color: 'var(--lumo-text-sec)' }}
+              >
+                Note{' '}
+                <span style={{ color: 'var(--lumo-text-ter)' }}>(optional)</span>
               </span>
               <input
                 type="text"
@@ -175,7 +230,12 @@ export function StepInjuries({ value, onNext }: Props) {
                 onChange={(e) => updateRow(row.__rowId, { note: e.target.value })}
                 maxLength={200}
                 placeholder="e.g. flares with deep squats"
-                className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"
+                className="w-full min-h-[48px] px-3 rounded-xl"
+                style={{
+                  background: 'var(--lumo-bg)',
+                  border: '1.5px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                }}
               />
             </label>
           </div>
@@ -185,7 +245,12 @@ export function StepInjuries({ value, onNext }: Props) {
       <button
         type="button"
         onClick={addRow}
-        className="w-full min-h-[48px] mb-4 p-3 rounded-2xl border-2 border-dashed border-border-subtle bg-surface-raised/60 font-semibold active:scale-[0.98]"
+        className="w-full min-h-[48px] mb-4 p-3 rounded-2xl font-semibold active:scale-[0.98]"
+        style={{
+          background: 'transparent',
+          border: '2px dashed var(--lumo-border)',
+          color: 'var(--lumo-text-sec)',
+        }}
       >
         + Add another
       </button>
@@ -193,10 +258,11 @@ export function StepInjuries({ value, onNext }: Props) {
       <button
         type="button"
         onClick={submit}
-        className="w-full min-h-[56px] p-4 rounded-2xl font-bold bg-brand text-black active:scale-[0.98]"
+        className="w-full min-h-[56px] p-4 rounded-2xl font-extrabold active:scale-[0.98]"
+        style={{ background: 'var(--brand)', color: 'var(--lumo-bg)' }}
       >
         Next
       </button>
-    </div>
+    </StepChrome>
   )
 }

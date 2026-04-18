@@ -1,6 +1,21 @@
 import { db } from './db'
-import { UserProgramProfileSchema, type UserProgramProfile } from '../types/profile'
+import {
+  UserProgramProfileSchema,
+  legacyGoalToPrimaryGoal,
+  type UserProgramProfile,
+} from '../types/profile'
 import { supabase } from './supabase'
+
+/**
+ * Graceful v1 → v2 fallback: if a stored profile has no `primary_goal`, infer
+ * it from the legacy `goal` field so downstream code (onboarding summary,
+ * personalization pipeline) sees a fully-populated profile without a forced
+ * migration. Pure; called after Zod parsing so the profile is already valid.
+ */
+function ensurePrimaryGoal(profile: UserProgramProfile): UserProgramProfile {
+  if (profile.primary_goal) return profile
+  return { ...profile, primary_goal: legacyGoalToPrimaryGoal(profile.goal) }
+}
 
 /**
  * Validate and persist a UserProgramProfile to the local Dexie store.
@@ -30,7 +45,9 @@ export async function saveProfileLocal(userId: string, profile: UserProgramProfi
 export async function loadProfileLocal(userId: string): Promise<UserProgramProfile | null> {
   const row = await db.userProgramProfiles.get(userId)
   if (!row) return null
-  return UserProgramProfileSchema.parse(JSON.parse(row.profile_json))
+  return ensurePrimaryGoal(
+    UserProgramProfileSchema.parse(JSON.parse(row.profile_json)),
+  )
 }
 
 /**
@@ -64,7 +81,9 @@ export async function pullProfileFromCloud(userId: string): Promise<UserProgramP
   const localRow = await db.userProgramProfiles.get(userId)
   if (localRow && !localRow.synced) {
     // Local has unsynced edits — don't clobber.
-    return UserProgramProfileSchema.parse(JSON.parse(localRow.profile_json))
+    return ensurePrimaryGoal(
+      UserProgramProfileSchema.parse(JSON.parse(localRow.profile_json)),
+    )
   }
 
   const { data, error } = await supabase
@@ -75,7 +94,7 @@ export async function pullProfileFromCloud(userId: string): Promise<UserProgramP
   if (error) throw error
   if (!data) return null
 
-  const profile = UserProgramProfileSchema.parse(data.profile)
+  const profile = ensurePrimaryGoal(UserProgramProfileSchema.parse(data.profile))
   // Single write: validated profile + synced flag in one put.
   await db.userProgramProfiles.put({
     user_id: userId,

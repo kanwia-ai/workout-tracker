@@ -111,12 +111,16 @@ describe('profileRepo', () => {
       expect(supabase.from).toHaveBeenCalledWith('user_program_profiles')
       expect(mocks.select).toHaveBeenCalledWith('profile, updated_at')
       expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-1')
-      expect(result).toEqual(VALID_PROFILE)
+      // pullProfileFromCloud fills in the derived `primary_goal` on load
+      // (graceful v1 → v2 fallback) so the returned profile is a superset of
+      // VALID_PROFILE. The stored row reflects that inference too.
+      expect(result).toMatchObject(VALID_PROFILE)
+      expect(result?.primary_goal).toBe('build_muscle') // glutes → build_muscle
 
       const row = await db.userProgramProfiles.get('user-1')
       expect(row).toBeTruthy()
       expect(row?.synced).toBe(true)
-      expect(JSON.parse(row!.profile_json)).toEqual(VALID_PROFILE)
+      expect(JSON.parse(row!.profile_json)).toMatchObject(VALID_PROFILE)
     })
 
     it('returns null when no row exists in cloud', async () => {
@@ -139,7 +143,9 @@ describe('profileRepo', () => {
       const from = vi.spyOn(supabase, 'from')
       const result = await pullProfileFromCloud('user-1')
       expect(from).not.toHaveBeenCalled()
-      expect(result).toEqual(localProfile)
+      // Returned profile is the unsynced local profile + derived primary_goal.
+      expect(result).toMatchObject(localProfile)
+      expect(result?.primary_goal).toBe('mobility') // rehab → mobility
       const row = await db.userProgramProfiles.get('user-1')
       expect(row?.synced).toBe(false)
     })

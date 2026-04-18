@@ -39,6 +39,12 @@ const STRING_KEYS = [
   | 'restEnd'
   | 'generatingPlan'
   | 'generatingPlanLong'
+  | 'onboardingWelcome'
+  | 'onboardingGoal'
+  | 'onboardingInjuries'
+  | 'onboardingSkipOk'
+  | 'onboardingConfirm'
+  | 'onboardingFootprintTap'
 >[];
 
 const POOL_KEYS = [
@@ -53,6 +59,12 @@ const POOL_KEYS = [
   'restEnd',
   'generatingPlan',
   'generatingPlanLong',
+  'onboardingWelcome',
+  'onboardingGoal',
+  'onboardingInjuries',
+  'onboardingSkipOk',
+  'onboardingConfirm',
+  'onboardingFootprintTap',
 ] as const;
 
 // Minimum pool sizes enforced per spec. setDone/preamble_* at level 2 must be
@@ -69,6 +81,13 @@ const MIN_POOL_SIZE: Record<(typeof POOL_KEYS)[number], Record<CheekLevel, numbe
   restEnd: { 0: 8, 1: 8, 2: 8 },
   generatingPlan: { 0: 12, 1: 12, 2: 25 },
   generatingPlanLong: { 0: 10, 1: 10, 2: 10 },
+  // Onboarding spec mins: welcome 6/8/10, others 8/8/8 or 5/5/5 or 4/4/4.
+  onboardingWelcome: { 0: 6, 1: 8, 2: 10 },
+  onboardingGoal: { 0: 8, 1: 8, 2: 8 },
+  onboardingInjuries: { 0: 8, 1: 8, 2: 8 },
+  onboardingSkipOk: { 0: 5, 1: 5, 2: 5 },
+  onboardingConfirm: { 0: 8, 1: 8, 2: 8 },
+  onboardingFootprintTap: { 0: 4, 1: 4, 2: 4 },
 };
 
 const INJURED_BODY_PARTS: NarrationBodyPart[] = [
