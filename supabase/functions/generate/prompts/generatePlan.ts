@@ -44,6 +44,25 @@ HARD RULES (must all be satisfied):
   - Add reps first across weeks 2-${weeks - 1}, then load. Keep exercise selection mostly stable so the user can track progress.
   - The LAST week of the block is a deload: ~60% of working-set volume, same intensity/RIR.
 - Populate session.focus with the primary muscle groups hit (from the MuscleGroup enum). Titles should be concrete (e.g., "Lower A — hip hinge + glute accessory"), not generic (no "Day 1", "Workout A").
+- DAY-OF-WEEK ASSIGNMENT RULES:
+  - Every session MUST have a day_of_week field (0=Monday through 6=Sunday).
+  - Across a week, place sessions so the SAME major muscle group gets at least
+    48h of recovery. 72h for big compounds (squat, deadlift patterns).
+  - With N sessions/week, pick N days from Mon-Sun that satisfy the above.
+    Example distributions:
+      3/wk: 0,2,4 (Mon/Wed/Fri) or 1,3,5 (Tue/Thu/Sat)
+      4/wk: 0,1,3,4 (Mon/Tue/Thu/Fri) with Wed + weekend as rest
+      5/wk: 0,1,2,4,5 (Mon/Tue/Wed/Fri/Sat)
+      6/wk: 0,1,2,3,4,5
+  - The pattern should repeat across all weeks unless a deload week
+    explicitly shifts it.
+  - Assignments must be unique within a week (no two sessions on same day).
+- RATIONALE RULES:
+  - Every session gets a rationale field: one short sentence (≤280 chars)
+    explaining why the session is placed HERE on this day, what muscle group
+    it targets, and how it relates to the prior/next session's recovery.
+  - Example: "Lower A on Monday. Fresh week, full quad/glute capacity. 48h
+    separation from Thursday's Lower B lets the big compounds recover."
 - status must be "upcoming" for every generated session.
 - Set length_weeks to exactly ${weeks}.
 - Generate a UUID-like stable id for the mesocycle and for each session (any unique string is fine; the client does not parse them).

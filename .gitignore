@@ -4,3 +4,4 @@ dist
 .env.local
 .claude/
 supabase/.temp/
+.DS_Store
