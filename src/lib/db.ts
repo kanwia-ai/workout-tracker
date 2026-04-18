@@ -99,6 +99,20 @@ interface LocalMesocycle {
   synced: boolean
 }
 
+// Per-session routine (warmup, cool-down, cardio). Generated on demand via the
+// `generate_routine` edge op and keyed by `${session_id}:${kind}` so we have at
+// most one saved routine of each kind per planned session.
+interface LocalRoutine {
+  id: string                        // `${session_id}:${kind}`
+  session_id: string
+  kind: 'warmup' | 'cooldown' | 'cardio'
+  minutes: number
+  focusTag?: string
+  routine_json: string              // JSON-stringified Routine ({ title, exercises[] })
+  generated_at: string
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -108,6 +122,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   exerciseLibrary: EntityTable<LibraryExercise, 'id'>
   userProgramProfiles: EntityTable<LocalProfile, 'user_id'>
   mesocycles: EntityTable<LocalMesocycle, 'id'>
+  routines: EntityTable<LocalRoutine, 'id'>
 }
 
 db.version(1).stores({
@@ -148,5 +163,17 @@ db.version(4).stores({
   mesocycles: 'id, user_id, generated_at, synced',
 })
 
+db.version(5).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine }

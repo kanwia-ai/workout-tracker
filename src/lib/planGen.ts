@@ -3,6 +3,30 @@ import { callEdge } from './generate'
 import { MesocycleSchema, type Mesocycle } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 
+// ─── Phase-2 migration helpers ──────────────────────────────────────────────
+// Pre-2P.1 plans in Dexie lack `day_of_week` + `rationale`. On load, we
+// back-fill both so `MesocycleSchema.parse` doesn't hard-fail a stale row.
+// The fallback day distribution picks N days out of Mon-Sun that respect a
+// rough 48h recovery pattern, matching what the Gemini prompt aims for.
+
+/**
+ * Returns an array of `day_of_week` values (0=Mon..6=Sun) that provides
+ * reasonable recovery spacing for `perWeek` training sessions. Used by
+ * `loadMesocycle` to back-fill legacy Phase-1 mesocycles that have no
+ * server-assigned day_of_week.
+ */
+export function pickRecoveryPattern(perWeek: number): number[] {
+  switch (perWeek) {
+    case 1: return [0]
+    case 2: return [0, 3]
+    case 3: return [0, 2, 4]
+    case 4: return [0, 1, 3, 4]
+    case 5: return [0, 1, 2, 4, 5]
+    case 6: return [0, 1, 2, 3, 4, 5]
+    default: return [0, 1, 2, 3, 4, 5, 6]
+  }
+}
+
 // ─── Equipment mapping ──────────────────────────────────────────────────────
 // Maps free-exercise-db equipment strings → the Equipment enum values we ship
 // in the onboarding form. An entry is included if ANY of the user's chosen
@@ -141,6 +165,33 @@ export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
     sessions: JSON.parse(row.sessions_json),
     profile_snapshot: JSON.parse(row.profile_snapshot_json),
   }
+
+  // Back-fill `day_of_week` + `rationale` for pre-2P.1 plans. Without this,
+  // MesocycleSchema.parse would throw on every legacy row the moment Phase 2
+  // ships and make the user's app unbootable until they regenerate. We accept
+  // a slightly imprecise fallback pattern to keep the app loading — the user
+  // can always regenerate for a fresh coach-authored rationale.
+  const rawSessions = candidate.sessions as Array<Record<string, unknown>>
+  const needsBackfill = rawSessions.some(
+    s => s.day_of_week === undefined || s.rationale === undefined,
+  )
+  if (needsBackfill) {
+    const perWeek = Math.max(
+      1,
+      Math.ceil(rawSessions.length / Math.max(1, candidate.length_weeks)),
+    )
+    const pattern = pickRecoveryPattern(perWeek)
+    for (const s of rawSessions) {
+      if (s.day_of_week === undefined) {
+        const ordinal = typeof s.ordinal === 'number' ? s.ordinal : 1
+        s.day_of_week = pattern[(ordinal - 1) % pattern.length]
+      }
+      if (s.rationale === undefined) {
+        s.rationale = 'Migrated from an earlier plan — regenerate for a fresher rationale.'
+      }
+    }
+  }
+
   return MesocycleSchema.parse(candidate)
 }
 
