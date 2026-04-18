@@ -153,6 +153,38 @@ Deno.serve(async (req) => {
             { status: 502, headers: JSON_HEADERS },
           )
         }
+        // Server-side id-pool check — Gemini occasionally hallucinates exercise
+        // ids that don't exist in the provided pool. Catching this here saves
+        // the client from burning time on a bad plan they can't render.
+        try {
+          const parsed = JSON.parse(r.text) as {
+            sessions?: { exercises?: { library_id?: string }[] }[]
+          }
+          const poolIds = new Set(
+            (payload.exercisePool as { id: string }[]).map(e => e.id),
+          )
+          const bogus: string[] = []
+          for (const sess of parsed.sessions ?? []) {
+            for (const ex of sess.exercises ?? []) {
+              if (ex.library_id && !poolIds.has(ex.library_id)) {
+                bogus.push(ex.library_id)
+              }
+            }
+          }
+          if (bogus.length > 0) {
+            return new Response(
+              JSON.stringify({
+                error: `gemini hallucinated ${bogus.length} exercise id(s) not in pool`,
+                hallucinated: bogus.slice(0, 5),
+              }),
+              { status: 502, headers: JSON_HEADERS },
+            )
+          }
+        } catch (parseErr) {
+          // r.text was not valid JSON despite responseSchema; let the client
+          // handle via its own Zod validation.
+          console.warn('post-validate JSON parse failed', parseErr)
+        }
         return new Response(r.text, { headers: JSON_HEADERS })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { loadProfileLocal, pullProfileFromCloud } from '../lib/profileRepo'
 import type { User } from '@supabase/supabase-js'
@@ -30,40 +30,55 @@ export function useAuth() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [hasProfile, setHasProfile] = useState(false)
+  // Tracks whether the UserProgramProfile resolution (local + optional cloud)
+  // has finished for the current user. While this is true, gate the
+  // "needs onboarding?" decision on a spinner instead of rendering
+  // OnboardingFlow prematurely.
+  const [programProfileResolving, setProgramProfileResolving] = useState(false)
+
+  // Generation token — incremented on every auth change. Async resolvers
+  // capture their generation at call time and no-op if a new auth event
+  // has superseded them (stale sign-ins, rapid user switches).
+  const authGenRef = useRef(0)
 
   useEffect(() => {
     if (DEV_BYPASS) {
       const devUser = { id: 'dev-user' } as User
+      authGenRef.current += 1
+      const gen = authGenRef.current
       setUser(devUser)
       setProfile(DEV_PROFILE)
       setLoading(false)
-      // Check local cache for a UserProgramProfile; dev bypass does NOT
-      // auto-grant hasProfile — it still goes through onboarding unless
-      // there's a cached profile for this dev user.
-      void resolveProgramProfile(devUser.id, { skipCloud: true })
+      setProgramProfileResolving(true)
+      void resolveProgramProfile(devUser.id, gen, { skipCloud: true })
       return
     }
 
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      authGenRef.current += 1
+      const gen = authGenRef.current
       setUser(session?.user ?? null)
       if (session?.user) {
-        fetchProfile(session.user.id)
-        void resolveProgramProfile(session.user.id)
+        setProgramProfileResolving(true)
+        fetchProfile(session.user.id, gen)
+        void resolveProgramProfile(session.user.id, gen)
       } else {
         setLoading(false)
       }
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      authGenRef.current += 1
+      const gen = authGenRef.current
       setUser(session?.user ?? null)
       if (session?.user) {
-        fetchProfile(session.user.id)
-        void resolveProgramProfile(session.user.id)
+        setProgramProfileResolving(true)
+        fetchProfile(session.user.id, gen)
+        void resolveProgramProfile(session.user.id, gen)
       } else {
         setProfile(null)
         setHasProfile(false)
+        setProgramProfileResolving(false)
         setLoading(false)
       }
     })
@@ -73,43 +88,60 @@ export function useAuth() {
 
   /**
    * Resolve whether the user has a UserProgramProfile. Offline-first:
-   * check the local Dexie cache synchronously, then attempt a cloud pull
-   * that can also populate the cache (and flip hasProfile to true) if the
-   * user onboarded on another device.
+   * check the local Dexie cache, then attempt a cloud pull that can also
+   * populate the cache (and flip hasProfile to true) if the user
+   * onboarded on another device.
+   *
+   * `gen` is captured at call time — if a newer auth event has
+   * incremented `authGenRef`, all setter calls below are dropped to
+   * avoid stale-user writes after sign-out / user-switch.
    *
    * skipCloud: true for the dev-bypass path — no auth session means the
    * Supabase query would 401; just trust the local cache.
    */
-  async function resolveProgramProfile(userId: string, opts: { skipCloud?: boolean } = {}) {
+  async function resolveProgramProfile(
+    userId: string,
+    gen: number,
+    opts: { skipCloud?: boolean } = {},
+  ) {
+    const stale = () => authGenRef.current !== gen
+
     try {
       const local = await loadProfileLocal(userId)
+      if (stale()) return
       if (local) {
         setHasProfile(true)
+        setProgramProfileResolving(false)
         return
       }
     } catch (err) {
-      // Malformed local row is not fatal — fall through to cloud.
       console.warn('loadProfileLocal failed', err)
     }
 
-    if (opts.skipCloud) return
+    if (opts.skipCloud) {
+      if (!stale()) setProgramProfileResolving(false)
+      return
+    }
 
     try {
       const cloud = await pullProfileFromCloud(userId)
+      if (stale()) return
       if (cloud) setHasProfile(true)
     } catch (err) {
-      // Network failure should not block the app — user can still
-      // onboard fresh; we'll reconcile later.
       console.warn('pullProfileFromCloud failed', err)
+    } finally {
+      if (!stale()) setProgramProfileResolving(false)
     }
   }
 
-  async function fetchProfile(userId: string) {
+  async function fetchProfile(userId: string, gen: number) {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
+
+    if (authGenRef.current !== gen) return  // superseded by a newer auth event
 
     if (data && !error) {
       setProfile(data as Profile)
@@ -128,10 +160,12 @@ export function useAuth() {
   }
 
   async function signOut() {
+    authGenRef.current += 1  // invalidate any in-flight resolvers
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
     setHasProfile(false)
+    setProgramProfileResolving(false)
   }
 
   async function updateStreak() {
@@ -188,7 +222,7 @@ export function useAuth() {
   return {
     user,
     profile,
-    loading,
+    loading: loading || programProfileResolving,
     hasProfile,
     setHasProfile,
     signInWithMagicLink,
