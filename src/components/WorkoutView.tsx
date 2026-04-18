@@ -1,39 +1,30 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { ChevronDown, ChevronRight, Footprints, Moon, LogOut, Flame, Plus, BarChart3, Check, Timer, TrendingUp, RefreshCw, X } from 'lucide-react'
+import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon } from 'lucide-react'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
-import { DaySelector } from './DaySelector'
 import { TimerOverlay } from './TimerOverlay'
-import { AdaptiveRoutine } from './AdaptiveRoutine'
-import { ProtocolSection } from './ProtocolSection'
-import { PainCheckIn } from './PainCheckIn'
 import { useSession } from '../hooks/useSession'
-import { useProtocol } from '../hooks/useProtocol'
-import { QUAD_PROTOCOL } from '../data/protocols'
-import { DEFAULT_SCHEDULE } from '../data/schedule'
-import { WORKOUT_FOCUS } from '../data/workout-focus'
-import { getProgramWeek, getPeriodConfig, buildWorkoutForDay, initProgramIfNeeded, PROGRAM } from '../data/program'
-import { getExerciseById } from '../data/exercises'
-import { ExerciseDetail } from './ExerciseDetail'
+import { usePlan } from '../hooks/usePlan'
+import { getToday, getWeekView } from '../lib/planSelectors'
 import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
-import type { TimerState, SessionPhase, Exercise } from '../types'
+import type { TimerState, SessionPhase } from '../types'
+import type { PlannedSession } from '../types/plan'
 
-const SELECTED_DAY_KEY = 'workout-tracker:selected-day'
+// ─── localStorage keys ────────────────────────────────────────────────────
+// Session selection is no longer date-based — we persist the session *id*
+// the user is viewing so they can jump between days of the mesocycle and
+// have the choice survive a reload.
+const SELECTED_SESSION_KEY = 'workout-tracker:selected-session-id'
 const HAS_USED_KEY = 'workout-tracker:has-used'
-const CHECKED_SETS_KEY = (workoutId: string) => `workout-tracker:checked-sets:${workoutId}`
-const WEIGHTS_KEY = (workoutId: string) => `workout-tracker:weights:${workoutId}`
-const SELECTED_DAY_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const CHECKED_SETS_KEY = (sessionId: string) => `workout-tracker:checked-sets:${sessionId}`
+const WEIGHTS_KEY = (sessionId: string) => `workout-tracker:weights:${sessionId}`
 
-function loadSelectedDay(fallback: number): number {
+function loadSelectedSessionId(): string | null {
   try {
-    const raw = localStorage.getItem(SELECTED_DAY_KEY)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw) as { day: number; savedAt: string }
-    const age = Date.now() - new Date(parsed.savedAt).getTime()
-    if (age > SELECTED_DAY_MAX_AGE_MS) return fallback
-    return typeof parsed.day === 'number' ? parsed.day : fallback
+    const raw = localStorage.getItem(SELECTED_SESSION_KEY)
+    return raw ? (JSON.parse(raw) as string) : null
   } catch {
-    return fallback
+    return null
   }
 }
 
@@ -56,78 +47,98 @@ interface WorkoutViewProps {
   onNavigateProgress: () => void
 }
 
-export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onNavigateToCapture, onNavigateCardio, onNavigateProgress }: WorkoutViewProps) {
-  const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1 })()
-  const initialSelectedDay = (() => loadSelectedDay(todayIdx))()
-  const initialWorkoutId = DEFAULT_SCHEDULE[initialSelectedDay]?.workout_id ?? null
-  const [selectedDay, setSelectedDay] = useState<number>(initialSelectedDay)
-  const [timer, setTimer] = useState<TimerState | null>(null)
-  const [showWarmup, setShowWarmup] = useState(false)
-  const [showCooldown, setShowCooldown] = useState(false)
+export function WorkoutView({
+  userId,
+  profile,
+  onSignOut,
+  onWorkoutComplete,
+  onNavigateToCapture,
+  onNavigateProgress,
+}: WorkoutViewProps) {
+  const { plan, loading } = usePlan(userId)
+
+  // ─── Selected session ────────────────────────────────────────────────────
+  // Priority: user's explicit choice (persisted) → plan's getToday() →
+  // first available session. Falls back to null when the plan is complete.
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    () => loadSelectedSessionId(),
+  )
+
+  useEffect(() => {
+    if (selectedSessionId) {
+      localStorage.setItem(SELECTED_SESSION_KEY, JSON.stringify(selectedSessionId))
+    } else {
+      localStorage.removeItem(SELECTED_SESSION_KEY)
+    }
+  }, [selectedSessionId])
+
+  const selectedSession: PlannedSession | null = useMemo(() => {
+    if (!plan) return null
+    if (selectedSessionId) {
+      const match = plan.sessions.find(s => s.id === selectedSessionId)
+      if (match) return match
+      // Stored id no longer exists in the plan (e.g., plan regenerated) —
+      // fall through to getToday below. Don't clear state here to avoid
+      // firing a render-phase setState; the effect below handles cleanup.
+    }
+    return getToday(plan)
+  }, [plan, selectedSessionId])
+
+  // If the persisted id points to a session that isn't in this plan, clear it
+  // so a future reload doesn't keep trying to find a ghost session.
+  useEffect(() => {
+    if (!plan || !selectedSessionId) return
+    const exists = plan.sessions.some(s => s.id === selectedSessionId)
+    if (!exists) setSelectedSessionId(null)
+  }, [plan, selectedSessionId])
+
+  const selectedSessionKey = selectedSession?.id ?? null
+
+  // ─── Per-session persistence (checkedSets / weights) ─────────────────────
+  // Keyed by session.id so each day of the mesocycle keeps its own progress.
   const [weights, setWeights] = useState<Record<string, number>>(() =>
-    initialWorkoutId ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(initialWorkoutId)) || {} : {}
+    selectedSessionKey ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {} : {},
   )
   const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
   const [_prs, setPrs] = useState<Record<string, number>>({})
-  const [showPainCheckIn, setShowPainCheckIn] = useState(false)
   const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>(() =>
-    initialWorkoutId ? loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(initialWorkoutId)) || {} : {}
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
+      : {},
   )
-  const [viewingExercise, setViewingExercise] = useState<Exercise | null>(null)
-  const [skippedExercises, setSkippedExercises] = useState<Set<number>>(new Set())
-  const [swaps, setSwaps] = useState<Record<number, number>>({}) // exerciseIdx -> swap offset
+  const [timer, setTimer] = useState<TimerState | null>(null)
   const [hasUsed, setHasUsed] = useState<boolean>(() => localStorage.getItem(HAS_USED_KEY) === 'true')
-  const hydratedForRef = useRef<string | null>(initialWorkoutId)
+  const hydratedForRef = useRef<string | null>(selectedSessionKey)
 
   const { session, startSession, switchPhase, endSession, clearSession } = useSession()
 
-  // Persist selectedDay with 24h TTL
+  // Re-hydrate checkedSets/weights when the selected session changes.
+  // The ref gate ensures the write effects below skip the racing commit that
+  // runs with stale state on the frame we switched sessions.
   useEffect(() => {
-    localStorage.setItem(SELECTED_DAY_KEY, JSON.stringify({ day: selectedDay, savedAt: new Date().toISOString() }))
-  }, [selectedDay])
-  const { logPain } = useProtocol(QUAD_PROTOCOL.id, QUAD_PROTOCOL.total_weeks)
-
-  // Initialize program week tracking
-  useEffect(() => { initProgramIfNeeded() }, [])
-
-  // Load saved weights and PRs on mount
-  useEffect(() => {
-    if (userId) {
-      loadLastWeights(userId).then(setLastWeights)
-      loadPRs(userId).then(setPrs)
-    }
-  }, [userId])
-
-  const schedule = DEFAULT_SCHEDULE
-  const dayInfo = schedule[selectedDay]
-  const workoutId = dayInfo.workout_id
-
-  // Re-hydrate checkedSets/weights on day switch.
-  // Ref gate ensures write effects below skip the racing commit that runs with stale state.
-  useEffect(() => {
-    if (!workoutId) {
+    if (!selectedSessionKey) {
       hydratedForRef.current = null
       setCheckedSets({})
       setWeights({})
       return
     }
-    if (hydratedForRef.current === workoutId) return
-    const savedChecked = loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(workoutId)) || {}
-    const savedWeights = loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(workoutId)) || {}
+    if (hydratedForRef.current === selectedSessionKey) return
+    const savedChecked = loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
+    const savedWeights = loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
     setCheckedSets(savedChecked)
     setWeights(savedWeights)
-    hydratedForRef.current = workoutId
-  }, [workoutId])
+    hydratedForRef.current = selectedSessionKey
+  }, [selectedSessionKey])
 
   useEffect(() => {
-    if (!workoutId || hydratedForRef.current !== workoutId) return
-    localStorage.setItem(CHECKED_SETS_KEY(workoutId), JSON.stringify(checkedSets))
-  }, [workoutId, checkedSets])
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(CHECKED_SETS_KEY(selectedSessionKey), JSON.stringify(checkedSets))
+  }, [selectedSessionKey, checkedSets])
 
   useEffect(() => {
-    if (!workoutId || hydratedForRef.current !== workoutId) return
-    localStorage.setItem(WEIGHTS_KEY(workoutId), JSON.stringify(weights))
-  }, [workoutId, weights])
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(WEIGHTS_KEY(selectedSessionKey), JSON.stringify(weights))
+  }, [selectedSessionKey, weights])
 
   // First-time flag: mark used when a session starts
   useEffect(() => {
@@ -137,50 +148,29 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
     }
   }, [session, hasUsed])
 
-  const pickFirstNonRestDay = useCallback(() => {
-    const firstNonRest = schedule.findIndex(d => !d.is_rest_day)
-    if (firstNonRest >= 0) setSelectedDay(firstNonRest)
-  }, [schedule])
+  // Load saved weights and PRs
+  useEffect(() => {
+    if (userId) {
+      loadLastWeights(userId).then(setLastWeights)
+      loadPRs(userId).then(setPrs)
+    }
+  }, [userId])
 
-  // Build dynamic workout based on program week
-  const programWeek = getProgramWeek()
-  const period = getPeriodConfig(programWeek)
-  const dynamicWorkout = useMemo(
-    () => workoutId ? buildWorkoutForDay(workoutId, programWeek) : null,
-    [workoutId, programWeek]
+  // ─── Derived: week view chips + progress ─────────────────────────────────
+  const currentWeek = selectedSession?.week_number ?? 1
+  const weekSessions = useMemo(() => getWeekView(plan, currentWeek), [plan, currentWeek])
+
+  const exercises = selectedSession?.exercises ?? []
+  const totalSets = exercises.reduce((a, e) => a + e.sets, 0)
+  const doneSets = exercises.reduce(
+    (acc, e, ei) =>
+      acc +
+      Array.from({ length: e.sets }, (_, k) => (checkedSets[`${ei}-${k}`] ? 1 : 0)).reduce<number>(
+        (x, y) => x + y,
+        0,
+      ),
+    0,
   )
-
-  // Resolve swapped exercises
-  const dayProgram = workoutId ? PROGRAM[workoutId] : null
-  const resolvedExercises = useMemo(() => {
-    if (!dynamicWorkout || !dayProgram) return []
-    return dynamicWorkout.exercises.map((ex, i) => {
-      const swapOffset = swaps[i] || 0
-      if (swapOffset === 0) return ex
-      const slot = dayProgram.slots[i]
-      if (!slot) return ex
-      const picked = slot.options[(programWeek - 1 + swapOffset) % slot.options.length]
-      return { ...ex, id: picked.id, name: picked.name }
-    })
-  }, [dynamicWorkout, dayProgram, swaps, programWeek])
-
-  const resolvedCore = useMemo(() => {
-    if (!dynamicWorkout || !dayProgram) return []
-    return dynamicWorkout.coreExercises.map((ex, i) => {
-      const globalIdx = (dynamicWorkout?.exercises.length || 0) + i
-      const swapOffset = swaps[globalIdx] || 0
-      if (swapOffset === 0) return ex
-      const slot = dayProgram.coreSlots[i]
-      if (!slot) return ex
-      const picked = slot.options[(programWeek - 1 + swapOffset) % slot.options.length]
-      return { ...ex, id: picked.id, name: picked.name }
-    })
-  }, [dynamicWorkout, dayProgram, swaps, programWeek])
-
-  const allExercises = [...resolvedExercises, ...resolvedCore]
-  const totalSets = allExercises.reduce((a, e) => a + e.sets, 0)
-  const doneSets = allExercises.reduce((a, e, ei) =>
-    a + Array.from({ length: e.sets }, (_, k) => checkedSets[`${ei}-${k}`] ? 1 as number : 0 as number).reduce((x: number, y: number) => x + y, 0), 0)
 
   const toggleSet = (exerciseIdx: number, setIdx: number) => {
     const key = `${exerciseIdx}-${setIdx}`
@@ -193,35 +183,34 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
 
   // Save session when ending workout
   const handleEndSession = useCallback(async () => {
-    if (!session || !dynamicWorkout) {
+    if (!session || !selectedSession) {
       endSession()
       return
     }
 
     const endedSession = { ...session }
+    const finishedSessionId = selectedSession.id
     endSession()
     setCheckedSets({})
-    if (workoutId) {
-      localStorage.removeItem(CHECKED_SETS_KEY(workoutId))
-      localStorage.removeItem(WEIGHTS_KEY(workoutId))
-    }
+    localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
+    localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
 
     const now = new Date().toISOString()
     await saveSession({
       userId,
-      workoutId: workoutId || '',
-      workoutTitle: dynamicWorkout.title,
+      workoutId: finishedSessionId,
+      workoutTitle: selectedSession.title,
       date: new Date().toISOString().split('T')[0],
       startedAt: endedSession.started_at,
       endedAt: now,
-      phases: endedSession.phases.map(p => p.ended_at ? p : { ...p, ended_at: now }),
+      phases: endedSession.phases.map(p => (p.ended_at ? p : { ...p, ended_at: now })),
       completedSets: doneSets,
       totalSets,
     })
 
     for (const [exerciseId, weight] of Object.entries(weights)) {
       if (weight > 0) {
-        const ex = allExercises.find(e => e.id === exerciseId)
+        const ex = exercises.find(e => e.library_id === exerciseId)
         await saveLastWeight(userId, exerciseId, weight)
         await updatePR(userId, exerciseId, ex?.name || exerciseId, weight)
       }
@@ -233,350 +222,252 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
     loadPRs(userId).then(setPrs)
     setWeights({})
     clearSession()
+  }, [
+    session,
+    selectedSession,
+    userId,
+    weights,
+    doneSets,
+    totalSets,
+    endSession,
+    onWorkoutComplete,
+    exercises,
+    clearSession,
+  ])
 
-    // Pain check-in on lower body days
-    const focus = workoutId ? WORKOUT_FOCUS[workoutId] || [] : []
-    if (focus.some(f => ['legs', 'glutes'].includes(f))) {
-      setShowPainCheckIn(true)
-    }
-  }, [session, dynamicWorkout, workoutId, userId, weights, doneSets, totalSets, endSession, onWorkoutComplete, allExercises])
+  // ─── Render: shell (always shows header) ─────────────────────────────────
+  const Header = (
+    <div className="flex items-center justify-between pt-3 pb-4">
+      <div>
+        <h1 className="text-[22px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
+          My Training Plan
+        </h1>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          {profile?.display_name ? `Hey ${profile.display_name}` : 'Your adaptive program'}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        {(profile?.streak ?? 0) > 0 && (
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand/10 border border-brand/20">
+            <Flame size={14} className="text-brand" />
+            <span className="text-sm font-bold text-brand">{profile?.streak}</span>
+          </div>
+        )}
+        <button
+          onClick={onNavigateProgress}
+          className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-95 transition-all"
+          title="View progress"
+        >
+          <BarChart3 size={16} />
+        </button>
+        <button
+          onClick={onNavigateToCapture}
+          className="p-2 rounded-lg text-brand hover:text-orange-300 active:scale-95 transition-all"
+          title="Add exercise from social media"
+        >
+          <Plus size={18} />
+        </button>
+        <button
+          onClick={onSignOut}
+          className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-95 transition-all"
+          title="Sign out"
+        >
+          <LogOut size={16} />
+        </button>
+      </div>
+    </div>
+  )
 
-  // Phase badge colors
-  const phaseColors: Record<string, string> = {
-    'hypertrophy': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    'strength-hypertrophy': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    'strength': 'bg-red-500/20 text-red-300 border-red-500/30',
-    'deload': 'bg-green-500/20 text-green-300 border-green-500/30',
+  // Loading: no plan resolved yet
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <Loader2 size={32} className="text-brand animate-spin" />
+      </div>
+    )
+  }
+
+  // No plan yet (user landed here without onboarding — defensive fallback)
+  if (!plan) {
+    return (
+      <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
+        <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
+          {Header}
+          <div className="text-center py-16 bg-surface-raised rounded-2xl mt-5 border border-border-subtle">
+            <div className="text-5xl mb-3">🏗️</div>
+            <div className="text-xl font-bold">No plan yet</div>
+            <div className="text-zinc-400 text-sm mt-1.5 px-6">
+              Complete onboarding to generate your personalized training block.
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Plan exists but every session is done — hold for a future "generate next block" flow
+  if (!selectedSession) {
+    return (
+      <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
+        <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
+          {Header}
+          <div className="text-center py-16 bg-surface-raised rounded-2xl mt-5 border border-border-subtle">
+            <div className="text-5xl mb-3">🎉</div>
+            <div className="text-xl font-bold">Plan complete!</div>
+            <div className="text-zinc-400 text-sm mt-1.5 px-6">
+              You finished this block. Generate a new one to keep going.
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Render: active session ──────────────────────────────────────────────
+  const statusDotClass: Record<PlannedSession['status'], string> = {
+    upcoming: 'bg-zinc-500',
+    in_progress: 'bg-brand',
+    completed: 'bg-zinc-700',
+    skipped: 'bg-zinc-800',
   }
 
   return (
     <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
       <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
+        {Header}
 
-        {/* Header */}
-        <div className="flex items-center justify-between pt-3 pb-4">
-          <div>
-            <h1 className="text-[22px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
-              My Training Plan
-            </h1>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {profile?.display_name ? `Hey ${profile.display_name}` : '4 gym days / 1 at-home'}
-            </p>
+        {/* Week label + mesocycle progress */}
+        <div className="flex items-center gap-2 mt-1">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border-subtle bg-surface-raised text-xs font-bold text-zinc-300">
+            Week {currentWeek} of {plan.length_weeks}
           </div>
-          <div className="flex items-center gap-2">
-            {(profile?.streak ?? 0) > 0 && (
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand/10 border border-brand/20">
-                <Flame size={14} className="text-brand" />
-                <span className="text-sm font-bold text-brand">{profile?.streak}</span>
-              </div>
-            )}
-            <button
-              onClick={onNavigateProgress}
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-95 transition-all"
-              title="View progress"
-            >
-              <BarChart3 size={16} />
-            </button>
-            <button
-              onClick={onNavigateToCapture}
-              className="p-2 rounded-lg text-brand hover:text-orange-300 active:scale-95 transition-all"
-              title="Add exercise from social media"
-            >
-              <Plus size={18} />
-            </button>
-            <button
-              onClick={onSignOut}
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-95 transition-all"
-              title="Sign out"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
+          <span className="text-[11px] text-zinc-600">{plan.sessions.length} sessions this block</span>
         </div>
 
-        {/* Day selector */}
-        <DaySelector
-          schedule={schedule}
-          selectedDay={selectedDay}
-          todayIdx={todayIdx}
-          onSelect={setSelectedDay}
-        />
-
-        {selectedDay !== todayIdx && (
-          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500 px-1">
-            <span>Viewing {schedule[selectedDay].day_label} — not today</span>
-            <button
-              onClick={() => setSelectedDay(todayIdx)}
-              className="text-brand font-semibold active:scale-95 transition-transform"
-            >
-              Jump to today
-            </button>
-          </div>
-        )}
-
-        {/* Program week + phase badge */}
-        <div className="flex items-center gap-2 mt-3">
-          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${phaseColors[period.phase] || 'bg-zinc-800 text-zinc-300'}`}>
-            <TrendingUp size={12} />
-            Week {programWeek} — {period.label}
-          </div>
-          <span className="text-[11px] text-zinc-600">{period.intensity}</span>
-        </div>
-
-        {/* Daily cardio banner */}
-        <button
-          onClick={onNavigateCardio}
-          className="w-full flex items-center gap-3 bg-surface-raised border border-border-subtle rounded-2xl px-3.5 py-2.5 mt-3 text-left active:scale-[0.98] transition-transform"
+        {/* Week view: horizontal-scroll session chips */}
+        <div
+          className="flex gap-2 overflow-x-auto mt-3 pb-1 -mx-3 px-3"
+          style={{ scrollbarWidth: 'none' }}
         >
-          <Footprints size={18} className="text-zinc-400 shrink-0" />
-          <div className="flex-1">
-            <div className="font-bold text-[13px]">Daily Cardio</div>
-            <div className="text-xs text-zinc-500">10k steps + 30 min treadmill or 15 min stair master</div>
-          </div>
-          <ChevronRight size={16} className="text-zinc-600 shrink-0" />
-        </button>
-
-        {/* Rest day */}
-        {!dynamicWorkout && (
-          <div className="text-center py-16 bg-surface-raised rounded-2xl mt-5 border border-border-subtle">
-            <div className="text-5xl mb-3">{'😴'}</div>
-            <div className="text-xl font-bold">Rest Day</div>
-            <div className="text-zinc-400 text-sm mt-1.5">Cardio, stretch, and sleep!</div>
-            {!hasUsed && (
+          {weekSessions.map(s => {
+            const isSelected = s.id === selectedSession.id
+            return (
               <button
-                onClick={pickFirstNonRestDay}
-                className="mt-5 px-4 py-2 rounded-xl bg-brand text-white font-bold text-sm active:scale-95 transition-transform"
+                key={s.id}
+                onClick={() => setSelectedSessionId(s.id)}
+                className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all active:scale-95 ${
+                  isSelected
+                    ? 'border-brand bg-brand/10 text-brand'
+                    : 'border-border-subtle bg-surface-raised text-zinc-400'
+                }`}
               >
-                Pick a day to start →
+                <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass[s.status]}`} />
+                <span className="whitespace-nowrap">{s.title}</span>
               </button>
-            )}
-          </div>
-        )}
+            )
+          })}
+        </div>
 
         {/* Workout content */}
-        {dynamicWorkout && workoutId && (
-          <div className="mt-3 space-y-2.5">
+        <div className="mt-3 space-y-2.5">
+          {/* Session bar */}
+          <SessionBar
+            started_at={session?.started_at || null}
+            currentPhase={session?.current_phase || null}
+            phases={session?.phases || []}
+            onStart={() => startSession(selectedSession.id)}
+            onSwitchPhase={(phase: SessionPhase['name']) => switchPhase(phase)}
+            onEnd={handleEndSession}
+          />
 
-            {/* Session bar */}
-            <SessionBar
-              started_at={session?.started_at || null}
-              currentPhase={session?.current_phase || null}
-              phases={session?.phases || []}
-              onStart={() => startSession(workoutId)}
-              onSwitchPhase={(phase: SessionPhase['name']) => switchPhase(phase)}
-              onEnd={handleEndSession}
-            />
+          {/* Progress */}
+          <ProgressBar
+            current={doneSets}
+            total={totalSets}
+            emoji="💪"
+            title={selectedSession.title}
+            estMinutes={selectedSession.estimated_minutes}
+          />
 
-            {/* Progress */}
-            <ProgressBar
-              current={doneSets}
-              total={totalSets}
-              emoji={dynamicWorkout.emoji}
-              title={dynamicWorkout.title}
-              estMinutes={60}
-            />
-
-            {/* Adaptive Warm-Up */}
-            <button
-              onClick={() => setShowWarmup(!showWarmup)}
-              className="w-full flex justify-between items-center bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3 text-sm font-semibold text-zinc-300"
-            >
-              <span>{'🔥'} Warm-Up</span>
-              <ChevronDown size={16} className={`transition-transform ${showWarmup ? 'rotate-180' : ''}`} />
-            </button>
-            {showWarmup && (
-              <AdaptiveRoutine
-                mode="warmup"
-                workoutFocus={WORKOUT_FOCUS[workoutId] || ['full_body']}
-                kneeFlag={profile?.knee_flag}
-                onStartTimer={startTimer}
-              />
-            )}
-
-            {/* Integrated protocol (lower body days) */}
-            <ProtocolSection
-              workoutFocus={WORKOUT_FOCUS[workoutId] || ['full_body']}
-              onStartTimer={startTimer}
-            />
-
-            {/* Main Lifts */}
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5">
-              <div className="text-sm font-bold text-brand uppercase tracking-wide mb-1.5">
-                Main Lifts
-              </div>
-              <div className="text-[11px] text-zinc-600 mb-2">
-                {period.setsMain}x{period.repsMain} • {period.restMain}s rest
-              </div>
-              {resolvedExercises.map((ex, ei) => {
-                if (skippedExercises.has(ei)) return null
-                const isCompleted = Array.from({ length: ex.sets }, (_, k) => checkedSets[`${ei}-${k}`]).every(Boolean)
-                return (
-                  <div key={`${ex.id}-${ei}`} className={`py-2.5 ${ei > 0 ? 'border-t border-zinc-800/50' : ''}`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              const detail = getExerciseById(ex.id)
-                              if (detail) setViewingExercise(detail)
-                            }}
-                            className={`text-[13px] font-semibold text-left underline decoration-zinc-700 underline-offset-2 active:text-brand transition-colors ${isCompleted ? 'text-zinc-500 line-through' : ''}`}
-                          >
-                            {ex.name}
-                          </button>
-                        </div>
-                        <div className="text-[11px] text-zinc-600">{ex.role}</div>
+          {/* Exercises (all roles — main, accessory, core, rehab — come from Gemini) */}
+          <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5">
+            <div className="text-sm font-bold text-brand uppercase tracking-wide mb-1.5">
+              Exercises
+            </div>
+            <div className="text-[11px] text-zinc-600 mb-2">
+              Focus: {selectedSession.focus.join(', ')}
+            </div>
+            {exercises.map((ex, ei) => {
+              const isCompleted = Array.from({ length: ex.sets }, (_, k) => checkedSets[`${ei}-${k}`]).every(
+                Boolean,
+              )
+              return (
+                <div key={`${ex.library_id}-${ei}`} className={`py-2.5 ${ei > 0 ? 'border-t border-zinc-800/50' : ''}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[13px] font-semibold ${isCompleted ? 'text-zinc-500 line-through' : ''}`}>
+                        {ex.name}
                       </div>
-                      <div className="flex items-center gap-1">
-                        {/* Swap */}
-                        <button
-                          onClick={() => setSwaps(prev => ({ ...prev, [ei]: (prev[ei] || 0) + 1 }))}
-                          className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 active:scale-90"
-                          title="Swap exercise"
-                        >
-                          <RefreshCw size={13} />
-                        </button>
-                        {/* Skip */}
-                        <button
-                          onClick={() => setSkippedExercises(prev => new Set(prev).add(ei))}
-                          className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 active:scale-90"
-                          title="Skip exercise"
-                        >
-                          <X size={13} />
-                        </button>
-                        {/* Weight input */}
-                        {lastWeights[ex.id] && (
-                          <span className="text-[10px] text-zinc-600 ml-1">
-                            last: {lastWeights[ex.id]}lb
-                          </span>
-                        )}
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="lbs"
-                          value={weights[ex.id] || ''}
-                          onChange={e => setWeights(prev => ({ ...prev, [ex.id]: Number(e.target.value) }))}
-                          className="w-14 text-center text-xs bg-zinc-800 border border-zinc-700 rounded-lg py-1.5 text-white placeholder-zinc-600"
-                        />
+                      <div className="text-[11px] text-zinc-600">
+                        {ex.sets}×{ex.reps} @RIR {ex.rir} · {ex.rest_seconds}s rest · {ex.role}
                       </div>
+                      {ex.notes && (
+                        <div className="text-[11px] text-zinc-500 mt-0.5 italic">{ex.notes}</div>
+                      )}
                     </div>
-                    {/* Set buttons */}
-                    <div className="flex items-center gap-1.5">
-                      {Array.from({ length: ex.sets }, (_, k) => (
-                        <button
-                          key={k}
-                          onClick={() => toggleSet(ei, k)}
-                          className={`flex-1 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all active:scale-90 ${
-                            checkedSets[`${ei}-${k}`]
-                              ? 'bg-brand text-white'
-                              : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                          }`}
-                        >
-                          {checkedSets[`${ei}-${k}`] ? <Check size={14} /> : k + 1}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => startTimer(ex.rest, 'Rest', 'rest')}
-                        className="h-8 px-2 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700 active:scale-90"
-                      >
-                        <Timer size={14} />
-                      </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {lastWeights[ex.library_id] && (
+                        <span className="text-[10px] text-zinc-600 ml-1">
+                          last: {lastWeights[ex.library_id]}lb
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="lbs"
+                        value={weights[ex.library_id] || ''}
+                        onChange={e =>
+                          setWeights(prev => ({ ...prev, [ex.library_id]: Number(e.target.value) }))
+                        }
+                        className="w-14 text-center text-xs bg-zinc-800 border border-zinc-700 rounded-lg py-1.5 text-white placeholder-zinc-600"
+                      />
                     </div>
                   </div>
-                )
-              })}
-            </div>
-
-            {/* Core */}
-            {resolvedCore.length > 0 && (
-              <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5">
-                <div className="text-sm font-bold text-brand uppercase tracking-wide mb-1.5">
-                  Core
+                  {/* Set buttons */}
+                  <div className="flex items-center gap-1.5">
+                    {Array.from({ length: ex.sets }, (_, k) => (
+                      <button
+                        key={k}
+                        onClick={() => toggleSet(ei, k)}
+                        className={`flex-1 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all active:scale-90 ${
+                          checkedSets[`${ei}-${k}`]
+                            ? 'bg-brand text-white'
+                            : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                        }`}
+                      >
+                        {checkedSets[`${ei}-${k}`] ? <Check size={14} /> : k + 1}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => startTimer(ex.rest_seconds, 'Rest', 'rest')}
+                      className="h-8 px-2 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700 active:scale-90"
+                    >
+                      <Timer size={14} />
+                    </button>
+                  </div>
                 </div>
-                {resolvedCore.map((ex, ci) => {
-                  const globalIdx = resolvedExercises.length + ci
-                  if (skippedExercises.has(globalIdx)) return null
-                  const isCompleted = Array.from({ length: ex.sets }, (_, k) => checkedSets[`${globalIdx}-${k}`]).every(Boolean)
-                  return (
-                    <div key={`${ex.id}-${ci}`} className={`py-2.5 ${ci > 0 ? 'border-t border-zinc-800/50' : ''}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <button
-                          onClick={() => {
-                            const detail = getExerciseById(ex.id)
-                            if (detail) setViewingExercise(detail)
-                          }}
-                          className={`text-[13px] font-semibold text-left underline decoration-zinc-700 underline-offset-2 active:text-brand transition-colors ${isCompleted ? 'text-zinc-500 line-through' : ''}`}
-                        >
-                          {ex.name}
-                        </button>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setSwaps(prev => ({ ...prev, [globalIdx]: (prev[globalIdx] || 0) + 1 }))}
-                            className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 active:scale-90"
-                          >
-                            <RefreshCw size={13} />
-                          </button>
-                          <button
-                            onClick={() => setSkippedExercises(prev => new Set(prev).add(globalIdx))}
-                            className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 active:scale-90"
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {Array.from({ length: ex.sets }, (_, k) => (
-                          <button
-                            key={k}
-                            onClick={() => toggleSet(globalIdx, k)}
-                            className={`flex-1 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all active:scale-90 ${
-                              checkedSets[`${globalIdx}-${k}`]
-                                ? 'bg-brand text-white'
-                                : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                            }`}
-                          >
-                            {checkedSets[`${globalIdx}-${k}`] ? <Check size={14} /> : k + 1}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => startTimer(ex.rest, 'Rest', 'rest')}
-                          className="h-8 px-2 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700 active:scale-90"
-                        >
-                          <Timer size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+              )
+            })}
+          </div>
 
-            {/* Adaptive Cool-Down */}
-            <button
-              onClick={() => setShowCooldown(!showCooldown)}
-              className="w-full flex justify-between items-center bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3 text-sm font-semibold text-zinc-300"
-            >
-              <span>{'🧊'} Cool-Down</span>
-              <ChevronDown size={16} className={`transition-transform ${showCooldown ? 'rotate-180' : ''}`} />
-            </button>
-            {showCooldown && (
-              <AdaptiveRoutine
-                mode="cooldown"
-                workoutFocus={WORKOUT_FOCUS[workoutId] || ['full_body']}
-                kneeFlag={profile?.knee_flag}
-                onStartTimer={startTimer}
-              />
-            )}
-
-            {/* Sleep reminder */}
-            <div className="flex items-center gap-3 bg-purple-soft border border-purple-900/30 rounded-2xl px-3.5 py-3">
-              <Moon size={18} className="text-purple-300 shrink-0" />
-              <div className="text-[13px] text-purple-300">
-                <strong>Sleep is key!</strong> Aim for 7-9 hours.
-              </div>
+          {/* Sleep reminder */}
+          <div className="flex items-center gap-3 bg-purple-soft border border-purple-900/30 rounded-2xl px-3.5 py-3">
+            <Moon size={18} className="text-purple-300 shrink-0" />
+            <div className="text-[13px] text-purple-300">
+              <strong>Sleep is key!</strong> Aim for 7-9 hours.
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Timer overlay */}
@@ -586,27 +477,6 @@ export function WorkoutView({ userId, profile, onSignOut, onWorkoutComplete, onN
           label={timer.label}
           type={timer.type}
           onClose={() => setTimer(null)}
-        />
-      )}
-
-      {/* Exercise detail modal */}
-      {viewingExercise && (
-        <div className="fixed inset-0 z-50 bg-surface overflow-y-auto">
-          <ExerciseDetail
-            exercise={viewingExercise}
-            onBack={() => setViewingExercise(null)}
-          />
-        </div>
-      )}
-
-      {/* Pain check-in */}
-      {showPainCheckIn && (
-        <PainCheckIn
-          onSubmit={(painLevel, swelling, notes) => {
-            logPain(painLevel, swelling, notes)
-            setShowPainCheckIn(false)
-          }}
-          onSkip={() => setShowPainCheckIn(false)}
         />
       )}
     </div>
