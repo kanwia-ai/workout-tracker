@@ -63,10 +63,20 @@ describe('DayStrip', () => {
     expect(screen.getAllByRole('button')).toHaveLength(7)
   })
 
-  it('shows session title on training days and REST on others', () => {
+  it('marks training days vs rest days via data-rest attribute', () => {
+    // Session 1 (Mon, day_of_week=0) has focus=['glutes'] → legs bucket → plum.
+    // Session 2 (Thu, day_of_week=3) has focus=['chest'] → upper bucket → sun.
     const plan = makePlan([
-      makeSession(1, 1, { day_of_week: 0, title: 'Lower A - Glutes & Quads' }),
-      makeSession(1, 2, { day_of_week: 3, title: 'Upper A - Push Focus' }),
+      makeSession(1, 1, {
+        day_of_week: 0,
+        title: 'Lower A - Glutes & Quads',
+        focus: ['glutes'],
+      }),
+      makeSession(1, 2, {
+        day_of_week: 3,
+        title: 'Upper A - Push Focus',
+        focus: ['chest'],
+      }),
     ])
     render(
       <DayStrip
@@ -78,11 +88,21 @@ describe('DayStrip', () => {
         weekStartDate={MONDAY}
       />,
     )
-    // Title snippets (first 14 chars)
-    expect(screen.getByText('Lower A - Glut')).toBeInTheDocument()
-    expect(screen.getByText('Upper A - Push')).toBeInTheDocument()
-    // 5 rest days (7 total - 2 training)
-    expect(screen.getAllByText('REST')).toHaveLength(5)
+    const buttons = screen.getAllByRole('button')
+    // Training days carry data-rest="false" and the matching focus bucket.
+    expect(buttons[0].getAttribute('data-rest')).toBe('false')
+    expect(buttons[0].getAttribute('data-focus')).toBe('legs')
+    expect(buttons[3].getAttribute('data-rest')).toBe('false')
+    expect(buttons[3].getAttribute('data-focus')).toBe('upper')
+    // 5 rest days (7 total - 2 training).
+    const restCount = buttons.filter(
+      (b) => b.getAttribute('data-rest') === 'true',
+    ).length
+    expect(restCount).toBe(5)
+    // Aria-labels describe the state in words (no more visible REST text).
+    expect(buttons[0].getAttribute('aria-label')).toContain('legs day')
+    expect(buttons[3].getAttribute('aria-label')).toContain('upper day')
+    expect(buttons[1].getAttribute('aria-label')).toContain('rest day')
   })
 
   it('calls onSelect with day_of_week when a day is tapped', () => {
@@ -137,8 +157,11 @@ describe('DayStrip', () => {
     const buttons = screen.getAllByRole('button')
     expect(buttons[3].getAttribute('aria-pressed')).toBe('true')
     expect(buttons[0].getAttribute('aria-pressed')).toBe('false')
-    // And the selected button has a visually distinct class
-    expect(buttons[3].className).not.toBe(buttons[0].className)
+    // And the selected button has a visually distinct inline style
+    // (brand-tinted border vs. neutral --lumo-border).
+    expect(buttons[3].getAttribute('style')).not.toBe(
+      buttons[0].getAttribute('style'),
+    )
   })
 
   it('renders correct date numbers from weekStartDate', () => {
