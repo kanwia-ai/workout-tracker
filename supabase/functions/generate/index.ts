@@ -3,12 +3,19 @@
 // response. Runs as a Deno edge function; do not import Node-only modules.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from 'npm:@google/genai@^1'
-import { pingSchema } from './schemas.ts'
+import { mesocycleSchema, pingSchema } from './schemas.ts'
+import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
 // Ops that require the Gemini SDK. Keep in sync as new LLM-backed ops land.
-const GEMINI_OPS = new Set(['ping'])
+const GEMINI_OPS = new Set(['ping', 'generate_plan'])
+
+// Hard cap on serialized exercise-pool size. Gemini 2.5 Flash tolerates large
+// inputs, but the pool is untrusted client input and we don't want a runaway
+// prompt to rack up token costs. ~500KB of JSON is already ~5x our typical
+// 200-entry pool.
+const MAX_POOL_JSON_BYTES = 500_000
 
 // Read the key and construct the SDK on demand so a key added AFTER boot
 // takes effect on the next request (instead of waiting for the isolate to
@@ -73,6 +80,78 @@ Deno.serve(async (req) => {
         // body and confuse the client's Zod parse.
         if (!r.text) {
           throw new Error('gemini returned empty response (blocked or no candidates)')
+        }
+        return new Response(r.text, { headers: JSON_HEADERS })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return new Response(JSON.stringify({ error: message }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    if (body.op === 'generate_plan') {
+      // Validate payload shape at the entry. The client sends trusted-ish data,
+      // but we still guard to fail fast with a useful error instead of a
+      // Gemini "invalid input" deep in the pipeline.
+      const payload = (body.payload ?? {}) as {
+        profile?: unknown
+        exercisePool?: unknown
+        weeks?: unknown
+      }
+      if (!payload.profile || typeof payload.profile !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.profile is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!Array.isArray(payload.exercisePool)) {
+        return new Response(
+          JSON.stringify({ error: 'payload.exercisePool is required and must be an array' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      const weeks = typeof payload.weeks === 'number' && Number.isFinite(payload.weeks)
+        ? Math.round(payload.weeks)
+        : 6
+      if (weeks < 3 || weeks > 12) {
+        return new Response(
+          JSON.stringify({ error: 'payload.weeks must be between 3 and 12' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      // Untrusted pool size guard — reject before we serialize into the prompt.
+      const poolJson = JSON.stringify(payload.exercisePool)
+      if (poolJson.length > MAX_POOL_JSON_BYTES) {
+        return new Response(
+          JSON.stringify({
+            error: `payload.exercisePool exceeds ${MAX_POOL_JSON_BYTES} bytes (got ${poolJson.length}); slim the pool client-side`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      try {
+        const prompt = buildPlanPrompt({
+          profile: payload.profile,
+          exercisePool: payload.exercisePool as ExercisePoolEntry[],
+          weeks,
+        })
+        const r = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: mesocycleSchema,
+          },
+        })
+        if (!r.text) {
+          return new Response(
+            JSON.stringify({ error: 'gemini returned empty response (blocked or no candidates)' }),
+            { status: 502, headers: JSON_HEADERS },
+          )
         }
         return new Response(r.text, { headers: JSON_HEADERS })
       } catch (err) {
