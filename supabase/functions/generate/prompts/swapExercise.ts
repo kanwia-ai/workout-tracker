@@ -15,12 +15,19 @@
 
 import type { ExercisePoolEntry } from './generatePlan.ts'
 
-export type SwapReason =
-  | 'machine_busy'
-  | 'too_hard'
-  | 'too_easy'
-  | 'injury_flare'
-  | 'generic'
+export const SWAP_REASONS = [
+  'machine_busy',
+  'too_hard',
+  'too_easy',
+  'injury_flare',
+  'generic',
+] as const
+
+export type SwapReason = (typeof SWAP_REASONS)[number]
+
+export function isSwapReason(value: unknown): value is SwapReason {
+  return typeof value === 'string' && (SWAP_REASONS as readonly string[]).includes(value)
+}
 
 export interface BuildSwapPromptInput {
   profile: unknown

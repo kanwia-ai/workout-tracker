@@ -5,7 +5,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from 'npm:@google/genai@^1'
 import { mesocycleSchema, pingSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
-import { buildSwapPrompt } from './prompts/swapExercise.ts'
+import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
@@ -246,9 +246,11 @@ Deno.serve(async (req) => {
           { status: 400, headers: JSON_HEADERS },
         )
       }
-      if (typeof payload.reason !== 'string' || payload.reason.length === 0) {
+      if (!isSwapReason(payload.reason)) {
         return new Response(
-          JSON.stringify({ error: 'payload.reason is required and must be a non-empty string' }),
+          JSON.stringify({
+            error: `payload.reason must be one of: ${SWAP_REASONS.join(', ')}`,
+          }),
           { status: 400, headers: JSON_HEADERS },
         )
       }
@@ -318,18 +320,29 @@ Deno.serve(async (req) => {
           }
           // Dedup check: match on library_id (canonical) AND case-insensitive
           // name (defensive, since the client currently sends names in
-          // completedExercisesInSession). If either matches, reject — we'd
-          // rather a retry than hand back a dup.
+          // completedExercisesInSession). Also bars returning the original
+          // exercise — Gemini is told not to, but belt-and-suspenders.
           const completed = payload.completedExercisesInSession as string[]
+          const completedIds = new Set(completed)
           const completedLower = new Set(completed.map((c) => c.toLowerCase()))
           const candidateName = parsed.replacement?.name ?? ''
+          const currentExercise = payload.currentExercise as {
+            library_id?: string
+            name?: string
+          } | null
+          if (currentExercise?.library_id) {
+            completedIds.add(currentExercise.library_id)
+          }
+          if (currentExercise?.name) {
+            completedLower.add(currentExercise.name.toLowerCase())
+          }
           if (
-            completed.includes(libraryId) ||
+            completedIds.has(libraryId) ||
             completedLower.has(candidateName.toLowerCase())
           ) {
             return new Response(
               JSON.stringify({
-                error: `gemini returned an exercise already completed in this session: ${candidateName || libraryId}`,
+                error: `gemini returned an exercise already completed or matching the original: ${candidateName || libraryId}`,
                 duplicate: candidateName || libraryId,
               }),
               { status: 502, headers: JSON_HEADERS },

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon } from 'lucide-react'
+import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon, RefreshCw } from 'lucide-react'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
@@ -7,6 +7,8 @@ import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { getToday, getWeekView } from '../lib/planSelectors'
 import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
+import { loadProfileLocal } from '../lib/profileRepo'
+import { generatePlan } from '../lib/planGen'
 import type { TimerState, SessionPhase } from '../types'
 import type { PlannedSession } from '../types/plan'
 
@@ -109,6 +111,35 @@ export function WorkoutView({
   const [timer, setTimer] = useState<TimerState | null>(null)
   const [hasUsed, setHasUsed] = useState<boolean>(() => localStorage.getItem(HAS_USED_KEY) === 'true')
   const hydratedForRef = useRef<string | null>(selectedSessionKey)
+  // Retry state for the "No plan yet" fallback. Lets a user whose
+  // last generatePlan failed trigger a fresh generation from the
+  // profile they've already persisted locally.
+  const [retryingPlan, setRetryingPlan] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
+
+  const handleRetryPlan = useCallback(async () => {
+    setRetryError(null)
+    setRetryingPlan(true)
+    try {
+      const profile = await loadProfileLocal(userId)
+      if (!profile) {
+        setRetryError('No profile found — try signing out and back in.')
+        setRetryingPlan(false)
+        return
+      }
+      await generatePlan(profile, userId, 6)
+      // usePlan is reactive — the new mesocycle will populate on its own.
+      setRetryingPlan(false)
+    } catch (err) {
+      console.error('retry generatePlan failed', err)
+      setRetryError(
+        err instanceof Error && /network|fetch failed|timed out/i.test(err.message)
+          ? 'Network hiccup. Try again in a moment.'
+          : 'Something went wrong. Try again.',
+      )
+      setRetryingPlan(false)
+    }
+  }, [userId])
 
   const { session, startSession, switchPhase, endSession, clearSession } = useSession()
 
@@ -287,10 +318,9 @@ export function WorkoutView({
     )
   }
 
-  // No plan yet (user landed here without onboarding OR their last
-  // generatePlan call failed — both paths land here today).
-  // TODO(phase-5): distinguish "onboarding incomplete" from "generation failed"
-  // and surface a Retry button that calls generatePlan again for the failure case.
+  // No plan yet — this happens when the user onboarded but generation
+  // failed (or after wiping IndexedDB while keeping Supabase). Offer a
+  // Retry that pulls the persisted profile and regenerates.
   if (!plan) {
     return (
       <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
@@ -299,9 +329,21 @@ export function WorkoutView({
           <div className="text-center py-16 bg-surface-raised rounded-2xl mt-5 border border-border-subtle">
             <div className="text-5xl mb-3">🏗️</div>
             <div className="text-xl font-bold">No plan yet</div>
-            <div className="text-zinc-400 text-sm mt-1.5 px-6">
-              Complete onboarding to generate your personalized training block.
+            <div className="text-zinc-400 text-sm mt-1.5 px-6 mb-5">
+              Your profile is saved. Regenerate your training block to get going.
             </div>
+            <button
+              onClick={handleRetryPlan}
+              disabled={retryingPlan}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-brand text-black font-bold disabled:opacity-50"
+            >
+              {retryingPlan
+                ? <><Loader2 size={16} className="animate-spin" /> Generating…</>
+                : <><RefreshCw size={16} /> Generate plan</>}
+            </button>
+            {retryError && (
+              <div className="text-sm text-red-400 mt-4">{retryError}</div>
+            )}
           </div>
         </div>
       </div>

@@ -1,16 +1,14 @@
 /**
- * Manual browser test steps for first-time onboarding routing (Task 1.6):
+ * Manual browser test steps for first-time onboarding + plan generation:
  * 1. Wipe IndexedDB + sign-out in dev mode.
  * 2. Sign in (dev bypass).
  * 3. Should see onboarding. Click through all 8 steps.
- * 4. Confirm. Lands on WorkoutView showing "No plan yet".
- * 5. Reload. Should go straight to WorkoutView (profile persisted).
- *
- * Plan generation (generatePlan) is intentionally NOT wired here — that
- * happens in Task 2.4. For now onboarding completion only persists the
- * profile and flips hasProfile to true.
+ * 4. Confirm → GeneratingPlan screen → WorkoutView with the generated plan.
+ * 5. Reload → goes straight to WorkoutView with the persisted plan.
+ * 6. Wipe IndexedDB only (keep Supabase). Reload → pulls profile from cloud,
+ *    regenerates plan, lands on WorkoutView.
  */
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { WorkoutView } from './components/WorkoutView'
 import { LoginScreen } from './components/LoginScreen'
@@ -45,27 +43,51 @@ function App() {
   const [globalTimer, setGlobalTimer] = useState<TimerState | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
-  // Retained so the "Try again" button can retry generation without
-  // kicking the user back through onboarding. Set when generation
-  // fails, cleared on success.
   const [pendingProfile, setPendingProfile] = useState<UserProgramProfile | null>(null)
+  // Generation token — captured at `runGeneration` call time. If the user
+  // signs out or switches accounts mid-generation, the stale promise's
+  // setters are dropped so they can't clobber the new session's state.
+  const genTokenRef = useRef(0)
+
+  // Reset generation state whenever the authed user changes so a previous
+  // user's error/pending doesn't bleed into a new sign-in.
+  useEffect(() => {
+    setIsGenerating(false)
+    setGenerationError(null)
+    setPendingProfile(null)
+    genTokenRef.current += 1
+  }, [user?.id])
+
+  function friendlyGenerationError(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err)
+    if (/network|fetch failed|timed out/i.test(raw)) {
+      return 'Network hiccup. Check your connection and try again.'
+    }
+    if (/GEMINI_API_KEY missing/i.test(raw)) {
+      return 'The plan generator isn\'t configured on the server yet. Try again in a moment.'
+    }
+    if (/hallucinated|invalid shape|returned invalid/i.test(raw)) {
+      return 'The plan came back malformed. A retry usually fixes this.'
+    }
+    return 'Something went wrong generating your plan. Try again.'
+  }
 
   async function runGeneration(profile: UserProgramProfile, userId: string) {
+    const gen = ++genTokenRef.current
+    const stale = () => genTokenRef.current !== gen
     setGenerationError(null)
     setIsGenerating(true)
     try {
       await generatePlan(profile, userId, 6)
+      if (stale()) return
       setPendingProfile(null)
       setIsGenerating(false)
       setHasProfile(true)
     } catch (err) {
       console.error('generatePlan failed', err)
+      if (stale()) return
       setPendingProfile(profile)
-      setGenerationError(
-        err instanceof Error
-          ? err.message
-          : 'Something went wrong generating your plan.',
-      )
+      setGenerationError(friendlyGenerationError(err))
       setIsGenerating(false)
     }
   }
@@ -100,14 +122,13 @@ function App() {
             The plan generator hit an error. Your profile is saved — we just
             need to retry the build.
           </p>
-          <p className="text-xs text-zinc-400 max-w-sm mb-8 break-words">
-            {generationError}
-          </p>
+          <p className="text-zinc-400 max-w-sm mb-8">{generationError}</p>
           <button
             onClick={() => runGeneration(pendingProfile, user.id)}
-            className="px-6 py-3 rounded-2xl bg-brand text-black font-bold"
+            disabled={isGenerating}
+            className="px-6 py-3 rounded-2xl bg-brand text-black font-bold disabled:opacity-50"
           >
-            Try again
+            {isGenerating ? 'Retrying…' : 'Try again'}
           </button>
         </div>
       )

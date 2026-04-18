@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { MuscleGroup, SessionStatus } from './plan'
+import { MuscleGroup, SessionStatus, PlannedExerciseSchema } from './plan'
 
 const EDGE_SCHEMAS_PATH = resolve(
   import.meta.dirname ?? process.cwd(),
@@ -39,5 +39,22 @@ describe('edge schema enum drift guard', () => {
   it('SESSION_STATUS_ENUM matches SessionStatus.options', () => {
     const edge = extractEnumArray(source, 'SESSION_STATUS_ENUM')
     expect(edge).toEqual(SessionStatus.options)
+  })
+
+  it('plannedExerciseSchema property set matches PlannedExerciseSchema keys', () => {
+    // The edge schema is shared by generate_plan and swap_exercise ops — any
+    // field rename on the Zod side must land on the edge side too or both
+    // ops will silently drift. Parse the property-names list from the edge
+    // schema's `propertyOrdering` (which, by convention, includes every
+    // property) and assert equality with the Zod shape's keys.
+    const match = source.match(/plannedExerciseSchema\s*=\s*\{[\s\S]*?propertyOrdering:\s*\[([^\]]+)\]/)
+    if (!match) throw new Error('could not locate plannedExerciseSchema propertyOrdering')
+    const edgeKeys = match[1]
+      .split(',')
+      .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
+      .filter(Boolean)
+      .sort()
+    const zodKeys = Object.keys(PlannedExerciseSchema.shape).sort()
+    expect(edgeKeys).toEqual(zodKeys)
   })
 })
