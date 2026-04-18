@@ -4,6 +4,7 @@ import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
 import { DayStrip } from './DayStrip'
+import { RoutineSlot } from './RoutineSlot'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { getToday } from '../lib/planSelectors'
@@ -471,6 +472,11 @@ export function WorkoutView({
                 estMinutes={selectedSession.estimated_minutes}
               />
 
+              {/* Warmup slot (auto-generates on first view, locked until regenerate) */}
+              {cachedProfile && (
+                <RoutineSlot session={selectedSession} kind="warmup" profile={cachedProfile} />
+              )}
+
               {/* Exercises (all roles — main, accessory, core, rehab — come from Gemini) */}
               <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5">
                 <div className="text-sm font-bold text-brand uppercase tracking-wide mb-1.5">
@@ -552,6 +558,14 @@ export function WorkoutView({
                   )
                 })}
               </div>
+
+              {/* Cardio + cool-down slots (auto-generate on first view) */}
+              {cachedProfile && (
+                <>
+                  <RoutineSlot session={selectedSession} kind="cardio" profile={cachedProfile} />
+                  <RoutineSlot session={selectedSession} kind="cooldown" profile={cachedProfile} />
+                </>
+              )}
 
               {/* Sleep reminder */}
               <div className="flex items-center gap-3 bg-purple-soft border border-purple-900/30 rounded-2xl px-3.5 py-3">
