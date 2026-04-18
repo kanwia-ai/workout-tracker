@@ -9,7 +9,6 @@ import {
   type ExtractedExercise,
   type ExtractionResult,
 } from '../lib/gemini'
-import type { ScheduleDay } from '../types'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -18,14 +17,12 @@ type FlowStep = 'input' | 'loading' | 'review' | 'save-target' | 'done'
 
 interface ExerciseCaptureProps {
   onBack: () => void
-  schedule: ScheduleDay[]
   onSaveToLibrary: (exercises: ExtractedExercise[]) => void
-  onSaveToDay: (exercises: ExtractedExercise[], dayIdx: number) => void
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function ExerciseCapture({ onBack, schedule, onSaveToLibrary, onSaveToDay }: ExerciseCaptureProps) {
+export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProps) {
   const [mode, setMode] = useState<CaptureMode>('choose')
   const [step, setStep] = useState<FlowStep>('input')
   const [url, setUrl] = useState('')
@@ -34,7 +31,6 @@ export function ExerciseCapture({ onBack, schedule, onSaveToLibrary, onSaveToDay
   const [editingExercises, setEditingExercises] = useState<ExtractedExercise[]>([])
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [selectedExercises, setSelectedExercises] = useState<Set<number>>(new Set())
-  const [showDayPicker, setShowDayPicker] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -164,16 +160,6 @@ export function ExerciseCapture({ onBack, schedule, onSaveToLibrary, onSaveToDay
     setStep('done')
   }, [getSelectedExercises, onSaveToLibrary])
 
-  const handleSaveToDay = useCallback((dayIdx: number) => {
-    const selected = getSelectedExercises()
-    if (selected.length === 0) return
-    onSaveToDay(selected, dayIdx)
-    const dayLabel = schedule[dayIdx]?.day_label || `Day ${dayIdx}`
-    setSavedMessage(`${selected.length} exercise${selected.length > 1 ? 's' : ''} added to ${dayLabel}`)
-    setShowDayPicker(false)
-    setStep('done')
-  }, [getSelectedExercises, onSaveToDay, schedule])
-
   // ─── Reset ─────────────────────────────────────────────────────────────────
 
   const handleReset = useCallback(() => {
@@ -188,7 +174,6 @@ export function ExerciseCapture({ onBack, schedule, onSaveToLibrary, onSaveToDay
     setEditingExercises([])
     setEditingIdx(null)
     setSelectedExercises(new Set())
-    setShowDayPicker(false)
     setSavedMessage('')
   }, [])
 
@@ -595,37 +580,6 @@ export function ExerciseCapture({ onBack, schedule, onSaveToLibrary, onSaveToDay
                   <Plus size={16} />
                   Add to Library
                 </button>
-
-                <button
-                  onClick={() => setShowDayPicker(!showDayPicker)}
-                  disabled={selectedExercises.size === 0}
-                  className="w-full py-3.5 rounded-2xl font-bold text-sm bg-surface-raised border border-border-subtle text-zinc-300 active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
-                >
-                  <ChevronDown size={16} className={`transition-transform ${showDayPicker ? 'rotate-180' : ''}`} />
-                  Add to Workout Day
-                </button>
-
-                {/* Day picker */}
-                {showDayPicker && (
-                  <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3 space-y-1.5">
-                    {schedule.map((day, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleSaveToDay(i)}
-                        disabled={day.is_rest_day}
-                        className="w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-colors active:scale-[0.98] disabled:opacity-30 disabled:active:scale-100"
-                        style={{
-                          background: day.is_rest_day ? 'transparent' : '#222226',
-                        }}
-                      >
-                        <span className={day.is_rest_day ? 'text-zinc-600' : 'text-zinc-300'}>
-                          {day.day_label} — {day.label}
-                        </span>
-                        {!day.is_rest_day && <Plus size={14} className="text-brand" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>

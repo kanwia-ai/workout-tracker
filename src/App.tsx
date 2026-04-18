@@ -20,7 +20,6 @@ import { CardioPage } from './components/CardioPage'
 import { BottomNav, type AppView } from './components/BottomNav'
 import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
-import { DEFAULT_SCHEDULE } from './data/schedule'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { saveProfileLocal, syncProfileUp } from './lib/profileRepo'
 import { generatePlan } from './lib/planGen'
@@ -208,12 +207,8 @@ function App() {
       {view === 'capture' && (
         <ExerciseCapture
           onBack={() => setView('workout')}
-          schedule={DEFAULT_SCHEDULE}
           onSaveToLibrary={(exercises: ExtractedExercise[]) => {
             console.log('Saving to library:', exercises)
-          }}
-          onSaveToDay={(exercises: ExtractedExercise[], dayIdx: number) => {
-            console.log('Saving to day', dayIdx, ':', exercises)
           }}
         />
       )}
