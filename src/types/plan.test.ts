@@ -32,6 +32,8 @@ function makeSession(week: number, ordinal: number, id: string) {
     focus,
     title: `Week ${week} — Session ${ordinal}`,
     estimated_minutes: 55,
+    day_of_week: (ordinal - 1) * 2, // 0, 2, 4 for 3/wk cadence
+    rationale: `Week ${week} session ${ordinal}; placed for recovery balance.`,
     exercises: [
       makePlannedExercise(),
       makePlannedExercise({
@@ -106,6 +108,8 @@ describe('PlannedSessionSchema rejections', () => {
     title: 'x', estimated_minutes: 45,
     exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
     status: 'upcoming',
+    day_of_week: 0,
+    rationale: 'Monday full-body; fresh week start, 48h to next session.',
   } as const
 
   it('rejects empty exercises array', () => {
@@ -127,6 +131,36 @@ describe('PlannedSessionSchema rejections', () => {
   })
 })
 
+describe('PlannedSessionSchema day_of_week + rationale', () => {
+  const baseSession = {
+    id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
+    title: 'x', estimated_minutes: 45,
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
+    status: 'upcoming',
+    day_of_week: 0,
+    rationale: 'Lower body Monday; 48h before Thursday Lower B.',
+  } as const
+
+  it('accepts a session with valid day_of_week + rationale', () => {
+    const ok = PlannedSessionSchema.safeParse({ ...baseSession })
+    expect(ok.success).toBe(true)
+  })
+  it('rejects day_of_week=7 (outside 0-6)', () => {
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, day_of_week: 7 }).success).toBe(false)
+  })
+  it('rejects day_of_week=-1 (outside 0-6)', () => {
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, day_of_week: -1 }).success).toBe(false)
+  })
+  it('rejects missing rationale', () => {
+    const { rationale: _rationale, ...noRationale } = baseSession
+    expect(PlannedSessionSchema.safeParse(noRationale).success).toBe(false)
+  })
+  it('rejects rationale longer than 280 characters', () => {
+    const longRationale = 'a'.repeat(281)
+    expect(PlannedSessionSchema.safeParse({ ...baseSession, rationale: longRationale }).success).toBe(false)
+  })
+})
+
 describe('MesocycleSchema rejections', () => {
   const baseMeso = {
     id: 'm-1', user_id: 'u-1', generated_at: '2026-04-17T00:00:00Z',
@@ -136,6 +170,8 @@ describe('MesocycleSchema rejections', () => {
       title: 'x', estimated_minutes: 45,
       exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
       status: 'upcoming',
+      day_of_week: 0,
+      rationale: 'Baseline session for schema test.',
     }],
   }
 

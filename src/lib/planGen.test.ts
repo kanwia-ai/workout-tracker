@@ -85,6 +85,8 @@ function validPartialPlan(): Omit<Mesocycle, 'user_id' | 'generated_at' | 'profi
         title: 'Lower A',
         estimated_minutes: 55,
         status: 'upcoming',
+        day_of_week: 0,
+        rationale: 'Lower A Monday; fresh week start, 48h until Lower B.',
         exercises: [
           {
             library_id: 'fedb:hip-thrust',

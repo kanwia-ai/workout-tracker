@@ -78,6 +78,8 @@ function makeSession(exercises: PlannedExercise[]): PlannedSession {
     title: 'Lower A',
     estimated_minutes: 55,
     status: 'upcoming',
+    day_of_week: 0,
+    rationale: 'Lower A Monday; fresh week start.',
     exercises,
   }
 }

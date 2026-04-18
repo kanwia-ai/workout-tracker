@@ -28,6 +28,8 @@ export const PlannedSessionSchema = z.object({
   title: z.string(),
   estimated_minutes: z.number().int().min(10).max(180),
   exercises: z.array(PlannedExerciseSchema).min(1),
+  day_of_week: z.number().int().min(0).max(6),   // 0=Mon .. 6=Sun
+  rationale: z.string().max(280),                // ≤280 chars, one short sentence
   status: SessionStatus,
   intended_date: z.string().optional(),   // hint only — YYYY-MM-DD or ISO, not validated strictly
 })

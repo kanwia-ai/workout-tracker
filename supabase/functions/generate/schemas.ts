@@ -64,11 +64,13 @@ const plannedSessionSchema = {
       items: plannedExerciseSchema,
       minItems: 1,
     },
+    day_of_week: { type: 'integer', minimum: 0, maximum: 6 },
+    rationale: { type: 'string', maxLength: 280 },
     status: { type: 'string', enum: SESSION_STATUS_ENUM },
     intended_date: { type: 'string' },
   },
-  required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'status'],
-  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'status', 'intended_date'],
+  required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status'],
+  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date'],
 } as const
 
 // Mesocycle — the server fills in user_id, generated_at, and profile_snapshot
