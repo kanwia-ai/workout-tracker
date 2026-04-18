@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { loadProfileLocal, pullProfileFromCloud } from '../lib/profileRepo'
 import type { User } from '@supabase/supabase-js'
 
 interface Profile {
@@ -28,34 +29,80 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hasProfile, setHasProfile] = useState(false)
 
   useEffect(() => {
     if (DEV_BYPASS) {
-      setUser({ id: 'dev-user' } as User)
+      const devUser = { id: 'dev-user' } as User
+      setUser(devUser)
       setProfile(DEV_PROFILE)
       setLoading(false)
+      // Check local cache for a UserProgramProfile; dev bypass does NOT
+      // auto-grant hasProfile — it still goes through onboarding unless
+      // there's a cached profile for this dev user.
+      void resolveProgramProfile(devUser.id, { skipCloud: true })
       return
     }
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else setLoading(false)
+      if (session?.user) {
+        fetchProfile(session.user.id)
+        void resolveProgramProfile(session.user.id)
+      } else {
+        setLoading(false)
+      }
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else {
+      if (session?.user) {
+        fetchProfile(session.user.id)
+        void resolveProgramProfile(session.user.id)
+      } else {
         setProfile(null)
+        setHasProfile(false)
         setLoading(false)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  /**
+   * Resolve whether the user has a UserProgramProfile. Offline-first:
+   * check the local Dexie cache synchronously, then attempt a cloud pull
+   * that can also populate the cache (and flip hasProfile to true) if the
+   * user onboarded on another device.
+   *
+   * skipCloud: true for the dev-bypass path — no auth session means the
+   * Supabase query would 401; just trust the local cache.
+   */
+  async function resolveProgramProfile(userId: string, opts: { skipCloud?: boolean } = {}) {
+    try {
+      const local = await loadProfileLocal(userId)
+      if (local) {
+        setHasProfile(true)
+        return
+      }
+    } catch (err) {
+      // Malformed local row is not fatal — fall through to cloud.
+      console.warn('loadProfileLocal failed', err)
+    }
+
+    if (opts.skipCloud) return
+
+    try {
+      const cloud = await pullProfileFromCloud(userId)
+      if (cloud) setHasProfile(true)
+    } catch (err) {
+      // Network failure should not block the app — user can still
+      // onboard fresh; we'll reconcile later.
+      console.warn('pullProfileFromCloud failed', err)
+    }
+  }
 
   async function fetchProfile(userId: string) {
     const { data, error } = await supabase
@@ -84,6 +131,7 @@ export function useAuth() {
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
+    setHasProfile(false)
   }
 
   async function updateStreak() {
@@ -137,5 +185,14 @@ export function useAuth() {
     if (data) setProfile(data as Profile)
   }
 
-  return { user, profile, loading, signInWithMagicLink, signOut, updateStreak }
+  return {
+    user,
+    profile,
+    loading,
+    hasProfile,
+    setHasProfile,
+    signInWithMagicLink,
+    signOut,
+    updateStreak,
+  }
 }
