@@ -381,3 +381,281 @@ describe('WorkoutView manual rest timer', () => {
     expect(screen.getByTestId('timer-seconds')).toHaveTextContent('90')
   })
 })
+
+describe('WorkoutView preamble + Lumo per-set reactions', () => {
+  // Use real timers so async state settles and the reaction timeout can be
+  // observed; the reaction bubble renders with animation but the test only
+  // checks the initial render state.
+  beforeEach(() => {
+    vi.useRealTimers()
+    localStorage.setItem('workout-tracker:selected-dow', '0')
+  })
+
+  it('renders a copy-pool preamble string (not a hardcoded literal)', async () => {
+    // Seed Math.random so the pick is deterministic.
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0)
+    vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
+    const { COPY } = await import('../lib/copy')
+    render(<WorkoutView {...baseProps} />)
+
+    const preamble = screen.getByTestId('workout-preamble')
+    // The preamble text must come from the tier-2 preamble pools or the
+    // rest-flex line (when restState is set). On first render, we expect
+    // a line from preamble_* pools.
+    const text = preamble.textContent ?? ''
+    const candidatePools = [
+      ...COPY[2].preamble_morning,
+      ...COPY[2].preamble_afternoon,
+      ...COPY[2].preamble_evening,
+    ].map((t) => t.replace('{name}', 'Juno'))
+    const matched = candidatePools.some((candidate) => text.includes(candidate))
+    expect(matched).toBe(true)
+    spy.mockRestore()
+  })
+
+  it('fires a Lumo reaction bubble on set complete with a setDone pool line', async () => {
+    vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
+    const { COPY } = await import('../lib/copy')
+    render(<WorkoutView {...baseProps} />)
+
+    expect(screen.queryByTestId('lumo-reaction')).not.toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: /Mark set 1 of romanian deadlift/i }),
+    )
+    const reaction = screen.getByTestId('lumo-reaction')
+    expect(reaction).toBeInTheDocument()
+    expect(reaction.getAttribute('data-is-pr')).toBe('false')
+    // Reaction text must come from the tier-2 setDone pool.
+    const reactionText = screen.getByTestId('lumo-reaction-text').textContent
+    expect(COPY[2].setDone).toContain(reactionText)
+  })
+
+  it('rotates reaction lines across consecutive set taps (never repeats)', async () => {
+    vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
+    render(<WorkoutView {...baseProps} />)
+
+    const firstBtn = screen.getByRole('button', {
+      name: /Mark set 1 of romanian deadlift/i,
+    })
+    fireEvent.click(firstBtn)
+    const firstLine = screen.getByTestId('lumo-reaction-text').textContent
+
+    const secondBtn = screen.getByRole('button', {
+      name: /Mark set 2 of romanian deadlift/i,
+    })
+    fireEvent.click(secondBtn)
+    const secondLine = screen.getByTestId('lumo-reaction-text').textContent
+    // With anti-repeat the lines must be different.
+    expect(secondLine).not.toBe(firstLine)
+  })
+
+  it('fires a setDonePR reaction when the tap also beats the stored PR', async () => {
+    const { loadPRs } = await import('../lib/persistence')
+    const { COPY } = await import('../lib/copy')
+    vi.mocked(loadPRs).mockResolvedValueOnce({ 'ex:rdl': 95 })
+    vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
+    render(<WorkoutView {...baseProps} />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const weightInput = screen.getAllByPlaceholderText(/lbs/i)[0]
+    fireEvent.change(weightInput, { target: { value: '105' } })
+    fireEvent.click(
+      screen.getByRole('button', { name: /Mark set 1 of romanian deadlift/i }),
+    )
+
+    const reaction = screen.getByTestId('lumo-reaction')
+    expect(reaction.getAttribute('data-is-pr')).toBe('true')
+    const reactionText = screen.getByTestId('lumo-reaction-text').textContent
+    expect(COPY[2].setDonePR).toContain(reactionText)
+  })
+
+  it('renders a ProgressStrip in the session body', async () => {
+    vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
+    render(<WorkoutView {...baseProps} />)
+    expect(screen.getByTestId('progress-strip')).toBeInTheDocument()
+  })
+})
+
+describe('WorkoutView warmup sets', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    localStorage.setItem('workout-tracker:selected-dow', '0')
+  })
+
+  function makeWarmupSession(): PlannedSession {
+    // Three exercises spanning the three warmup kinds:
+    //   1. compound (main_lift role) → 3 warmup rows
+    //   2. accessory → 1 warmup row
+    //   3. rehab → 0 warmup rows
+    return makeSession({
+      exercises: [
+        {
+          library_id: 'ex:squat',
+          name: 'back squat',
+          sets: 3,
+          reps: '5',
+          rir: 2,
+          rest_seconds: 120,
+          role: 'main_lift',
+        },
+        {
+          library_id: 'ex:curl',
+          name: 'bicep curl',
+          sets: 3,
+          reps: '10',
+          rir: 2,
+          rest_seconds: 60,
+          role: 'accessory',
+        },
+        {
+          library_id: 'ex:bird-dog',
+          name: 'bird dog',
+          sets: 2,
+          reps: '10',
+          rir: 0,
+          rest_seconds: 30,
+          role: 'rehab',
+        },
+      ],
+    })
+  }
+
+  it('renders 3 warmup rows for compound main_lift exercises', () => {
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    const compoundRows = screen.getByTestId('warmup-rows-0')
+    expect(compoundRows.children.length).toBe(3)
+  })
+
+  it('renders 1 warmup row for accessory exercises', () => {
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    const accessoryRows = screen.getByTestId('warmup-rows-1')
+    expect(accessoryRows.children.length).toBe(1)
+  })
+
+  it('renders 0 warmup rows for rehab exercises', () => {
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    expect(screen.queryByTestId('warmup-rows-2')).not.toBeInTheDocument()
+  })
+
+  it('tapping a warmup does NOT trigger PR detection', async () => {
+    const { loadPRs } = await import('../lib/persistence')
+    vi.mocked(loadPRs).mockResolvedValueOnce({ 'ex:squat': 95 })
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Set a heavy working weight so a WORKING set would trigger a PR.
+    const weightInput = screen.getAllByPlaceholderText(/lbs/i)[0]
+    fireEvent.change(weightInput, { target: { value: '200' } })
+
+    // Tap the first warmup row on the compound.
+    const warmup = screen.getByRole('button', {
+      name: /Mark warmup 1\/3 of back squat/i,
+    })
+    fireEvent.click(warmup)
+
+    // No PR dialog should fire — warmups are not working sets.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('tapping a warmup fires a warmupDone reaction bubble (pool line)', async () => {
+    const { COPY } = await import('../lib/copy')
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    const warmup = screen.getByRole('button', {
+      name: /Mark warmup 1\/3 of back squat/i,
+    })
+    fireEvent.click(warmup)
+
+    const reaction = screen.getByTestId('lumo-reaction')
+    expect(reaction).toBeInTheDocument()
+    expect(reaction.getAttribute('data-is-pr')).toBe('false')
+    const text = screen.getByTestId('lumo-reaction-text').textContent
+    expect(COPY[2].warmupDone).toContain(text)
+    // And the text must NOT be from the setDone pool — warmups get their own voice.
+    expect(COPY[2].setDone).not.toContain(text)
+  })
+
+  it('tapping a warmup does NOT auto-open a RestBanner', () => {
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+
+    expect(screen.queryByTestId('rest-banner')).not.toBeInTheDocument()
+    const warmup = screen.getByRole('button', {
+      name: /Mark warmup 1\/3 of back squat/i,
+    })
+    fireEvent.click(warmup)
+    // Warmups use a softer flow — no full rest banner modal between ramp sets.
+    expect(screen.queryByTestId('rest-banner')).not.toBeInTheDocument()
+  })
+
+  it('warmup tap fires navigator.vibrate with a 5ms softer pulse', () => {
+    const vibrate = vi.fn().mockReturnValue(true)
+    Object.defineProperty(window.navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vibrate,
+    })
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+    const warmup = screen.getByRole('button', {
+      name: /Mark warmup 1\/3 of back squat/i,
+    })
+    fireEvent.click(warmup)
+    expect(vibrate).toHaveBeenCalledWith(5)
+  })
+
+  it('working-set tap does fire the 10ms haptic (unchanged)', () => {
+    const vibrate = vi.fn().mockReturnValue(true)
+    Object.defineProperty(window.navigator, 'vibrate', {
+      configurable: true,
+      writable: true,
+      value: vibrate,
+    })
+    vi.mocked(usePlan).mockReturnValue({
+      plan: makePlan([makeWarmupSession()]),
+      loading: false,
+    })
+    render(<WorkoutView {...baseProps} />)
+    fireEvent.click(
+      screen.getByRole('button', { name: /Mark set 1 of back squat/i }),
+    )
+    expect(vibrate).toHaveBeenCalledWith(10)
+  })
+})

@@ -1,6 +1,23 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react'
-import { LogOut, Flame, Plus, BarChart3, Timer, Loader2, Moon, RefreshCw, Info, ChevronDown } from 'lucide-react'
-import { ProgressBar } from './ProgressBar'
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type CSSProperties,
+} from 'react'
+import {
+  LogOut,
+  Flame,
+  Plus,
+  BarChart3,
+  Timer,
+  Loader2,
+  Moon,
+  RefreshCw,
+  Info,
+  ChevronDown,
+} from 'lucide-react'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
 import { DayStrip } from './DayStrip'
@@ -13,47 +30,57 @@ import { RestBanner } from './RestBanner'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { getToday } from '../lib/planSelectors'
-import { saveSession, saveLastWeight, updatePR, loadLastWeights, loadPRs } from '../lib/persistence'
+import {
+  saveSession,
+  saveLastWeight,
+  updatePR,
+  loadLastWeights,
+  loadPRs,
+} from '../lib/persistence'
 import { loadProfileLocal } from '../lib/profileRepo'
 import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
 import { SwapSheet } from './SwapSheet'
-import { getCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
+import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
 import type { TimerState, SessionPhase } from '../types'
 import type { PlannedSession, PlannedExercise } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 
-// ─── Manual browser verification (not automated) ─────────────────────────
-// 1. Load app → DayStrip shows 7 days, today is highlighted.
-// 2. Today's session renders below the strip.
-// 3. Tap Wednesday → Wed's session renders (or the rest card if Wed is rest).
-// 4. Reload the page → selectedDow persists (Wednesday stays selected).
-// 5. On rest days, a Lumo sleepy-state rest card renders where the session
-//    content used to be (engine doesn't generate rest content yet — deferred).
-// 6. Per-set weight expand (2P.12): tap chevron next to weight input →
-//    row of N small Set 1/Set 2/... inputs appears. Typing in any input
-//    disables the single-weight input and makes it display the max value.
-//    Collapsing the caret hides the per-set inputs but preserves the data.
-//    Reload → per-set values persist per session.
-// 7. (P3.B3) Tapping a set-complete circle: fills the circle, fires a
-//    particle burst, 10ms haptic (if supported), shows a rest banner for
-//    the exercise's rest_seconds, and surfaces the PR celebration when
-//    the logged weight beats the stored PR. Lumo state reflects all of
-//    the above (thinking → cheer → flex during rest → celebrate at 100%).
+// ─── Design reference ────────────────────────────────────────────────────
+// Layout ported from /tmp/workout-app-design/screens.jsx → SessionScreen.
+// Elements preserved verbatim in spirit:
+//   - Lumo + speech bubble at the top (Fraunces italic, left tail)
+//   - ProgressStrip ("today's work") showing done / total sets + a gradient bar
+//   - Inline RestBanner that auto-opens on set-complete
+//   - LiftCards with circular set buttons (54px) — not pill chips
+//   - Per-tap Lumo reaction bubble, rotating through a large cheeky pool
+//   - PR celebration triggered on set-complete when effective weight beats
+//     the stored PR
+//
+// What's new vs. screens.jsx: WARMUP SETS (R3 Tier A) render as distinct,
+// lighter-opacity rows BEFORE the working-set circles. Compound lifts get 3
+// ramp sets (50% × 10, 70% × 5, 85% × 3), accessory lifts get 1 light set.
+// Rehab / mobility roles skip warmups entirely.
+//
+// Also preserved (not in the mock): Dexie-backed persistence, Gemini
+// plan generation, swap flow (SwapSheet), info overlay (ExerciseInfoSheet),
+// per-set expand chevron, routine slots (warmup/cardio/cooldown),
+// 7-day DayStrip.
 // ─────────────────────────────────────────────────────────────────────────
 
-// ─── localStorage keys ────────────────────────────────────────────────────
-// Selection semantics moved from session id (Phase 1) to day-of-week
-// (0-6, Mon=0). The old key is intentionally left alone — no cleanup — so
-// users with Phase-1 state just fall back to today's dow on first load.
+// ─── localStorage keys ───────────────────────────────────────────────────
 const SELECTED_DOW_KEY = 'workout-tracker:selected-dow'
 const HAS_USED_KEY = 'workout-tracker:has-used'
-const CHECKED_SETS_KEY = (sessionId: string) => `workout-tracker:checked-sets:${sessionId}`
-const WEIGHTS_KEY = (sessionId: string) => `workout-tracker:weights:${sessionId}`
-// Per-set weights (Task 2P.12). Outer key = ex.library_id; inner array
-// indexed 0..sets-1. Stored alongside the single weight value and treated
-// as the source of truth when ANY entry is non-zero.
-const PER_SET_WEIGHTS_KEY = (sessionId: string) => `workout-tracker:per-set-weights:${sessionId}`
+const CHECKED_SETS_KEY = (sessionId: string) =>
+  `workout-tracker:checked-sets:${sessionId}`
+const WEIGHTS_KEY = (sessionId: string) =>
+  `workout-tracker:weights:${sessionId}`
+// Per-set weights. Outer key = ex.library_id; inner array indexed 0..sets-1.
+const PER_SET_WEIGHTS_KEY = (sessionId: string) =>
+  `workout-tracker:per-set-weights:${sessionId}`
+// Warmup checked state. Keyed "ei-wi" (exercise index, warmup index).
+const WARMUP_CHECKED_KEY = (sessionId: string) =>
+  `workout-tracker:warmup-checked:${sessionId}`
 
 // JS Date.getDay(): 0=Sun..6=Sat. App convention: 0=Mon..6=Sun.
 function toAppDow(jsDow: number): number {
@@ -76,7 +103,12 @@ function loadSelectedDow(): number {
     const raw = localStorage.getItem(SELECTED_DOW_KEY)
     if (raw === null) return todayDow()
     const parsed = JSON.parse(raw)
-    if (typeof parsed === 'number' && parsed >= 0 && parsed <= 6 && Number.isInteger(parsed)) {
+    if (
+      typeof parsed === 'number' &&
+      parsed >= 0 &&
+      parsed <= 6 &&
+      Number.isInteger(parsed)
+    ) {
       return parsed
     }
     return todayDow()
@@ -106,9 +138,148 @@ function readCheekLevel(): CheekLevel {
   return DEFAULT_CHEEK
 }
 
+type TimeOfDay = 'morning' | 'afternoon' | 'evening'
+
+function timeOfDay(hour: number): TimeOfDay {
+  if (hour < 12) return 'morning'
+  if (hour < 18) return 'afternoon'
+  return 'evening'
+}
+
+function preambleKey(tod: TimeOfDay): 'preamble_morning' | 'preamble_afternoon' | 'preamble_evening' {
+  return tod === 'morning'
+    ? 'preamble_morning'
+    : tod === 'afternoon'
+      ? 'preamble_afternoon'
+      : 'preamble_evening'
+}
+
+// ─── Warmup classification (local — proper schema comes in later phase) ──
+// Compound lifts get 3 ramp sets; accessory / isolation gets 1 light set;
+// rehab / mobility / core / cardio skip warmups. We classify from `role`
+// first, then fall back to an exercise-name keyword heuristic so Gemini's
+// looser role strings (e.g. "main lift", "Main Lift", "compound") still
+// produce the correct count.
+
+type WarmupKind = 'compound' | 'accessory' | 'none'
+
+const COMPOUND_KEYWORDS = [
+  'squat',
+  'deadlift',
+  'bench',
+  'press',
+  'row',
+  'clean',
+  'snatch',
+  'pull-up',
+  'pullup',
+  'chin-up',
+  'chinup',
+  'dip',
+  'thrust',
+]
+
+function classifyWarmup(ex: PlannedExercise): WarmupKind {
+  const role = ex.role?.toLowerCase() ?? ''
+  if (/rehab|mobility|core|cardio|cool.?down/.test(role)) return 'none'
+  if (/main.?lift|compound/.test(role)) return 'compound'
+  if (/accessory|isolation/.test(role)) {
+    // Even in accessory role, if the name suggests a compound pattern, bump it.
+    const name = ex.name.toLowerCase()
+    if (COMPOUND_KEYWORDS.some((kw) => name.includes(kw))) return 'compound'
+    return 'accessory'
+  }
+  // Unknown role — fall back to the exercise name.
+  const name = ex.name.toLowerCase()
+  if (COMPOUND_KEYWORDS.some((kw) => name.includes(kw))) return 'compound'
+  return 'accessory'
+}
+
+interface WarmupRow {
+  /** Percentage of working weight (0..1), or null when no working weight yet. */
+  pct: number | null
+  /** Ramp rep target. */
+  reps: number
+  /** Label shown next to the circle ("warmup 1/3", "warmup"). */
+  label: string
+  /** Scaled load in lbs (rounded to nearest 5), or null when unknown. */
+  weight: number | null
+}
+
+/**
+ * Compute the ramp-set rows for an exercise. Pure — safe to call per render.
+ *
+ * Returns:
+ *   - compound:  3 rows at 50/70/85% × 10/5/3 reps
+ *   - accessory: 1 row at 60% × 8 reps
+ *   - none:      empty array
+ *
+ * Weights are rounded to the nearest 5 lb for clean plate math. If no working
+ * weight is known yet, each row's `weight` is null and the render shows
+ * "light" / "easy" instead of a number.
+ */
+function computeWarmupSets(
+  ex: PlannedExercise,
+  workingWeight: number,
+): WarmupRow[] {
+  const kind = classifyWarmup(ex)
+  if (kind === 'none') return []
+
+  const round5 = (n: number): number | null => {
+    if (!(workingWeight > 0)) return null
+    return Math.max(0, Math.round(n / 5) * 5)
+  }
+
+  if (kind === 'compound') {
+    return [
+      {
+        pct: 0.5,
+        reps: 10,
+        label: 'warmup 1/3',
+        weight: round5(workingWeight * 0.5),
+      },
+      {
+        pct: 0.7,
+        reps: 5,
+        label: 'warmup 2/3',
+        weight: round5(workingWeight * 0.7),
+      },
+      {
+        pct: 0.85,
+        reps: 3,
+        label: 'warmup 3/3',
+        weight: round5(workingWeight * 0.85),
+      },
+    ]
+  }
+
+  return [
+    {
+      pct: 0.6,
+      reps: 8,
+      label: 'warmup',
+      weight: round5(workingWeight * 0.6),
+    },
+  ]
+}
+
+function formatWarmupDetail(row: WarmupRow, kind: WarmupKind): string {
+  if (row.weight != null) {
+    return `${Math.round(row.pct! * 100)}% · ${row.weight}lb × ${row.reps}`
+  }
+  return kind === 'compound' ? 'light' : 'easy'
+}
+
+// ─── Props ──────────────────────────────────────────────────────────────
+
 interface WorkoutViewProps {
   userId: string
-  profile: { display_name: string; avatar_emoji: string; streak: number; knee_flag: boolean } | null
+  profile: {
+    display_name: string
+    avatar_emoji: string
+    streak: number
+    knee_flag: boolean
+  } | null
   onSignOut: () => void
   onWorkoutComplete: () => void
   onNavigateToCapture: () => void
@@ -126,36 +297,32 @@ export function WorkoutView({
 }: WorkoutViewProps) {
   const { plan, loading } = usePlan(userId)
 
-  // ─── Selected day-of-week ────────────────────────────────────────────────
-  // Selection is by dow (0-6, Mon=0). The actual PlannedSession is derived
-  // from plan + currentWeek + selectedDow — rest days resolve to null.
+  // ─── Selected day-of-week ──────────────────────────────────────────────
   const [selectedDow, setSelectedDow] = useState<number>(() => loadSelectedDow())
 
   useEffect(() => {
     localStorage.setItem(SELECTED_DOW_KEY, JSON.stringify(selectedDow))
   }, [selectedDow])
 
-  // Which mesocycle week are we looking at? The week_number of the plan's
-  // "upcoming" session (i.e., the next training day in progress order), or
-  // 1 when the plan has no upcoming sessions left.
   const currentWeek = useMemo(() => getToday(plan)?.week_number ?? 1, [plan])
 
   const weekSessions = useMemo(
-    () => (plan ? plan.sessions.filter(s => s.week_number === currentWeek) : []),
+    () => (plan ? plan.sessions.filter((s) => s.week_number === currentWeek) : []),
     [plan, currentWeek],
   )
 
   const selectedSession: PlannedSession | null = useMemo(() => {
-    return weekSessions.find(s => s.day_of_week === selectedDow) ?? null
+    return weekSessions.find((s) => s.day_of_week === selectedDow) ?? null
   }, [weekSessions, selectedDow])
 
   const selectedSessionKey = selectedSession?.id ?? null
   const weekStartDate = useMemo(() => getWeekStartDate(new Date()), [])
 
-  // ─── Per-session persistence (checkedSets / weights) ─────────────────────
-  // Keyed by session.id so each day of the mesocycle keeps its own progress.
+  // ─── Per-session persistence ───────────────────────────────────────────
   const [weights, setWeights] = useState<Record<string, number>>(() =>
-    selectedSessionKey ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {} : {},
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
+      : {},
   )
   const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
   const [prs, setPrs] = useState<Record<string, number>>({})
@@ -164,38 +331,37 @@ export function WorkoutView({
       ? loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
       : {},
   )
-  // Per-set weights: Record<ex.library_id, number[]>. Persists to localStorage
-  // under PER_SET_WEIGHTS_KEY(sessionId). When any entry is non-zero, the
-  // single-weight input is disabled and shows the max per-set value.
+  const [checkedWarmups, setCheckedWarmups] = useState<Record<string, boolean>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, boolean>>(WARMUP_CHECKED_KEY(selectedSessionKey)) || {}
+      : {},
+  )
   const [perSetWeights, setPerSetWeights] = useState<Record<string, number[]>>(() =>
     selectedSessionKey
       ? loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
       : {},
   )
-  // Which exercise rows have the per-set panel expanded (keyed by library_id).
-  // Not persisted — always starts collapsed on session load.
   const [perSetExpanded, setPerSetExpanded] = useState<Record<string, boolean>>({})
   const [timer, setTimer] = useState<TimerState | null>(null)
-  const [hasUsed, setHasUsed] = useState<boolean>(() => localStorage.getItem(HAS_USED_KEY) === 'true')
+  const [hasUsed, setHasUsed] = useState<boolean>(
+    () => localStorage.getItem(HAS_USED_KEY) === 'true',
+  )
   const hydratedForRef = useRef<string | null>(selectedSessionKey)
-  // Retry state for the "No plan yet" fallback. Lets a user whose
-  // last generatePlan failed trigger a fresh generation from the
-  // profile they've already persisted locally.
   const [retryingPlan, setRetryingPlan] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
 
-  // ─── Lumo / celebration / rest ──────────────────────────────────────────
-  // Inline rest banner state; hides the legacy TimerOverlay for auto-triggered
-  // rest while still allowing manual "start timer" taps to use it.
+  // ─── Lumo / celebration / rest ─────────────────────────────────────────
   interface RestState {
     seconds: number
     startedAt: number
     exerciseName: string
+    encouragement: string
   }
   const [restState, setRestState] = useState<RestState | null>(null)
-  // Particle burst trigger — bumping this number fires a fresh burst.
-  const [particleTrigger, setParticleTrigger] = useState(0)
-  // PR celebration payload (null = hidden).
+  const [burstKey, setBurstKey] = useState<string | null>(null)
+  const [burstTrigger, setBurstTrigger] = useState(0)
+  // Warmup bursts are smaller (count=4) than working-set bursts (count=8).
+  const [burstIsWarmup, setBurstIsWarmup] = useState(false)
   interface PRPayload {
     exerciseName: string
     oldValue: string
@@ -203,6 +369,34 @@ export function WorkoutView({
   }
   const [prPayload, setPrPayload] = useState<PRPayload | null>(null)
   const cheekLevel = readCheekLevel()
+
+  // Per-set Lumo reaction bubble state.
+  interface ReactionState {
+    text: string
+    isPR: boolean
+    id: number
+  }
+  const [reaction, setReaction] = useState<ReactionState | null>(null)
+  const reactionTimeoutRef = useRef<number | null>(null)
+  // Anti-repeat refs for pool-sampled copy. Each pool gets its own ref so
+  // setDone and warmupDone rotate independently.
+  const lastSetDoneRef = useRef<string | null>(null)
+  const lastSetDonePRRef = useRef<string | null>(null)
+  const lastWarmupDoneRef = useRef<string | null>(null)
+  const lastRestStartRef = useRef<string | null>(null)
+  const lastRestSkipRef = useRef<string | null>(null)
+  // Preamble line is picked once per session-mount.
+  const preambleRef = useRef<{ sessionId: string | null; text: string } | null>(
+    null,
+  )
+
+  useEffect(() => {
+    return () => {
+      if (reactionTimeoutRef.current !== null) {
+        window.clearTimeout(reactionTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleRetryPlan = useCallback(async () => {
     setRetryError(null)
@@ -215,7 +409,6 @@ export function WorkoutView({
         return
       }
       await generatePlan(profile, userId, 6)
-      // usePlan is reactive — the new mesocycle will populate on its own.
       setRetryingPlan(false)
     } catch (err) {
       console.error('retry generatePlan failed', err)
@@ -230,23 +423,18 @@ export function WorkoutView({
 
   const { session, startSession, switchPhase, endSession, clearSession } = useSession()
 
-  // ─── Swap state ──────────────────────────────────────────────────────────
-  // We keep the cached profile (for swap prompts) and the index of the
-  // exercise the user is currently swapping. `null` means the sheet is closed.
+  // ─── Swap state ────────────────────────────────────────────────────────
   const [cachedProfile, setCachedProfile] = useState<UserProgramProfile | null>(null)
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
   const [infoLibraryId, setInfoLibraryId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load on mount / when userId changes. App.tsx doesn't pass the profile
-    // through, so we fetch it locally from Dexie here (it was persisted
-    // during onboarding and/or pulled from Supabase by the auth hook).
     let cancelled = false
     loadProfileLocal(userId)
-      .then(p => {
+      .then((p) => {
         if (!cancelled) setCachedProfile(p)
       })
-      .catch(err => {
+      .catch((err) => {
         console.error('WorkoutView: failed to load profile for swap', err)
       })
     return () => {
@@ -285,12 +473,11 @@ export function WorkoutView({
   )
 
   // Re-hydrate checkedSets/weights when the selected session changes.
-  // The ref gate ensures the write effects below skip the racing commit that
-  // runs with stale state on the frame we switched sessions.
   useEffect(() => {
     if (!selectedSessionKey) {
       hydratedForRef.current = null
       setCheckedSets({})
+      setCheckedWarmups({})
       setWeights({})
       setPerSetWeights({})
       setPerSetExpanded({})
@@ -298,11 +485,16 @@ export function WorkoutView({
       return
     }
     if (hydratedForRef.current === selectedSessionKey) return
-    const savedChecked = loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
-    const savedWeights = loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
+    const savedChecked =
+      loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
+    const savedWarmups =
+      loadStoredRecord<Record<string, boolean>>(WARMUP_CHECKED_KEY(selectedSessionKey)) || {}
+    const savedWeights =
+      loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
     const savedPerSet =
       loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
     setCheckedSets(savedChecked)
+    setCheckedWarmups(savedWarmups)
     setWeights(savedWeights)
     setPerSetWeights(savedPerSet)
     setPerSetExpanded({})
@@ -317,6 +509,11 @@ export function WorkoutView({
 
   useEffect(() => {
     if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(WARMUP_CHECKED_KEY(selectedSessionKey), JSON.stringify(checkedWarmups))
+  }, [selectedSessionKey, checkedWarmups])
+
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
     localStorage.setItem(WEIGHTS_KEY(selectedSessionKey), JSON.stringify(weights))
   }, [selectedSessionKey, weights])
 
@@ -325,7 +522,6 @@ export function WorkoutView({
     localStorage.setItem(PER_SET_WEIGHTS_KEY(selectedSessionKey), JSON.stringify(perSetWeights))
   }, [selectedSessionKey, perSetWeights])
 
-  // First-time flag: mark used when a session starts
   useEffect(() => {
     if (session && !hasUsed) {
       localStorage.setItem(HAS_USED_KEY, 'true')
@@ -333,7 +529,6 @@ export function WorkoutView({
     }
   }, [session, hasUsed])
 
-  // Load saved weights and PRs
   useEffect(() => {
     if (userId) {
       loadLastWeights(userId).then(setLastWeights)
@@ -341,7 +536,7 @@ export function WorkoutView({
     }
   }, [userId])
 
-  // ─── Derived: session progress ───────────────────────────────────────────
+  // ─── Derived: session progress ─────────────────────────────────────────
   const exercises = selectedSession?.exercises ?? []
   const totalSets = exercises.reduce((a, e) => a + e.sets, 0)
   const doneSets = exercises.reduce(
@@ -354,19 +549,8 @@ export function WorkoutView({
     0,
   )
 
-  // Lumo state derived from session progress + rest. The plan-loading and
-  // rest-day branches early-return before this computation runs.
-  const lumoSessionState: LumoState = restState
-    ? 'flex'
-    : doneSets === 0
-      ? 'cheer'
-      : doneSets >= totalSets && totalSets > 0
-        ? 'celebrate'
-        : 'cheer'
+  const sessionComplete = totalSets > 0 && doneSets >= totalSets
 
-  // Effective per-exercise working weight: prefer per-set max when any entry
-  // is non-zero, else fall back to the single weight input. Used for PR
-  // detection on set-complete.
   function effectiveWeight(ex: PlannedExercise): number {
     const perSetArr = perSetWeights[ex.library_id] ?? []
     const perSetMax = perSetArr.reduce((m, v) => (v > m ? v : m), 0)
@@ -374,57 +558,124 @@ export function WorkoutView({
     return weights[ex.library_id] || 0
   }
 
+  const hasAnyPR = Object.values(prs).some((v) => v > 0)
+
+  const preambleText: string = useMemo(() => {
+    if (!selectedSession) return ''
+    const sid = selectedSession.id + (sessionComplete ? ':complete' : '')
+    if (preambleRef.current && preambleRef.current.sessionId === sid) {
+      return preambleRef.current.text
+    }
+    const name = profile?.display_name || 'you'
+    if (sessionComplete) {
+      const text = pickCopy('setDonePR', cheekLevel)
+      preambleRef.current = { sessionId: sid, text }
+      return text
+    }
+    const hour = new Date().getHours()
+    const key = preambleKey(timeOfDay(hour))
+    const text = pickCopy(key, cheekLevel, undefined, { name })
+    preambleRef.current = { sessionId: sid, text }
+    return text
+  }, [selectedSession, sessionComplete, profile?.display_name, cheekLevel])
+
+  const preambleLumoState: LumoState = useMemo(() => {
+    if (!selectedSession) return 'sleepy'
+    if (sessionComplete) return 'celebrate'
+    if (restState) return 'flex'
+    if (doneSets > 0) return 'cheer'
+    const hour = new Date().getHours()
+    if (hour < 12) return 'cheer'
+    if (hasAnyPR) return 'flex'
+    return 'thinking'
+  }, [selectedSession, sessionComplete, restState, doneSets, hasAnyPR])
+
+  // Fire a Lumo reaction bubble for ~2s.
+  const fireReaction = useCallback((text: string, isPR: boolean) => {
+    if (reactionTimeoutRef.current !== null) {
+      window.clearTimeout(reactionTimeoutRef.current)
+    }
+    const id = Date.now()
+    setReaction({ text, isPR, id })
+    reactionTimeoutRef.current = window.setTimeout(() => {
+      setReaction((cur) => (cur && cur.id === id ? null : cur))
+      reactionTimeoutRef.current = null
+    }, 2000)
+  }, [])
+
+  // ─── Toggle a WORKING set. Wires haptic + burst + rest + PR + reaction. ──
   const toggleSet = (exerciseIdx: number, setIdx: number) => {
     const key = `${exerciseIdx}-${setIdx}`
     const wasDone = !!checkedSets[key]
-    setCheckedSets(prev => ({ ...prev, [key]: !wasDone }))
-    if (wasDone) return // untoggle — don't fire side-effects
+    setCheckedSets((prev) => ({ ...prev, [key]: !wasDone }))
+    if (wasDone) return
 
     const ex = exercises[exerciseIdx]
     if (!ex) return
 
-    // Haptic
     try {
       navigator.vibrate?.(10)
     } catch {
-      // vibrate can throw in some privacy modes; safe to swallow
+      // swallow
     }
 
-    // Fire particle burst
-    setParticleTrigger(t => t + 1)
+    setBurstKey(key)
+    setBurstIsWarmup(false)
+    setBurstTrigger((t) => t + 1)
 
-    // Trigger inline rest banner. Zero rest on an exercise skips the banner.
     if (ex.rest_seconds > 0) {
       setRestState({
         seconds: ex.rest_seconds,
         startedAt: Date.now(),
         exerciseName: ex.name,
+        encouragement: pickCopy('restStart', cheekLevel, lastRestStartRef),
       })
     }
 
-    // PR detection. Compare the exercise's effective working weight against
-    // the stored PR. The actual supabase upsert happens on handleEndSession
-    // (updatePR), we just surface the celebration modal immediately so the
-    // user gets the "ok, menace" moment at the right time.
     const w = effectiveWeight(ex)
     const prev = prs[ex.library_id] ?? 0
-    if (w > 0 && w > prev) {
-      // Optimistically bump the local PR map so consecutive sets on the same
-      // exercise at the same weight don't re-fire the modal.
-      setPrs(prevPrs => ({ ...prevPrs, [ex.library_id]: w }))
+    const beatPR = w > 0 && w > prev
+
+    if (beatPR) {
+      setPrs((prevPrs) => ({ ...prevPrs, [ex.library_id]: w }))
       setPrPayload({
         exerciseName: ex.name,
         oldValue: prev > 0 ? `${prev} lb` : '—',
         newValue: `${w} lb`,
       })
+      fireReaction(pickCopy('setDonePR', cheekLevel, lastSetDonePRRef), true)
+    } else {
+      fireReaction(pickCopy('setDone', cheekLevel, lastSetDoneRef), false)
     }
+  }
+
+  // ─── Toggle a WARMUP tap. Smaller burst, softer haptic, warmupDone pool. ─
+  // Warmups are intentionally OUT of the PR-detection path — they're ramp
+  // sets, not working sets. They also use a shorter mini-rest so the screen
+  // doesn't stack a full RestBanner modal between every ramp.
+  const toggleWarmup = (exerciseIdx: number, warmupIdx: number) => {
+    const key = `${exerciseIdx}-${warmupIdx}`
+    const wasDone = !!checkedWarmups[key]
+    setCheckedWarmups((prev) => ({ ...prev, [key]: !wasDone }))
+    if (wasDone) return
+
+    try {
+      navigator.vibrate?.(5)
+    } catch {
+      // swallow
+    }
+
+    setBurstKey(`w-${key}`)
+    setBurstIsWarmup(true)
+    setBurstTrigger((t) => t + 1)
+
+    fireReaction(pickCopy('warmupDone', cheekLevel, lastWarmupDoneRef), false)
   }
 
   const startTimer = (seconds: number, label: string, type: 'rest' | 'work') => {
     setTimer({ seconds, label, type })
   }
 
-  // Save session when ending workout
   const handleEndSession = useCallback(async () => {
     if (!session || !selectedSession) {
       endSession()
@@ -435,8 +686,10 @@ export function WorkoutView({
     const finishedSessionId = selectedSession.id
     endSession()
     setCheckedSets({})
+    setCheckedWarmups({})
     setRestState(null)
     localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
+    localStorage.removeItem(WARMUP_CHECKED_KEY(finishedSessionId))
     localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
     localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
 
@@ -448,13 +701,11 @@ export function WorkoutView({
       date: new Date().toISOString().split('T')[0],
       startedAt: endedSession.started_at,
       endedAt: now,
-      phases: endedSession.phases.map(p => (p.ended_at ? p : { ...p, ended_at: now })),
+      phases: endedSession.phases.map((p) => (p.ended_at ? p : { ...p, ended_at: now })),
       completedSets: doneSets,
       totalSets,
     })
 
-    // Merge single-weight + per-set-max so per-set data is persisted for
-    // last-weight/PR tracking even when the single input is empty.
     const effectiveWeights: Record<string, number> = { ...weights }
     for (const [exerciseId, arr] of Object.entries(perSetWeights)) {
       const max = arr.reduce((m, v) => (v > m ? v : m), 0)
@@ -462,7 +713,7 @@ export function WorkoutView({
     }
     for (const [exerciseId, weight] of Object.entries(effectiveWeights)) {
       if (weight > 0) {
-        const ex = exercises.find(e => e.library_id === exerciseId)
+        const ex = exercises.find((e) => e.library_id === exerciseId)
         await saveLastWeight(userId, exerciseId, weight)
         await updatePR(userId, exerciseId, ex?.name || exerciseId, weight)
       }
@@ -490,69 +741,92 @@ export function WorkoutView({
     clearSession,
   ])
 
-  // ─── Render: shell (always shows header) ─────────────────────────────────
-  const Header = (
-    <div className="flex items-center justify-between pt-3 pb-4">
-      <div>
-        <h1
-          className="text-[22px] font-extrabold tracking-tight"
+  // ─── Top bar (mock: back button / centered title / menu dots) ─────────
+  // We keep the real-app nav affordances (streak, progress, capture, sign out)
+  // tucked into the right cluster — they're not in the mock but they're
+  // load-bearing for the app.
+  const TopBar = (
+    <div className="flex items-center justify-between pt-1 pb-3" data-testid="workout-topbar">
+      <div className="flex flex-col">
+        <div
+          className="text-[10px] font-bold uppercase"
+          style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.14em' }}
+        >
+          {selectedSession ? 'today' : 'rest day'}
+        </div>
+        <div
+          className="text-[15px] font-bold"
           style={{
+            color: 'var(--lumo-text)',
             fontFamily: "'Fraunces', Georgia, serif",
             fontStyle: 'italic',
-            color: 'var(--lumo-text)',
             letterSpacing: '-0.01em',
+            marginTop: 1,
           }}
         >
-          My Training Plan
-        </h1>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--lumo-text-ter)' }}>
-          {profile?.display_name ? `Hey ${profile.display_name}` : 'Your adaptive program'}
-        </p>
+          {selectedSession?.title ?? 'rest day'}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         {(profile?.streak ?? 0) > 0 && (
           <div
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg"
             style={{
               background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
               border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
             }}
+            title={`${profile?.streak} day streak`}
           >
-            <Flame size={14} style={{ color: 'var(--brand)' }} />
-            <span className="text-sm font-bold" style={{ color: 'var(--brand)' }}>
+            <Flame size={12} style={{ color: 'var(--brand)' }} />
+            <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--brand)' }}>
               {profile?.streak}
             </span>
           </div>
         )}
         <button
           onClick={onNavigateProgress}
-          className="p-2 rounded-lg active:scale-95 transition-all"
-          style={{ color: 'var(--lumo-text-ter)' }}
+          className="p-1.5 rounded-lg active:scale-95 transition-all"
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            color: 'var(--lumo-text-sec)',
+          }}
           title="View progress"
+          aria-label="View progress"
         >
-          <BarChart3 size={16} />
+          <BarChart3 size={14} />
         </button>
         <button
           onClick={onNavigateToCapture}
-          className="p-2 rounded-lg active:scale-95 transition-all"
-          style={{ color: 'var(--brand)' }}
-          title="Add exercise from social media"
+          className="p-1.5 rounded-lg active:scale-95 transition-all"
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            color: 'var(--brand)',
+          }}
+          title="Capture exercise"
+          aria-label="Capture exercise"
         >
-          <Plus size={18} />
+          <Plus size={14} />
         </button>
         <button
           onClick={onSignOut}
-          className="p-2 rounded-lg active:scale-95 transition-all"
-          style={{ color: 'var(--lumo-text-ter)' }}
+          className="p-1.5 rounded-lg active:scale-95 transition-all"
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            color: 'var(--lumo-text-ter)',
+          }}
           title="Sign out"
+          aria-label="Sign out"
         >
-          <LogOut size={16} />
+          <LogOut size={12} />
         </button>
       </div>
     </div>
   )
 
-  // Loading: no plan resolved yet
+  // ── Loading: no plan resolved yet ────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -575,17 +849,15 @@ export function WorkoutView({
     )
   }
 
-  // No plan yet — this happens when the user onboarded but generation
-  // failed (or after wiping IndexedDB while keeping Supabase). Offer a
-  // Retry that pulls the persisted profile and regenerates.
+  // ── No plan yet — Gemini gen failed or Dexie wiped ──────────────────
   if (!plan) {
     return (
       <div
         className="min-h-screen font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
         style={{ background: 'var(--lumo-bg)', color: 'var(--lumo-text)' }}
       >
-        <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
-          {Header}
+        <div className="max-w-lg mx-auto px-4 pb-20 safe-top safe-bottom">
+          {TopBar}
           <div
             className="py-10 rounded-2xl mt-5 flex flex-col items-center gap-3"
             style={{
@@ -634,32 +906,23 @@ export function WorkoutView({
     )
   }
 
-  // ─── Lumo preamble bubble (session vs rest vs loading inside body) ─────
+  // ── Preamble bubble text / Lumo state ────────────────────────────────
   const isRestDay = !selectedSession
-  const preambleLumoState: LumoState = isRestDay ? 'sleepy' : lumoSessionState
-  const preambleText: string = isRestDay
+  const bubbleText: string = isRestDay
     ? 'rest day. sleeping in counts.'
     : restState
       ? getCopy('restFlex', cheekLevel)
-      : doneSets >= totalSets && totalSets > 0
-        ? 'you finished. flop backwards with me.'
-        : doneSets > 0
-          ? "go go go. you're doing great."
-          : (() => {
-              const hour = new Date().getHours()
-              const greet = hour < 12 ? 'greetMorning' : 'greetAfternoon'
-              const name = profile?.display_name || 'you'
-              return getCopy(greet, cheekLevel, { name })
-            })()
+      : preambleText
+  const bubbleLumoState: LumoState = isRestDay ? 'sleepy' : preambleLumoState
 
   const preamble = (
     <div
-      className="flex items-end gap-2.5 mt-2"
+      className="flex items-end gap-2.5 relative"
       data-testid="workout-preamble"
     >
-      <Lumo state={preambleLumoState} size={64} />
+      <Lumo state={bubbleLumoState} size={64} />
       <div
-        className="flex-1 px-3 py-2.5 text-[13px] leading-snug"
+        className="flex-1 px-3 py-2.5 text-[13px] leading-snug relative"
         style={{
           background: 'var(--lumo-raised)',
           border: '1px solid var(--lumo-border)',
@@ -670,56 +933,76 @@ export function WorkoutView({
           fontStyle: 'italic',
         }}
       >
-        {preambleText}
+        {bubbleText}
       </div>
+      {reaction && (
+        <ReactionBubble
+          key={reaction.id}
+          text={reaction.text}
+          isPR={reaction.isPR}
+        />
+      )}
     </div>
   )
 
-  // ─── Render: strip + (session | rest card) ──────────────────────────────
+  // ─── Render: session screen ────────────────────────────────────────────
   return (
     <div
       className="min-h-screen font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
       style={{ background: 'var(--lumo-bg)', color: 'var(--lumo-text)' }}
     >
-      <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
-        {Header}
+      <div className="max-w-lg mx-auto px-4 pb-20 safe-top safe-bottom">
+        {TopBar}
 
-        {preamble}
+        {/* 7-day strip — above the bubble so the user sees week context first */}
+        <DayStrip
+          plan={plan}
+          weekNumber={currentWeek}
+          todayDow={todayDow()}
+          selectedDow={selectedDow}
+          onSelect={setSelectedDow}
+          weekStartDate={weekStartDate}
+        />
 
-        {/* 7-day strip (replaces the Phase-1 session chip row) */}
-        <div className="mt-4">
-          <DayStrip
-            plan={plan}
-            weekNumber={currentWeek}
-            todayDow={todayDow()}
-            selectedDow={selectedDow}
-            onSelect={setSelectedDow}
-            weekStartDate={weekStartDate}
-          />
-        </div>
+        {/* Lumo + speech bubble (the real greeting — cheeky, Lumo-voiced) */}
+        <div className="mt-4">{preamble}</div>
 
-        {/* Week label + mesocycle progress */}
-        <div className="flex items-center gap-2 mt-3">
-          <div
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
-            style={{
-              background: 'var(--lumo-raised)',
-              border: '1px solid var(--lumo-border)',
-              color: 'var(--lumo-text-sec)',
-            }}
-          >
-            Week {currentWeek} of {plan.length_weeks}
+        {/* ProgressStrip — "today's work" */}
+        {selectedSession && (
+          <div className="mt-3">
+            <ProgressStrip
+              done={doneSets}
+              total={totalSets}
+              title={selectedSession.title}
+              estMinutes={selectedSession.estimated_minutes}
+            />
           </div>
-          <span className="text-[11px]" style={{ color: 'var(--lumo-text-ter)' }}>
-            {plan.sessions.length} sessions this block
-          </span>
-        </div>
+        )}
 
-        {/* Workout content */}
+        {/* Inline rest banner — fires auto on working-set complete */}
+        {restState && (
+          <div className="mt-3">
+            <RestBanner
+              seconds={restState.seconds}
+              startedAt={restState.startedAt}
+              message={restState.encouragement}
+              onSkip={() => {
+                setRestState(null)
+                fireReaction(
+                  pickCopy('restSkipEarly', cheekLevel, lastRestSkipRef),
+                  false,
+                )
+              }}
+              onDone={() => setRestState(null)}
+            />
+          </div>
+        )}
+
+        {/* Session content */}
         <div className="mt-3 space-y-2.5">
           {selectedSession ? (
             <>
-              {/* Session bar */}
+              {/* Session bar (start / phase / end controls) */}
               <SessionBar
                 started_at={session?.started_at || null}
                 currentPhase={session?.current_phase || null}
@@ -729,258 +1012,95 @@ export function WorkoutView({
                 onEnd={handleEndSession}
               />
 
-              {/* Progress */}
-              <ProgressBar
-                current={doneSets}
-                total={totalSets}
-                emoji="💪"
-                title={selectedSession.title}
-                estMinutes={selectedSession.estimated_minutes}
-              />
-
-              {/* Inline rest banner — fired auto on set-complete */}
-              {restState && (
-                <RestBanner
-                  seconds={restState.seconds}
-                  startedAt={restState.startedAt}
-                  message={restState.exerciseName}
-                  onSkip={() => setRestState(null)}
-                  onDone={() => setRestState(null)}
-                />
-              )}
-
-              {/* Session preamble — surfaces engine's rationale for placing this session today */}
-              {selectedSession.rationale && (
-                <div
-                  className="rounded-2xl px-4 py-3"
-                  style={{
-                    background: 'color-mix(in srgb, var(--brand) 10%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--brand) 22%, transparent)',
-                  }}
-                >
-                  <div
-                    className="text-xs uppercase tracking-wide mb-1"
-                    style={{ color: 'var(--brand)' }}
-                  >
-                    📍 Today's focus
-                  </div>
-                  <div className="text-sm leading-snug" style={{ color: 'var(--lumo-text)' }}>
-                    {selectedSession.rationale}
-                  </div>
-                </div>
-              )}
-
-              {/* Warmup slot (auto-generates on first view, locked until regenerate) */}
+              {/* Warmup routine slot (Gemini-generated mobility bundle) */}
               {cachedProfile && (
                 <RoutineSlot session={selectedSession} kind="warmup" profile={cachedProfile} />
               )}
 
-              {/* Exercises (all roles — main, accessory, core, rehab — come from Gemini) */}
+              {/* ── THE WORK: LiftCards, one per exercise ─────────────── */}
               <div
-                className="rounded-2xl p-3.5"
-                style={{
-                  background: 'var(--lumo-raised)',
-                  border: '1px solid var(--lumo-border)',
-                }}
-                data-testid="exercises-card"
+                className="flex items-center justify-between mt-3 mb-1 px-1.5"
+                data-testid="exercises-heading"
               >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div
-                    className="text-[11px] font-bold uppercase tracking-wide"
-                    style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.14em' }}
-                  >
-                    the work
-                  </div>
-                  <div className="text-[10px]" style={{ color: 'var(--lumo-text-ter)' }}>
-                    tap a circle when the set's done
-                  </div>
+                <div
+                  className="text-[11px] font-bold uppercase"
+                  style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.14em' }}
+                >
+                  the work
                 </div>
-                <div className="text-[11px] mb-2" style={{ color: 'var(--lumo-text-ter)' }}>
-                  Focus: {selectedSession.focus.join(', ')}
+                <div className="text-[10px]" style={{ color: 'var(--lumo-text-ter)' }}>
+                  tap a circle when the set's done
                 </div>
+              </div>
+
+              <div data-testid="exercises-card" className="space-y-2.5">
                 {exercises.map((ex, ei) => {
-                  const isCompleted = Array.from({ length: ex.sets }, (_, k) => checkedSets[`${ei}-${k}`]).every(
-                    Boolean,
-                  )
+                  const workingDone = Array.from({ length: ex.sets }, (_, k) =>
+                    checkedSets[`${ei}-${k}`],
+                  ).every(Boolean)
+                  const workingWeight = effectiveWeight(ex)
+                  const warmupRows = computeWarmupSets(ex, workingWeight)
+                  const warmupsAllDone =
+                    warmupRows.length === 0 ||
+                    warmupRows.every((_, wi) => !!checkedWarmups[`${ei}-${wi}`])
+                  const isCompleted = workingDone && warmupsAllDone
+
                   const perSetArr = perSetWeights[ex.library_id] ?? []
                   const perSetMax = perSetArr.reduce((m, v) => (v > m ? v : m), 0)
                   const perSetActive = perSetMax > 0
                   const expanded = !!perSetExpanded[ex.library_id]
                   const lastW = lastWeights[ex.library_id]
+                  const displayedWeight = perSetActive
+                    ? perSetMax
+                    : weights[ex.library_id] || 0
+                  const hasPRFlag = (prs[ex.library_id] ?? 0) > 0
                   return (
-                    <div
+                    <LiftCard
                       key={`${ex.library_id}-${ei}`}
-                      className="py-2.5"
-                      style={{
-                        borderTop: ei > 0 ? '1px solid var(--lumo-border)' : 'none',
-                        opacity: isCompleted ? 0.65 : 1,
-                        transition: 'opacity 300ms',
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <div
-                              className="text-[13px] font-semibold"
-                              style={{
-                                color: 'var(--lumo-text)',
-                                textDecoration: isCompleted ? 'line-through' : 'none',
-                                textDecorationColor: 'var(--lumo-text-ter)',
-                              }}
-                            >
-                              {ex.name}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setInfoLibraryId(ex.library_id)}
-                              className="p-1.5 rounded-md active:scale-90 transition-colors"
-                              style={{ color: 'var(--lumo-text-ter)' }}
-                              aria-label={`Info about ${ex.name}`}
-                              title="Exercise info"
-                            >
-                              <Info size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSwapIndex(ei)}
-                              className="p-1 rounded-md active:scale-90 transition-colors"
-                              style={{ color: 'var(--lumo-text-ter)' }}
-                              aria-label={`Swap ${ex.name}`}
-                              title="Swap this exercise"
-                            >
-                              <RefreshCw size={12} />
-                            </button>
-                          </div>
-                          <div className="text-[11px]" style={{ color: 'var(--lumo-text-ter)' }}>
-                            {ex.sets}×{ex.reps} @RIR {ex.rir} · {ex.rest_seconds}s rest · {ex.role}
-                          </div>
-                          {ex.notes && (
-                            <div
-                              className="text-[11px] mt-0.5 italic"
-                              style={{
-                                color: 'var(--lumo-text-sec)',
-                                fontFamily: "'Fraunces', Georgia, serif",
-                              }}
-                            >
-                              {ex.notes}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {lastW !== undefined && (
-                            <span className="text-[10px] ml-1" style={{ color: 'var(--lumo-text-ter)' }}>
-                              last: {lastW}lb
-                            </span>
-                          )}
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="lbs"
-                            // When per-set weights are active, display the max and disable
-                            // the single input to prevent drift between the two stores.
-                            value={perSetActive ? perSetMax : weights[ex.library_id] || ''}
-                            disabled={perSetActive}
-                            onChange={e =>
-                              setWeights(prev => ({ ...prev, [ex.library_id]: Number(e.target.value) }))
-                            }
-                            className="w-14 text-center text-xs rounded-lg py-1.5 tabular-nums disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              background: 'var(--lumo-input-bg)',
-                              border: '1px solid var(--lumo-border-strong)',
-                              color: 'var(--lumo-text)',
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPerSetExpanded(prev => ({ ...prev, [ex.library_id]: !prev[ex.library_id] }))
-                            }
-                            className="p-1 rounded-md active:scale-90 transition-transform"
-                            style={{ color: 'var(--lumo-text-ter)' }}
-                            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
-                            aria-expanded={expanded}
-                            title="Per-set weights"
-                          >
-                            <ChevronDown
-                              size={14}
-                              className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-                      {/* Per-set weight inputs (expand on caret tap). Collapsing keeps
-                          stored data so toggling is non-destructive. */}
-                      {expanded && (
-                        <div className="mb-1.5 flex items-end gap-1 overflow-x-auto">
-                          {Array.from({ length: ex.sets }, (_, k) => (
-                            <div key={k} className="flex flex-col items-center shrink-0">
-                              <div
-                                className="text-[9px] uppercase tracking-wide mb-0.5"
-                                style={{ color: 'var(--lumo-text-ter)' }}
-                              >
-                                Set {k + 1}
-                              </div>
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                placeholder="lb"
-                                value={perSetArr[k] || ''}
-                                onChange={e => {
-                                  const raw = e.target.value
-                                  const next = raw === '' ? 0 : Number(raw)
-                                  setPerSetWeights(prev => {
-                                    const cur = prev[ex.library_id] ?? []
-                                    const arr = cur.slice()
-                                    while (arr.length < ex.sets) arr.push(0)
-                                    arr[k] = next
-                                    return { ...prev, [ex.library_id]: arr }
-                                  })
-                                }}
-                                className="w-10 text-center text-xs rounded-lg py-1 tabular-nums"
-                                style={{
-                                  background: 'var(--lumo-input-bg)',
-                                  border: '1px solid var(--lumo-border-strong)',
-                                  color: 'var(--lumo-text)',
-                                }}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {/* Set circles */}
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        {Array.from({ length: ex.sets }, (_, k) => {
-                          const done = !!checkedSets[`${ei}-${k}`]
-                          return (
-                            <SetCircle
-                              key={k}
-                              done={done}
-                              label={k + 1}
-                              exerciseName={ex.name}
-                              setIndex={k}
-                              onTap={() => toggleSet(ei, k)}
-                            />
-                          )
-                        })}
-                        <button
-                          onClick={() => startTimer(ex.rest_seconds, 'Rest', 'rest')}
-                          className="h-9 px-2.5 rounded-lg active:scale-90 flex items-center gap-1"
-                          style={{
-                            background: 'var(--lumo-input-bg)',
-                            border: '1px solid var(--lumo-border-strong)',
-                            color: 'var(--lumo-text-ter)',
-                          }}
-                          aria-label={`Open rest timer for ${ex.name}`}
-                        >
-                          <Timer size={14} />
-                        </button>
-                      </div>
-                    </div>
+                      ex={ex}
+                      exIdx={ei}
+                      isCompleted={isCompleted}
+                      displayedWeight={displayedWeight}
+                      perSetActive={perSetActive}
+                      perSetArr={perSetArr}
+                      expanded={expanded}
+                      lastWeight={lastW}
+                      hasPRFlag={hasPRFlag}
+                      checkedSets={checkedSets}
+                      checkedWarmups={checkedWarmups}
+                      warmupRows={warmupRows}
+                      burstKey={burstKey}
+                      burstTrigger={burstTrigger}
+                      burstIsWarmup={burstIsWarmup}
+                      onTapSet={(si) => toggleSet(ei, si)}
+                      onTapWarmup={(wi) => toggleWarmup(ei, wi)}
+                      onInfo={() => setInfoLibraryId(ex.library_id)}
+                      onSwap={() => setSwapIndex(ei)}
+                      onOpenTimer={() => startTimer(ex.rest_seconds, 'Rest', 'rest')}
+                      onToggleExpand={() =>
+                        setPerSetExpanded((prev) => ({
+                          ...prev,
+                          [ex.library_id]: !prev[ex.library_id],
+                        }))
+                      }
+                      onChangeWeight={(v) =>
+                        setWeights((prev) => ({ ...prev, [ex.library_id]: v }))
+                      }
+                      onChangePerSet={(k, v) =>
+                        setPerSetWeights((prev) => {
+                          const cur = prev[ex.library_id] ?? []
+                          const arr = cur.slice()
+                          while (arr.length < ex.sets) arr.push(0)
+                          arr[k] = v
+                          return { ...prev, [ex.library_id]: arr }
+                        })
+                      }
+                    />
                   )
                 })}
               </div>
 
-              {/* Cardio + cool-down slots (auto-generate on first view) */}
+              {/* Cardio + cool-down slots */}
               {cachedProfile && (
                 <>
                   <RoutineSlot session={selectedSession} kind="cardio" profile={cachedProfile} />
@@ -988,7 +1108,7 @@ export function WorkoutView({
                 </>
               )}
 
-              {/* Sleep reminder */}
+              {/* Sleep reminder (preserved — not in mock) */}
               <div
                 className="flex items-center gap-3 rounded-2xl px-3.5 py-3"
                 style={{
@@ -1004,8 +1124,6 @@ export function WorkoutView({
               </div>
             </>
           ) : (
-            // Rest-day card. Engine doesn't currently generate recovery
-            // content (deferred); this is the Lumo-themed placeholder.
             <div
               className="rounded-2xl p-5 flex items-center gap-4"
               style={{
@@ -1036,12 +1154,6 @@ export function WorkoutView({
         </div>
       </div>
 
-      {/* Global particle burst overlay — anchored near the top-right. The
-          radial animation bounces outward so exact anchoring matters less
-          than that it fires at all. */}
-      <ParticleBurstAnchor trigger={particleTrigger} />
-
-      {/* Timer overlay (manual "Timer" button on each exercise row) */}
       {timer && (
         <TimerOverlay
           seconds={timer.seconds}
@@ -1051,7 +1163,6 @@ export function WorkoutView({
         />
       )}
 
-      {/* Swap sheet */}
       {swapIndex != null && selectedSession && selectedSession.exercises[swapIndex] && (
         <SwapSheet
           open
@@ -1062,10 +1173,8 @@ export function WorkoutView({
         />
       )}
 
-      {/* Exercise info overlay */}
       <ExerciseInfoSheet libraryId={infoLibraryId} onClose={() => setInfoLibraryId(null)} />
 
-      {/* PR celebration */}
       {prPayload && (
         <PRCelebration
           open
@@ -1079,13 +1188,545 @@ export function WorkoutView({
   )
 }
 
-// ─── SetCircle: circular tap-to-complete set button ────────────────────────
+// ─── ProgressStrip — ported from screens.jsx ─────────────────────────────
+interface ProgressStripProps {
+  done: number
+  total: number
+  title: string
+  estMinutes: number
+}
+
+function ProgressStrip({ done, total, title, estMinutes }: ProgressStripProps) {
+  const pct = total > 0 ? (done / total) * 100 : 0
+  return (
+    <div
+      className="rounded-2xl p-3.5"
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+      }}
+      data-testid="progress-strip"
+    >
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="min-w-0">
+          <div
+            className="text-[10px] font-bold uppercase"
+            style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.12em' }}
+          >
+            today's work
+          </div>
+          <div
+            className="text-[14px] font-bold truncate"
+            style={{
+              color: 'var(--lumo-text)',
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        <div
+          className="text-[13px] font-bold tabular-nums shrink-0"
+          style={{ color: 'var(--lumo-text)' }}
+        >
+          {done}
+          <span style={{ color: 'var(--lumo-text-ter)', fontWeight: 500 }}>
+            {' / '}
+            {total} sets
+          </span>
+        </div>
+      </div>
+      <div
+        className="h-2 rounded-full overflow-hidden"
+        style={{
+          background: 'var(--lumo-input-bg)',
+          border: '1px solid var(--lumo-border)',
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            width: `${pct}%`,
+            background:
+              'linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 70%, white))',
+            transition: 'width 500ms cubic-bezier(.34,1.56,.64,1)',
+            borderRadius: 4,
+          }}
+        />
+      </div>
+      <div
+        className="flex items-center justify-between mt-2 text-[10px]"
+        style={{ color: 'var(--lumo-text-ter)' }}
+      >
+        <span>{estMinutes}min estimated</span>
+        {pct >= 100 && (
+          <span style={{ color: 'var(--accent-mint)', fontWeight: 700 }}>done. flop backwards.</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── LiftCard — ported from screens.jsx ─────────────────────────────────
+// Header (name + info + swap + PR badge + weight pill) on top, optional
+// per-set weight panel, WARMUP ROWS (new), then the row of working-set
+// circles. Compound lifts render 3 warmup rows; accessory renders 1;
+// rehab / mobility renders none.
+
+interface LiftCardProps {
+  ex: PlannedExercise
+  exIdx: number
+  isCompleted: boolean
+  displayedWeight: number
+  perSetActive: boolean
+  perSetArr: number[]
+  expanded: boolean
+  lastWeight?: number
+  hasPRFlag: boolean
+  checkedSets: Record<string, boolean>
+  checkedWarmups: Record<string, boolean>
+  warmupRows: WarmupRow[]
+  burstKey: string | null
+  burstTrigger: number
+  burstIsWarmup: boolean
+  onTapSet: (setIdx: number) => void
+  onTapWarmup: (warmupIdx: number) => void
+  onInfo: () => void
+  onSwap: () => void
+  onOpenTimer: () => void
+  onToggleExpand: () => void
+  onChangeWeight: (v: number) => void
+  onChangePerSet: (setIdx: number, v: number) => void
+}
+
+function LiftCard({
+  ex,
+  exIdx,
+  isCompleted,
+  displayedWeight,
+  perSetActive,
+  perSetArr,
+  expanded,
+  lastWeight,
+  hasPRFlag,
+  checkedSets,
+  checkedWarmups,
+  warmupRows,
+  burstKey,
+  burstTrigger,
+  burstIsWarmup,
+  onTapSet,
+  onTapWarmup,
+  onInfo,
+  onSwap,
+  onOpenTimer,
+  onToggleExpand,
+  onChangeWeight,
+  onChangePerSet,
+}: LiftCardProps) {
+  const kind = classifyWarmup(ex)
+  return (
+    <div
+      className="rounded-2xl p-3.5"
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        opacity: isCompleted ? 0.65 : 1,
+        transition: 'opacity 300ms',
+      }}
+      data-testid="lift-card"
+    >
+      {/* Header row: name + info + swap + PR badge, weight pill on right */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <div
+              className="text-[15px] font-bold"
+              style={{
+                color: 'var(--lumo-text)',
+                textDecoration: isCompleted ? 'line-through' : 'none',
+                textDecorationColor: 'var(--lumo-text-ter)',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              {ex.name}
+            </div>
+            <button
+              type="button"
+              onClick={onInfo}
+              className="p-1 rounded-md active:scale-90 transition-colors"
+              style={{
+                color: 'var(--lumo-text-ter)',
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                border: '1px solid var(--lumo-border-strong)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label={`Info about ${ex.name}`}
+              title="Exercise info"
+            >
+              <Info size={10} />
+            </button>
+            <button
+              type="button"
+              onClick={onSwap}
+              className="p-1 rounded-md active:scale-90 transition-colors"
+              style={{ color: 'var(--lumo-text-ter)' }}
+              aria-label={`Swap ${ex.name}`}
+              title="Swap this exercise"
+            >
+              <RefreshCw size={12} />
+            </button>
+            {hasPRFlag && (
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                style={{
+                  background: 'color-mix(in srgb, var(--accent-plum) 18%, transparent)',
+                  color: 'var(--accent-plum)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}
+                title="You've set a PR on this exercise"
+              >
+                pr shot
+              </span>
+            )}
+          </div>
+          <div
+            className="text-[11px] mt-1 tabular-nums"
+            style={{ color: 'var(--lumo-text-ter)' }}
+          >
+            {ex.sets} × {ex.reps} · {ex.rest_seconds}s rest · RIR {ex.rir}
+          </div>
+          {ex.notes && (
+            <div
+              className="text-[11px] mt-1"
+              style={{
+                color: 'var(--lumo-text-sec)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              {ex.notes}
+            </div>
+          )}
+        </div>
+
+        {/* Weight pill — tap to expand per-set inputs */}
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="flex flex-col items-center px-2.5 py-1.5 rounded-xl active:scale-95 transition-all"
+            style={{
+              background: 'var(--lumo-input-bg)',
+              border: '1px solid var(--lumo-border)',
+              minWidth: 60,
+            }}
+            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
+            aria-expanded={expanded}
+            title="Per-set weights"
+          >
+            <div
+              className="text-[9px] font-bold"
+              style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.1em' }}
+            >
+              LBS
+            </div>
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="lbs"
+              value={perSetActive ? displayedWeight : weightsInputValue(displayedWeight)}
+              disabled={perSetActive}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => onChangeWeight(Number(e.target.value))}
+              className="w-12 text-center text-[17px] font-bold bg-transparent outline-none tabular-nums disabled:opacity-60"
+              style={{ color: 'var(--lumo-text)', padding: 0 }}
+            />
+            <div
+              className="text-[9px] tabular-nums mt-0.5"
+              style={{
+                color:
+                  lastWeight !== undefined && displayedWeight > lastWeight
+                    ? 'var(--accent-mint)'
+                    : 'var(--lumo-text-ter)',
+              }}
+            >
+              {lastWeight !== undefined ? `last ${lastWeight}` : '—'}
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="p-1 rounded-md active:scale-90 transition-transform"
+            style={{ color: 'var(--lumo-text-ter)' }}
+            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
+            aria-expanded={expanded}
+            title="Per-set weights"
+          >
+            <ChevronDown
+              size={14}
+              style={{
+                transition: 'transform 200ms',
+                transform: expanded ? 'rotate(180deg)' : 'none',
+              }}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Per-set weight inputs (expand on caret tap) */}
+      {expanded && (
+        <div
+          className="mt-3 pt-2.5 flex items-end gap-2 overflow-x-auto"
+          style={{ borderTop: '1px solid var(--lumo-border)' }}
+        >
+          {Array.from({ length: ex.sets }, (_, k) => (
+            <div key={k} className="flex flex-col items-center shrink-0">
+              <div
+                className="text-[9px] uppercase mb-0.5"
+                style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.1em' }}
+              >
+                Set {k + 1}
+              </div>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="lb"
+                value={perSetArr[k] || ''}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  const next = raw === '' ? 0 : Number(raw)
+                  onChangePerSet(k, next)
+                }}
+                className="w-12 text-center text-xs rounded-lg py-1 tabular-nums"
+                style={{
+                  background: 'var(--lumo-input-bg)',
+                  border: '1px solid var(--lumo-border-strong)',
+                  color: 'var(--lumo-text)',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── WARMUP ROWS — render BEFORE working-set circles ───────────── */}
+      {warmupRows.length > 0 && (
+        <div
+          className="mt-3 flex flex-col gap-1.5"
+          data-testid={`warmup-rows-${exIdx}`}
+          aria-label={`${warmupRows.length} warmup set${warmupRows.length === 1 ? '' : 's'} before working sets`}
+        >
+          {warmupRows.map((row, wi) => {
+            const key = `${exIdx}-${wi}`
+            const done = !!checkedWarmups[key]
+            const burstHere =
+              burstKey === `w-${key}` && burstTrigger > 0 && burstIsWarmup
+            return (
+              <WarmupRowView
+                key={wi}
+                done={done}
+                label={row.label}
+                detail={formatWarmupDetail(row, kind)}
+                onTap={() => onTapWarmup(wi)}
+                showBurst={burstHere}
+                burstTrigger={burstTrigger}
+                exerciseName={ex.name}
+                warmupIndex={wi}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {/* Circular working-set buttons row */}
+      <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+        {Array.from({ length: ex.sets }, (_, k) => {
+          const done = !!checkedSets[`${exIdx}-${k}`]
+          const circleKey = `${exIdx}-${k}`
+          const burstHere = burstKey === circleKey && burstTrigger > 0 && !burstIsWarmup
+          return (
+            <SetCircle
+              key={k}
+              done={done}
+              label={k + 1}
+              exerciseName={ex.name}
+              setIndex={k}
+              onTap={() => onTapSet(k)}
+              showBurst={burstHere}
+              burstTrigger={burstTrigger}
+            />
+          )
+        })}
+        <button
+          onClick={onOpenTimer}
+          className="h-10 px-2.5 rounded-xl active:scale-90 flex items-center gap-1"
+          style={{
+            background: 'var(--lumo-input-bg)',
+            border: '1px solid var(--lumo-border-strong)',
+            color: 'var(--lumo-text-ter)',
+          }}
+          aria-label={`Open rest timer for ${ex.name}`}
+        >
+          <Timer size={14} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function weightsInputValue(n: number): number | '' {
+  return n > 0 ? n : ''
+}
+
+// ─── WarmupRowView — lighter, smaller ramp-set row ──────────────────────
+// A single circle tap-to-complete, pinned-left, with the warmup label on the
+// right. Distinct visual weight (opacity 0.75, smaller circle, softer color)
+// so users know these are ramp sets, not working sets.
+
+interface WarmupRowViewProps {
+  done: boolean
+  label: string
+  detail: string
+  onTap: () => void
+  showBurst: boolean
+  burstTrigger: number
+  exerciseName: string
+  warmupIndex: number
+}
+
+function WarmupRowView({
+  done,
+  label,
+  detail,
+  onTap,
+  showBurst,
+  burstTrigger,
+  exerciseName,
+  warmupIndex,
+}: WarmupRowViewProps) {
+  const [pressed, setPressed] = useState(false)
+  const handle = () => {
+    onTap()
+    if (!done) {
+      setPressed(true)
+      window.setTimeout(() => setPressed(false), 400)
+    }
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2.5"
+      style={{
+        opacity: done ? 0.6 : 0.85,
+        transition: 'opacity 300ms',
+      }}
+      data-testid={`warmup-row-${warmupIndex}`}
+    >
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <button
+          type="button"
+          onClick={handle}
+          data-testid={`warmup-circle-${warmupIndex}`}
+          data-warmup-done={done ? 'true' : 'false'}
+          aria-label={`${done ? 'Unmark' : 'Mark'} ${label} of ${exerciseName} as complete`}
+          aria-pressed={done}
+          className={pressed ? 'setcircle-pop' : undefined}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: '50%',
+            background: done
+              ? 'color-mix(in srgb, var(--brand) 70%, transparent)'
+              : 'var(--lumo-input-bg)',
+            border: done
+              ? '2px solid color-mix(in srgb, var(--brand) 70%, transparent)'
+              : '1px dashed var(--lumo-border-strong)',
+            color: done ? '#fff' : 'var(--lumo-text-ter)',
+            fontSize: 11,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            padding: 0,
+            animation: pressed ? 'setcircle-pop 400ms cubic-bezier(.34,1.56,.64,1)' : 'none',
+          }}
+        >
+          <style>{SET_CIRCLE_KEYFRAMES}</style>
+          {done ? (
+            <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 13 L10 17 L18 8"
+                stroke="#fff"
+                strokeWidth={3}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <span style={{ fontSize: 10 }}>ᐧ</span>
+          )}
+        </button>
+        {showBurst && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 17,
+              left: 17,
+              width: 0,
+              height: 0,
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+          >
+            <ParticleBurst
+              key={burstTrigger}
+              trigger={burstTrigger}
+              color="var(--brand)"
+              count={4}
+              size={40}
+            />
+          </div>
+        )}
+      </div>
+      <div
+        className="text-[10px] font-bold uppercase"
+        style={{
+          color: 'var(--lumo-text-ter)',
+          letterSpacing: '0.14em',
+          minWidth: 78,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        className="text-[11px] tabular-nums"
+        style={{ color: 'var(--lumo-text-sec)' }}
+      >
+        {detail}
+      </div>
+    </div>
+  )
+}
+
+// ─── SetCircle ──────────────────────────────────────────────────────────
 interface SetCircleProps {
   done: boolean
   label: number
   exerciseName: string
   setIndex: number
   onTap: () => void
+  showBurst: boolean
+  burstTrigger: number
 }
 
 const SET_CIRCLE_KEYFRAMES = `
@@ -1096,11 +1737,20 @@ const SET_CIRCLE_KEYFRAMES = `
   100% { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .setcircle-pop { animation: none !important; }
+  .setcircle-pop,
+  .setcircle-pop * { animation: none !important; }
 }
 `
 
-function SetCircle({ done, label, exerciseName, setIndex, onTap }: SetCircleProps) {
+function SetCircle({
+  done,
+  label,
+  exerciseName,
+  setIndex,
+  onTap,
+  showBurst,
+  burstTrigger,
+}: SetCircleProps) {
   const [pressed, setPressed] = useState(false)
   const handle = () => {
     onTap()
@@ -1111,15 +1761,15 @@ function SetCircle({ done, label, exerciseName, setIndex, onTap }: SetCircleProp
   }
 
   const baseStyle: CSSProperties = {
-    width: 48,
-    height: 48,
+    width: 54,
+    height: 54,
     borderRadius: '50%',
     background: done ? 'var(--brand)' : 'var(--lumo-input-bg)',
     border: done
       ? '2px solid var(--brand)'
       : '2px solid var(--lumo-border-strong)',
     color: done ? '#fff' : 'var(--lumo-text-ter)',
-    fontSize: done ? 18 : 14,
+    fontSize: done ? 20 : 15,
     fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
@@ -1131,66 +1781,114 @@ function SetCircle({ done, label, exerciseName, setIndex, onTap }: SetCircleProp
     fontVariantNumeric: 'tabular-nums',
     padding: 0,
     cursor: 'pointer',
+    position: 'relative',
   }
   return (
-    <button
-      type="button"
-      onClick={handle}
-      data-testid={`set-circle-${setIndex}`}
-      data-set-done={done ? 'true' : 'false'}
-      aria-label={`${done ? 'Unmark' : 'Mark'} set ${label} of ${exerciseName} as complete`}
-      aria-pressed={done}
-      className={pressed ? 'setcircle-pop' : undefined}
-      style={{
-        ...baseStyle,
-        animation: pressed ? 'setcircle-pop 500ms cubic-bezier(.34,1.56,.64,1)' : 'none',
-      }}
-    >
-      <style>{SET_CIRCLE_KEYFRAMES}</style>
-      {done ? (
-        <svg width={22} height={22} viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M6 13 L10 17 L18 8"
-            stroke="#fff"
-            strokeWidth={3}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        label
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={handle}
+        data-testid={`set-circle-${setIndex}`}
+        data-set-done={done ? 'true' : 'false'}
+        aria-label={`${done ? 'Unmark' : 'Mark'} set ${label} of ${exerciseName} as complete`}
+        aria-pressed={done}
+        className={pressed ? 'setcircle-pop' : undefined}
+        style={{
+          ...baseStyle,
+          animation: pressed ? 'setcircle-pop 500ms cubic-bezier(.34,1.56,.64,1)' : 'none',
+        }}
+      >
+        <style>{SET_CIRCLE_KEYFRAMES}</style>
+        {done ? (
+          <svg width={24} height={24} viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M6 13 L10 17 L18 8"
+              stroke="#fff"
+              strokeWidth={3}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : (
+          label
+        )}
+      </button>
+      {showBurst && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 27,
+            left: 27,
+            width: 0,
+            height: 0,
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        >
+          <ParticleBurst key={burstTrigger} trigger={burstTrigger} color="var(--brand)" count={8} />
+        </div>
       )}
-    </button>
+    </div>
   )
 }
 
-// ─── ParticleBurstAnchor: positioned pop host ──────────────────────────────
-// ParticleBurst is absolutely positioned — to fire it from an app-level spot
-// (without pinning to a specific set circle's rect) we give it its own fixed
-// anchor in the top-right of the screen. The burst itself is radial so the
-// anchor location is intentionally broad; it just has to be "visible".
-interface ParticleBurstAnchorProps {
-  trigger: number
+// ─── ReactionBubble ─────────────────────────────────────────────────────
+interface ReactionBubbleProps {
+  text: string
+  isPR: boolean
 }
 
-function ParticleBurstAnchor({ trigger }: ParticleBurstAnchorProps) {
-  if (trigger === 0) return null
+const REACTION_KEYFRAMES = `
+@keyframes reaction-bubble-in {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.9); }
+  30%  { opacity: 1; transform: translateY(0) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes reaction-bubble-out {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reaction-bubble { animation: none !important; }
+}
+`
+
+function ReactionBubble({ text, isPR }: ReactionBubbleProps) {
   return (
     <div
-      aria-hidden="true"
-      data-testid="workout-particle-anchor"
+      data-testid="lumo-reaction"
+      data-is-pr={isPR ? 'true' : 'false'}
+      className="reaction-bubble"
       style={{
-        position: 'fixed',
-        top: '30%',
-        right: 48,
-        width: 0,
-        height: 0,
+        position: 'absolute',
+        top: -14,
+        left: 58,
+        maxWidth: 220,
+        padding: '6px 10px',
+        borderRadius: 14,
+        borderBottomLeftRadius: 4,
+        background: isPR
+          ? 'color-mix(in srgb, var(--accent-plum) 20%, var(--lumo-raised))'
+          : 'var(--lumo-raised)',
+        border: isPR
+          ? '1px solid color-mix(in srgb, var(--accent-plum) 40%, transparent)'
+          : '1px solid var(--lumo-border)',
+        color: isPR ? 'var(--accent-plum)' : 'var(--lumo-text)',
+        fontFamily: "'Fraunces', Georgia, serif",
+        fontStyle: 'italic',
+        fontSize: 12,
+        lineHeight: 1.3,
+        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.12)',
+        animation:
+          'reaction-bubble-in 220ms cubic-bezier(.34,1.56,.64,1) both, reaction-bubble-out 260ms 1600ms ease-in both',
+        zIndex: 6,
         pointerEvents: 'none',
-        zIndex: 40,
       }}
     >
-      <ParticleBurst key={trigger} trigger={trigger} color="var(--brand)" />
+      <style>{REACTION_KEYFRAMES}</style>
+      <span data-testid="lumo-reaction-text">{text}</span>
     </div>
   )
 }
