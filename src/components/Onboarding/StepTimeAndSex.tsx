@@ -50,34 +50,34 @@ export function StepTimeAndSex({ value, onNext }: Props) {
         </div>
       </div>
 
-      <div className="mb-8">
-        <div className="font-bold mb-2">Sex</div>
-        <div
-          role="radiogroup"
-          aria-label="Sex"
-          className="grid gap-3"
-        >
+      <fieldset className="mb-8">
+        <legend className="font-bold mb-2">Sex</legend>
+        <div className="grid gap-3">
           {SEX_OPTIONS.map((id) => {
             const selected = sex === id
             return (
-              <button
+              <label
                 key={id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setSex(id)}
-                className={`min-h-[56px] p-4 rounded-2xl text-left border-2 transition active:scale-[0.98] ${
+                className={`flex items-center gap-3 min-h-[56px] p-4 rounded-2xl border-2 transition cursor-pointer ${
                   selected
                     ? 'border-brand bg-brand/10 ring-2 ring-brand/50'
                     : 'border-border-subtle bg-surface-raised'
                 }`}
               >
+                <input
+                  type="radio"
+                  name="sex"
+                  value={id}
+                  checked={selected}
+                  onChange={() => setSex(id)}
+                  className="accent-brand"
+                />
                 <span className="font-bold">{SEX_LABELS[id]}</span>
-              </button>
+              </label>
             )
           })}
         </div>
-      </div>
+      </fieldset>
 
       <button
         type="button"

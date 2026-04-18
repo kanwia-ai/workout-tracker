@@ -287,7 +287,10 @@ export function WorkoutView({
     )
   }
 
-  // No plan yet (user landed here without onboarding — defensive fallback)
+  // No plan yet (user landed here without onboarding OR their last
+  // generatePlan call failed — both paths land here today).
+  // TODO(phase-5): distinguish "onboarding incomplete" from "generation failed"
+  // and surface a Retry button that calls generatePlan again for the failure case.
   if (!plan) {
     return (
       <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
@@ -416,7 +419,7 @@ export function WorkoutView({
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {lastWeights[ex.library_id] && (
+                      {ex.library_id in lastWeights && (
                         <span className="text-[10px] text-zinc-600 ml-1">
                           last: {lastWeights[ex.library_id]}lb
                         </span>

@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BodyPart, Severity, type UserProgramProfile } from '../../types/profile'
 
 type Injury = UserProgramProfile['injuries'][number]
 type BodyPartValue = Injury['part']
 type SeverityValue = Injury['severity']
+
+// Internal row shape carries a stable React key so add/remove doesn't reuse
+// DOM nodes between different rows (which breaks focus + IME state on <input>).
+interface InjuryRow extends Injury {
+  __rowId: string
+}
 
 interface Props {
   value?: Injury[]
@@ -39,23 +45,35 @@ const SEVERITY_LABELS: Record<SeverityValue, string> = {
 const BODY_PART_OPTIONS = BodyPart.options as readonly BodyPartValue[]
 const SEVERITY_OPTIONS = Severity.options as readonly SeverityValue[]
 
-function emptyInjury(): Injury {
-  return { part: BODY_PART_OPTIONS[0], severity: 'modify', note: '' }
+function makeRowId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `row-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function emptyInjury(): InjuryRow {
+  return { __rowId: makeRowId(), part: BODY_PART_OPTIONS[0], severity: 'modify', note: '' }
 }
 
 export function StepInjuries({ value, onNext }: Props) {
-  const [injuries, setInjuries] = useState<Injury[]>(
-    () => (value && value.length > 0 ? value : [emptyInjury()])
-  )
+  const idCounter = useRef(0)
+  const [injuries, setInjuries] = useState<InjuryRow[]>(() => {
+    if (value && value.length > 0) {
+      return value.map((inj) => ({ __rowId: makeRowId(), ...inj }))
+    }
+    return [emptyInjury()]
+  })
+  // Reference idCounter so TS doesn't drop the ref when crypto.randomUUID is present.
+  void idCounter
 
-  const updateRow = (idx: number, patch: Partial<Injury>) => {
+  const updateRow = (rowId: string, patch: Partial<Injury>) => {
     setInjuries((rows) =>
-      rows.map((r, i) => (i === idx ? { ...r, ...patch } : r))
+      rows.map((r) => (r.__rowId === rowId ? { ...r, ...patch } : r))
     )
   }
 
-  const removeRow = (idx: number) => {
-    setInjuries((rows) => rows.filter((_, i) => i !== idx))
+  const removeRow = (rowId: string) => {
+    setInjuries((rows) => rows.filter((r) => r.__rowId !== rowId))
   }
 
   const addRow = () => {
@@ -67,7 +85,7 @@ export function StepInjuries({ value, onNext }: Props) {
   }
 
   const submit = () => {
-    // Strip empty notes so the payload matches the zod optional().
+    // Strip __rowId + empty notes so the payload matches the zod schema.
     const cleaned: Injury[] = injuries.map((r) => {
       const out: Injury = { part: r.part, severity: r.severity }
       if (r.note && r.note.trim().length > 0) out.note = r.note.trim()
@@ -94,7 +112,7 @@ export function StepInjuries({ value, onNext }: Props) {
       <div className="grid gap-4 mb-4">
         {injuries.map((row, idx) => (
           <div
-            key={idx}
+            key={row.__rowId}
             className="p-4 rounded-2xl border-2 border-border-subtle bg-surface-raised grid gap-3"
           >
             <div className="flex items-center justify-between">
@@ -104,7 +122,7 @@ export function StepInjuries({ value, onNext }: Props) {
               {injuries.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => removeRow(idx)}
+                  onClick={() => removeRow(row.__rowId)}
                   className="text-sm text-zinc-400 hover:text-zinc-200 min-h-[44px] px-2"
                   aria-label={`Remove injury ${idx + 1}`}
                 >
@@ -118,7 +136,7 @@ export function StepInjuries({ value, onNext }: Props) {
               <select
                 value={row.part}
                 onChange={(e) =>
-                  updateRow(idx, { part: e.target.value as BodyPartValue })
+                  updateRow(row.__rowId, { part: e.target.value as BodyPartValue })
                 }
                 className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"
               >
@@ -135,7 +153,7 @@ export function StepInjuries({ value, onNext }: Props) {
               <select
                 value={row.severity}
                 onChange={(e) =>
-                  updateRow(idx, { severity: e.target.value as SeverityValue })
+                  updateRow(row.__rowId, { severity: e.target.value as SeverityValue })
                 }
                 className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"
               >
@@ -154,7 +172,7 @@ export function StepInjuries({ value, onNext }: Props) {
               <input
                 type="text"
                 value={row.note ?? ''}
-                onChange={(e) => updateRow(idx, { note: e.target.value })}
+                onChange={(e) => updateRow(row.__rowId, { note: e.target.value })}
                 maxLength={200}
                 placeholder="e.g. flares with deep squats"
                 className="w-full min-h-[48px] px-3 rounded-xl bg-surface border border-border-subtle"

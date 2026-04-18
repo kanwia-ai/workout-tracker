@@ -10,10 +10,20 @@ const JSON_HEADERS = { 'content-type': 'application/json' }
 // Ops that require the Gemini SDK. Keep in sync as new LLM-backed ops land.
 const GEMINI_OPS = new Set(['ping'])
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-// Lazy init — if the key is absent we still want the echo op to work and to
-// return a structured error from Gemini-backed ops instead of crashing at boot.
-const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null
+// Read the key and construct the SDK on demand so a key added AFTER boot
+// takes effect on the next request (instead of waiting for the isolate to
+// recycle). The client cached under `cachedAi` is reused while the key is
+// stable.
+let cachedAi: GoogleGenAI | null = null
+let cachedKey: string | undefined
+function getAi(): GoogleGenAI | null {
+  const key = Deno.env.get('GEMINI_API_KEY')
+  if (!key) return null
+  if (cachedAi && cachedKey === key) return cachedAi
+  cachedAi = new GoogleGenAI({ apiKey: key })
+  cachedKey = key
+  return cachedAi
+}
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
@@ -39,6 +49,7 @@ Deno.serve(async (req) => {
   }
 
   if (GEMINI_OPS.has(body.op)) {
+    const ai = getAi()
     if (!ai) {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY missing' }), {
         status: 500,
@@ -57,7 +68,12 @@ Deno.serve(async (req) => {
           },
         })
         // r.text is the model's JSON string; pass through verbatim so the
-        // client can validate it with the matching Zod schema.
+        // client can validate it with the matching Zod schema. Guard against
+        // an empty/blocked response which would turn into an empty Response
+        // body and confuse the client's Zod parse.
+        if (!r.text) {
+          throw new Error('gemini returned empty response (blocked or no candidates)')
+        }
         return new Response(r.text, { headers: JSON_HEADERS })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

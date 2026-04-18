@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
-import { loadMesocycle } from '../lib/planGen'
+import { loadLatestMesocycleForUser } from '../lib/planGen'
 import type { Mesocycle } from '../types/plan'
 
 /**
@@ -19,15 +19,14 @@ export function usePlan(userId: string): { plan: Mesocycle | null; loading: bool
   // useLiveQuery returns `undefined` until the first query resolves. We
   // distinguish "loading" (undefined) from "confirmed missing" (null) so the
   // caller can show a spinner vs. an empty-state prompt.
+  // Dexie's `useLiveQuery` needs to observe at least one table to re-fire on
+  // mutation. We touch `db.mesocycles` here via `.count()` just so the hook
+  // subscribes to that table; the actual load is delegated to the shared
+  // `loadLatestMesocycleForUser` helper so query logic lives in one place.
   const result = useLiveQuery<Mesocycle | null>(
     async () => {
-      const rows = await db.mesocycles
-        .where('user_id')
-        .equals(userId)
-        .sortBy('generated_at')
-      const latest = rows[rows.length - 1]
-      if (!latest) return null
-      return loadMesocycle(latest.id)
+      await db.mesocycles.count()
+      return loadLatestMesocycleForUser(userId)
     },
     [userId],
   )
