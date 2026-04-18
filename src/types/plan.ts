@@ -7,7 +7,9 @@ export const MuscleGroup = z.enum([
   'chest', 'back', 'shoulders', 'biceps', 'triceps',
   'core', 'full_body', 'rehab', 'mobility',
 ])
+export type MuscleGroup = z.infer<typeof MuscleGroup>
 export const SessionStatus = z.enum(['upcoming', 'in_progress', 'completed', 'skipped'])
+export type SessionStatus = z.infer<typeof SessionStatus>
 
 export const PlannedExerciseSchema = z.object({
   library_id: z.string(),       // "fedb:..." or curated id
