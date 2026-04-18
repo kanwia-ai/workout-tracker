@@ -52,11 +52,13 @@ describe('callEdge', () => {
     expect(init.headers['content-type']).toBe('application/json')
   })
 
-  it('omits Authorization header when no session', async () => {
+  it('falls back to the anon key when no session exists', async () => {
     ;(fetch as any).mockResolvedValue({ ok: true, json: async () => ({}) })
     await callEdge('ping', {}, z.object({}))
     const [, init] = (fetch as any).mock.calls[0]
-    expect(init.headers.authorization).toBeUndefined()
+    // Anon key is a JWT string prefixed by Bearer — verifies the fallback path
+    // keeps auth attached so verify_jwt: true on the edge gateway stays happy.
+    expect(init.headers.authorization).toMatch(/^Bearer eyJ/)
   })
 
   it('attaches Bearer token when session exists', async () => {

@@ -3,7 +3,12 @@ import { supabase } from './supabase'
 
 export async function callEdge<T>(op: string, payload: unknown, schema: ZodType<T>): Promise<T> {
   const { data: session } = await supabase.auth.getSession()
-  const token = session?.session?.access_token
+  // Prefer the signed-in user's access token so RLS / request context is
+  // attributed to them. When no session exists (dev bypass or fresh install
+  // before auth), fall back to the project's public anon key — it's a valid
+  // JWT that satisfies `verify_jwt: true` on the edge function gateway.
+  const token =
+    session?.session?.access_token ?? (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate`
 
   let r: Response
@@ -15,7 +20,9 @@ export async function callEdge<T>(op: string, payload: unknown, schema: ZodType<
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ op, payload }),
-      signal: AbortSignal.timeout(60_000),
+      // Gemini 2.5 Flash can take 60-90s on a full generate_plan call
+      // (6-week block, ~24 sessions, large JSON schema). Leave generous headroom.
+      signal: AbortSignal.timeout(180_000),
     })
   } catch (err) {
     throw new Error(`edge ${op} network error: ${err instanceof Error ? err.message : String(err)}`)

@@ -7,7 +7,13 @@ import { mesocycleSchema, pingSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 
-const JSON_HEADERS = { 'content-type': 'application/json' }
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-headers': 'authorization, content-type, apikey, x-client-info',
+  'access-control-max-age': '86400',
+}
+const JSON_HEADERS = { 'content-type': 'application/json', ...CORS_HEADERS }
 
 // Ops that require the Gemini SDK. Keep in sync as new LLM-backed ops land.
 const GEMINI_OPS = new Set(['ping', 'generate_plan', 'swap_exercise'])
@@ -34,6 +40,12 @@ function getAi(): GoogleGenAI | null {
 }
 
 Deno.serve(async (req) => {
+  // CORS preflight — browsers send this before any cross-origin POST with
+  // auth + JSON headers. Must return 204 with allow-* headers or the real
+  // request is blocked client-side with "Failed to fetch".
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS })
+  }
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'method not allowed' }), {
       status: 405,
