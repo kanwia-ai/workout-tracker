@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon, RefreshCw, Info } from 'lucide-react'
+import { LogOut, Flame, Plus, BarChart3, Check, Timer, Loader2, Moon, RefreshCw, Info, ChevronDown } from 'lucide-react'
 import { ProgressBar } from './ProgressBar'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
@@ -26,6 +26,11 @@ import type { UserProgramProfile } from '../types/profile'
 // 5. On rest days, "Rest day — recovery + mobility" card renders where
 //    the session content used to be (engine doesn't generate rest content
 //    yet — deferred).
+// 6. Per-set weight expand (2P.12): tap chevron next to weight input →
+//    row of N small Set 1/Set 2/... inputs appears. Typing in any input
+//    disables the single-weight input and makes it display the max value.
+//    Collapsing the caret hides the per-set inputs but preserves the data.
+//    Reload → per-set values persist per session.
 // ─────────────────────────────────────────────────────────────────────────
 
 // ─── localStorage keys ────────────────────────────────────────────────────
@@ -36,6 +41,10 @@ const SELECTED_DOW_KEY = 'workout-tracker:selected-dow'
 const HAS_USED_KEY = 'workout-tracker:has-used'
 const CHECKED_SETS_KEY = (sessionId: string) => `workout-tracker:checked-sets:${sessionId}`
 const WEIGHTS_KEY = (sessionId: string) => `workout-tracker:weights:${sessionId}`
+// Per-set weights (Task 2P.12). Outer key = ex.library_id; inner array
+// indexed 0..sets-1. Stored alongside the single weight value and treated
+// as the source of truth when ANY entry is non-zero.
+const PER_SET_WEIGHTS_KEY = (sessionId: string) => `workout-tracker:per-set-weights:${sessionId}`
 
 // JS Date.getDay(): 0=Sun..6=Sat. App convention: 0=Mon..6=Sun.
 function toAppDow(jsDow: number): number {
@@ -134,6 +143,17 @@ export function WorkoutView({
       ? loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
       : {},
   )
+  // Per-set weights: Record<ex.library_id, number[]>. Persists to localStorage
+  // under PER_SET_WEIGHTS_KEY(sessionId). When any entry is non-zero, the
+  // single-weight input is disabled and shows the max per-set value.
+  const [perSetWeights, setPerSetWeights] = useState<Record<string, number[]>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
+      : {},
+  )
+  // Which exercise rows have the per-set panel expanded (keyed by library_id).
+  // Not persisted — always starts collapsed on session load.
+  const [perSetExpanded, setPerSetExpanded] = useState<Record<string, boolean>>({})
   const [timer, setTimer] = useState<TimerState | null>(null)
   const [hasUsed, setHasUsed] = useState<boolean>(() => localStorage.getItem(HAS_USED_KEY) === 'true')
   const hydratedForRef = useRef<string | null>(selectedSessionKey)
@@ -231,13 +251,19 @@ export function WorkoutView({
       hydratedForRef.current = null
       setCheckedSets({})
       setWeights({})
+      setPerSetWeights({})
+      setPerSetExpanded({})
       return
     }
     if (hydratedForRef.current === selectedSessionKey) return
     const savedChecked = loadStoredRecord<Record<string, boolean>>(CHECKED_SETS_KEY(selectedSessionKey)) || {}
     const savedWeights = loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
+    const savedPerSet =
+      loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
     setCheckedSets(savedChecked)
     setWeights(savedWeights)
+    setPerSetWeights(savedPerSet)
+    setPerSetExpanded({})
     hydratedForRef.current = selectedSessionKey
   }, [selectedSessionKey])
 
@@ -250,6 +276,11 @@ export function WorkoutView({
     if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
     localStorage.setItem(WEIGHTS_KEY(selectedSessionKey), JSON.stringify(weights))
   }, [selectedSessionKey, weights])
+
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(PER_SET_WEIGHTS_KEY(selectedSessionKey), JSON.stringify(perSetWeights))
+  }, [selectedSessionKey, perSetWeights])
 
   // First-time flag: mark used when a session starts
   useEffect(() => {
@@ -302,6 +333,7 @@ export function WorkoutView({
     setCheckedSets({})
     localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
     localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
+    localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
 
     const now = new Date().toISOString()
     await saveSession({
@@ -316,7 +348,14 @@ export function WorkoutView({
       totalSets,
     })
 
-    for (const [exerciseId, weight] of Object.entries(weights)) {
+    // Merge single-weight + per-set-max so per-set data is persisted for
+    // last-weight/PR tracking even when the single input is empty.
+    const effectiveWeights: Record<string, number> = { ...weights }
+    for (const [exerciseId, arr] of Object.entries(perSetWeights)) {
+      const max = arr.reduce((m, v) => (v > m ? v : m), 0)
+      if (max > 0) effectiveWeights[exerciseId] = max
+    }
+    for (const [exerciseId, weight] of Object.entries(effectiveWeights)) {
       if (weight > 0) {
         const ex = exercises.find(e => e.library_id === exerciseId)
         await saveLastWeight(userId, exerciseId, weight)
@@ -329,12 +368,15 @@ export function WorkoutView({
     loadLastWeights(userId).then(setLastWeights)
     loadPRs(userId).then(setPrs)
     setWeights({})
+    setPerSetWeights({})
+    setPerSetExpanded({})
     clearSession()
   }, [
     session,
     selectedSession,
     userId,
     weights,
+    perSetWeights,
     doneSets,
     totalSets,
     endSession,
@@ -499,6 +541,10 @@ export function WorkoutView({
                   const isCompleted = Array.from({ length: ex.sets }, (_, k) => checkedSets[`${ei}-${k}`]).every(
                     Boolean,
                   )
+                  const perSetArr = perSetWeights[ex.library_id] ?? []
+                  const perSetMax = perSetArr.reduce((m, v) => (v > m ? v : m), 0)
+                  const perSetActive = perSetMax > 0
+                  const expanded = !!perSetExpanded[ex.library_id]
                   return (
                     <div key={`${ex.library_id}-${ei}`} className={`py-2.5 ${ei > 0 ? 'border-t border-zinc-800/50' : ''}`}>
                       <div className="flex items-center justify-between mb-1.5">
@@ -543,14 +589,63 @@ export function WorkoutView({
                             type="number"
                             inputMode="numeric"
                             placeholder="lbs"
-                            value={weights[ex.library_id] || ''}
+                            // When per-set weights are active, display the max and disable
+                            // the single input to prevent drift between the two stores.
+                            value={perSetActive ? perSetMax : weights[ex.library_id] || ''}
+                            disabled={perSetActive}
                             onChange={e =>
                               setWeights(prev => ({ ...prev, [ex.library_id]: Number(e.target.value) }))
                             }
-                            className="w-14 text-center text-xs bg-zinc-800 border border-zinc-700 rounded-lg py-1.5 text-white placeholder-zinc-600"
+                            className="w-14 text-center text-xs bg-zinc-800 border border-zinc-700 rounded-lg py-1.5 text-white placeholder-zinc-600 tabular-nums disabled:opacity-60 disabled:cursor-not-allowed"
                           />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPerSetExpanded(prev => ({ ...prev, [ex.library_id]: !prev[ex.library_id] }))
+                            }
+                            className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 active:scale-90 transition-transform"
+                            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
+                            aria-expanded={expanded}
+                            title="Per-set weights"
+                          >
+                            <ChevronDown
+                              size={14}
+                              className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+                            />
+                          </button>
                         </div>
                       </div>
+                      {/* Per-set weight inputs (expand on caret tap). Collapsing keeps
+                          stored data so toggling is non-destructive. */}
+                      {expanded && (
+                        <div className="mb-1.5 flex items-end gap-1 overflow-x-auto">
+                          {Array.from({ length: ex.sets }, (_, k) => (
+                            <div key={k} className="flex flex-col items-center shrink-0">
+                              <div className="text-[9px] uppercase tracking-wide text-zinc-600 mb-0.5">
+                                Set {k + 1}
+                              </div>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="lb"
+                                value={perSetArr[k] || ''}
+                                onChange={e => {
+                                  const raw = e.target.value
+                                  const next = raw === '' ? 0 : Number(raw)
+                                  setPerSetWeights(prev => {
+                                    const cur = prev[ex.library_id] ?? []
+                                    const arr = cur.slice()
+                                    while (arr.length < ex.sets) arr.push(0)
+                                    arr[k] = next
+                                    return { ...prev, [ex.library_id]: arr }
+                                  })
+                                }}
+                                className="w-10 text-center text-xs bg-zinc-800 border border-zinc-700 rounded-lg py-1 text-white placeholder-zinc-600 tabular-nums"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {/* Set buttons */}
                       <div className="flex items-center gap-1.5">
                         {Array.from({ length: ex.sets }, (_, k) => (
