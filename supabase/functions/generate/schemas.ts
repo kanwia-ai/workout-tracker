@@ -30,7 +30,7 @@ const MUSCLE_GROUP_ENUM = [
 const SESSION_STATUS_ENUM = ['upcoming', 'in_progress', 'completed', 'skipped'] as const
 
 // --- plan sub-schemas --------------------------------------------------------
-const plannedExerciseSchema = {
+export const plannedExerciseSchema = {
   type: 'object',
   properties: {
     library_id: { type: 'string' },
@@ -87,4 +87,17 @@ export const mesocycleSchema = {
   },
   required: ['id', 'length_weeks', 'sessions'],
   propertyOrdering: ['id', 'length_weeks', 'sessions'],
+} as const
+
+// Swap response — one replacement exercise plus a short reason string so the
+// UI can surface "why this sub works" to the user. Reuses plannedExerciseSchema
+// so the replacement is shape-identical to any exercise the planner produced.
+export const swapExerciseSchema = {
+  type: 'object',
+  properties: {
+    replacement: plannedExerciseSchema,
+    reason: { type: 'string' },
+  },
+  required: ['replacement', 'reason'],
+  propertyOrdering: ['replacement', 'reason'],
 } as const

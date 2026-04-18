@@ -3,13 +3,14 @@
 // response. Runs as a Deno edge function; do not import Node-only modules.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenAI } from 'npm:@google/genai@^1'
-import { mesocycleSchema, pingSchema } from './schemas.ts'
+import { mesocycleSchema, pingSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
+import { buildSwapPrompt } from './prompts/swapExercise.ts'
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
 // Ops that require the Gemini SDK. Keep in sync as new LLM-backed ops land.
-const GEMINI_OPS = new Set(['ping', 'generate_plan'])
+const GEMINI_OPS = new Set(['ping', 'generate_plan', 'swap_exercise'])
 
 // Hard cap on serialized exercise-pool size. Gemini 2.5 Flash tolerates large
 // inputs, but the pool is untrusted client input and we don't want a runaway
@@ -176,6 +177,160 @@ Deno.serve(async (req) => {
               JSON.stringify({
                 error: `gemini hallucinated ${bogus.length} exercise id(s) not in pool`,
                 hallucinated: bogus.slice(0, 5),
+              }),
+              { status: 502, headers: JSON_HEADERS },
+            )
+          }
+        } catch (parseErr) {
+          // r.text was not valid JSON despite responseSchema; let the client
+          // handle via its own Zod validation.
+          console.warn('post-validate JSON parse failed', parseErr)
+        }
+        return new Response(r.text, { headers: JSON_HEADERS })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return new Response(JSON.stringify({ error: message }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    if (body.op === 'swap_exercise') {
+      // Validate payload shape. Same defense-in-depth approach as generate_plan —
+      // fail fast with a specific 400 instead of letting Gemini choke on a
+      // malformed prompt.
+      const payload = (body.payload ?? {}) as {
+        profile?: unknown
+        currentExercise?: unknown
+        sessionFocus?: unknown
+        completedExercisesInSession?: unknown
+        exercisePool?: unknown
+        reason?: unknown
+      }
+      if (!payload.profile || typeof payload.profile !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.profile is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!payload.currentExercise || typeof payload.currentExercise !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.currentExercise is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (
+        !Array.isArray(payload.sessionFocus) ||
+        !payload.sessionFocus.every((v) => typeof v === 'string')
+      ) {
+        return new Response(
+          JSON.stringify({ error: 'payload.sessionFocus is required and must be a string[]' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (
+        !Array.isArray(payload.completedExercisesInSession) ||
+        !payload.completedExercisesInSession.every((v) => typeof v === 'string')
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: 'payload.completedExercisesInSession is required and must be a string[]',
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!Array.isArray(payload.exercisePool)) {
+        return new Response(
+          JSON.stringify({ error: 'payload.exercisePool is required and must be an array' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (typeof payload.reason !== 'string' || payload.reason.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'payload.reason is required and must be a non-empty string' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      // Untrusted pool size guard — same 500KB cap as generate_plan.
+      const poolJson = JSON.stringify(payload.exercisePool)
+      if (poolJson.length > MAX_POOL_JSON_BYTES) {
+        return new Response(
+          JSON.stringify({
+            error: `payload.exercisePool exceeds ${MAX_POOL_JSON_BYTES} bytes (got ${poolJson.length}); slim the pool client-side`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      try {
+        const prompt = buildSwapPrompt({
+          profile: payload.profile,
+          currentExercise: payload.currentExercise,
+          sessionFocus: payload.sessionFocus as string[],
+          completedExercisesInSession: payload.completedExercisesInSession as string[],
+          exercisePool: payload.exercisePool as ExercisePoolEntry[],
+          reason: payload.reason,
+        })
+        const r = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: swapExerciseSchema,
+          },
+        })
+        if (!r.text) {
+          return new Response(
+            JSON.stringify({ error: 'gemini returned empty response (blocked or no candidates)' }),
+            { status: 502, headers: JSON_HEADERS },
+          )
+        }
+        // Server-side safety checks — Gemini occasionally hallucinates ids
+        // that aren't in the pool, or picks an exercise the user already
+        // completed. Catch both here so a single retry from the client has a
+        // chance of getting a clean response instead of quietly rendering
+        // something invalid.
+        try {
+          const parsed = JSON.parse(r.text) as {
+            replacement?: { library_id?: string; name?: string }
+            reason?: string
+          }
+          const libraryId = parsed.replacement?.library_id
+          if (!libraryId || typeof libraryId !== 'string') {
+            return new Response(
+              JSON.stringify({ error: 'gemini response missing replacement.library_id' }),
+              { status: 502, headers: JSON_HEADERS },
+            )
+          }
+          const poolIds = new Set(
+            (payload.exercisePool as { id: string }[]).map((e) => e.id),
+          )
+          if (!poolIds.has(libraryId)) {
+            return new Response(
+              JSON.stringify({
+                error: `gemini hallucinated exercise id not in pool: ${libraryId}`,
+                hallucinated: [libraryId],
+              }),
+              { status: 502, headers: JSON_HEADERS },
+            )
+          }
+          // Dedup check: match on library_id (canonical) AND case-insensitive
+          // name (defensive, since the client currently sends names in
+          // completedExercisesInSession). If either matches, reject — we'd
+          // rather a retry than hand back a dup.
+          const completed = payload.completedExercisesInSession as string[]
+          const completedLower = new Set(completed.map((c) => c.toLowerCase()))
+          const candidateName = parsed.replacement?.name ?? ''
+          if (
+            completed.includes(libraryId) ||
+            completedLower.has(candidateName.toLowerCase())
+          ) {
+            return new Response(
+              JSON.stringify({
+                error: `gemini returned an exercise already completed in this session: ${candidateName || libraryId}`,
+                duplicate: candidateName || libraryId,
               }),
               { status: 502, headers: JSON_HEADERS },
             )
