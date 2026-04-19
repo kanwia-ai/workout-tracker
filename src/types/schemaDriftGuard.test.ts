@@ -73,4 +73,19 @@ describe('edge schema enum drift guard', () => {
     const zodKeys = Object.keys(PlannedSessionSchema.shape).sort()
     expect(edgeKeys).toEqual(zodKeys)
   })
+
+  it('plannedExerciseSchema includes warmup_sets in properties + propertyOrdering', () => {
+    // Warmup ramp sets are emitted by Gemini (compound → 3, accessory → 1,
+    // rehab → 0). If this field gets dropped from the edge schema, Gemini
+    // will silently stop returning the ramp prescription and the client will
+    // fall back to the old role-heuristic inference.
+    expect(source).toMatch(/warmup_sets:\s*\{[\s\S]*?items:\s*warmupSetSchema/)
+  })
+
+  it('plannedSessionSchema includes subtitle in properties + propertyOrdering', () => {
+    // Body-part session subtitle (e.g. "LOWER · PULL-DOMINANT"). If this
+    // isn't mirrored on the edge side, Gemini drops it and the UI has nothing
+    // to render beside the title.
+    expect(source).toMatch(/subtitle:\s*\{\s*type:\s*'string'/)
+  })
 })

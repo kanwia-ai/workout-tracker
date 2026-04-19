@@ -11,6 +11,16 @@ export type MuscleGroup = z.infer<typeof MuscleGroup>
 export const SessionStatus = z.enum(['upcoming', 'in_progress', 'completed', 'skipped'])
 export type SessionStatus = z.infer<typeof SessionStatus>
 
+// Warmup ramp set — percent of working weight (0..100) + rep target. Emitted
+// by Gemini so ramp prescriptions don't have to be inferred client-side from
+// role/name heuristics. See MASTER-SYNTHESIS §Warmup prescription by exercise
+// role.
+export const WarmupSetSchema = z.object({
+  percent: z.number().int().min(0).max(100),
+  reps: z.number().int().min(1).max(30),
+})
+export type WarmupSet = z.infer<typeof WarmupSetSchema>
+
 export const PlannedExerciseSchema = z.object({
   library_id: z.string(),       // "fedb:..." or curated id
   name: z.string(),             // denormalized for offline display
@@ -20,6 +30,12 @@ export const PlannedExerciseSchema = z.object({
   rest_seconds: z.number().int().min(0).max(600),
   role: z.string(),             // "main lift" | "accessory" | "core" | "rehab"
   notes: z.string().optional(),
+  /**
+   * Ramp-set prescription. Compound main lifts get 3 sets
+   * (50%/10, 70%/5, 85%/3); accessories get 1 set (60%/8); rehab/mobility
+   * omit or pass []. Optional so legacy plans deserialize cleanly.
+   */
+  warmup_sets: z.array(WarmupSetSchema).max(6).optional(),
 })
 
 export const PlannedSessionSchema = z.object({
@@ -28,6 +44,12 @@ export const PlannedSessionSchema = z.object({
   ordinal: z.number().int().min(1),   // position within the week (1..N)
   focus: z.array(MuscleGroup).min(1),
   title: z.string(),
+  /**
+   * Short UPPERCASE descriptor shown beside the title in the UI,
+   * e.g. "LOWER · PULL-DOMINANT" or "UPPER · PUSH". Optional so legacy
+   * plans load cleanly.
+   */
+  subtitle: z.string().max(60).optional(),
   estimated_minutes: z.number().int().min(10).max(180),
   exercises: z.array(PlannedExerciseSchema).min(1),
   day_of_week: z.number().int().min(0).max(6),   // 0=Mon .. 6=Sun

@@ -30,6 +30,18 @@ const MUSCLE_GROUP_ENUM = [
 const SESSION_STATUS_ENUM = ['upcoming', 'in_progress', 'completed', 'skipped'] as const
 
 // --- plan sub-schemas --------------------------------------------------------
+// Warmup ramp set: percent of working weight + rep target. Optional on
+// plannedExerciseSchema (compound main lifts → 3, accessories → 1, rehab → 0).
+const warmupSetSchema = {
+  type: 'object',
+  properties: {
+    percent: { type: 'integer', minimum: 0, maximum: 100 },
+    reps: { type: 'integer', minimum: 1, maximum: 30 },
+  },
+  required: ['percent', 'reps'],
+  propertyOrdering: ['percent', 'reps'],
+} as const
+
 export const plannedExerciseSchema = {
   type: 'object',
   properties: {
@@ -41,9 +53,14 @@ export const plannedExerciseSchema = {
     rest_seconds: { type: 'integer', minimum: 0, maximum: 600 },
     role: { type: 'string' },
     notes: { type: 'string' },
+    warmup_sets: {
+      type: 'array',
+      items: warmupSetSchema,
+      maxItems: 6,
+    },
   },
   required: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role'],
-  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes'],
+  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets'],
 } as const
 
 const plannedSessionSchema = {
@@ -58,6 +75,7 @@ const plannedSessionSchema = {
       minItems: 1,
     },
     title: { type: 'string' },
+    subtitle: { type: 'string', maxLength: 60 },
     estimated_minutes: { type: 'integer', minimum: 10, maximum: 180 },
     exercises: {
       type: 'array',
@@ -70,7 +88,7 @@ const plannedSessionSchema = {
     intended_date: { type: 'string' },
   },
   required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status'],
-  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date'],
+  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'subtitle', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date'],
 } as const
 
 // Mesocycle — the server fills in user_id, generated_at, and profile_snapshot

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { MesocycleSchema, PlannedSessionSchema, type Mesocycle } from './plan'
+import {
+  MesocycleSchema,
+  PlannedExerciseSchema,
+  PlannedSessionSchema,
+  WarmupSetSchema,
+  type Mesocycle,
+} from './plan'
 
 function makePlannedExercise(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -158,6 +164,101 @@ describe('PlannedSessionSchema day_of_week + rationale', () => {
   it('rejects rationale longer than 280 characters', () => {
     const longRationale = 'a'.repeat(281)
     expect(PlannedSessionSchema.safeParse({ ...baseSession, rationale: longRationale }).success).toBe(false)
+  })
+})
+
+describe('PlannedExerciseSchema warmup_sets', () => {
+  const base = {
+    library_id: 'fedb:squat',
+    name: 'Back Squat',
+    sets: 3,
+    reps: '5',
+    rir: 2,
+    rest_seconds: 180,
+    role: 'main lift',
+  }
+
+  it('accepts a compound ramp prescription (3 warmup sets)', () => {
+    const ok = PlannedExerciseSchema.safeParse({
+      ...base,
+      warmup_sets: [
+        { percent: 50, reps: 10 },
+        { percent: 70, reps: 5 },
+        { percent: 85, reps: 3 },
+      ],
+    })
+    expect(ok.success).toBe(true)
+  })
+
+  it('accepts an accessory single-warmup prescription', () => {
+    const ok = PlannedExerciseSchema.safeParse({
+      ...base,
+      role: 'accessory',
+      warmup_sets: [{ percent: 60, reps: 8 }],
+    })
+    expect(ok.success).toBe(true)
+  })
+
+  it('accepts empty warmup_sets for rehab', () => {
+    const ok = PlannedExerciseSchema.safeParse({ ...base, role: 'rehab', warmup_sets: [] })
+    expect(ok.success).toBe(true)
+  })
+
+  it('accepts omitted warmup_sets (back-compat with legacy plans)', () => {
+    const ok = PlannedExerciseSchema.safeParse(base)
+    expect(ok.success).toBe(true)
+  })
+
+  it('rejects a ramp set with percent > 100', () => {
+    const bad = PlannedExerciseSchema.safeParse({
+      ...base,
+      warmup_sets: [{ percent: 120, reps: 5 }],
+    })
+    expect(bad.success).toBe(false)
+  })
+
+  it('rejects a ramp set with reps = 0', () => {
+    const bad = PlannedExerciseSchema.safeParse({
+      ...base,
+      warmup_sets: [{ percent: 50, reps: 0 }],
+    })
+    expect(bad.success).toBe(false)
+  })
+
+  it('rejects more than 6 warmup sets', () => {
+    const tooMany = Array.from({ length: 7 }, (_, i) => ({ percent: 50 + i, reps: 5 }))
+    const bad = PlannedExerciseSchema.safeParse({ ...base, warmup_sets: tooMany })
+    expect(bad.success).toBe(false)
+  })
+
+  it('WarmupSetSchema rejects negative percent', () => {
+    expect(WarmupSetSchema.safeParse({ percent: -5, reps: 5 }).success).toBe(false)
+  })
+})
+
+describe('PlannedSessionSchema subtitle', () => {
+  const base = {
+    id: 's-1', week_number: 1, ordinal: 1, focus: ['glutes'] as const,
+    title: 'glutes & hammies',
+    estimated_minutes: 55,
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 120, role: 'main lift' }],
+    status: 'upcoming' as const,
+    day_of_week: 0,
+    rationale: 'Monday lower, fresh week.',
+  }
+
+  it('accepts a valid subtitle like "LOWER · PULL-DOMINANT"', () => {
+    const ok = PlannedSessionSchema.safeParse({ ...base, subtitle: 'LOWER · PULL-DOMINANT' })
+    expect(ok.success).toBe(true)
+  })
+
+  it('accepts a session without subtitle (back-compat)', () => {
+    expect(PlannedSessionSchema.safeParse(base).success).toBe(true)
+  })
+
+  it('rejects a subtitle longer than 60 chars', () => {
+    const bad = PlannedSessionSchema.safeParse({ ...base, subtitle: 'a'.repeat(61) })
+    expect(bad.success).toBe(false)
   })
 })
 

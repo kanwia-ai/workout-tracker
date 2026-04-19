@@ -57,6 +57,8 @@ HARD RULES (must all be satisfied):
 - Do NOT return the original exercise itself.
 - Choose the replacement from the provided pool ONLY. The library_id field must exactly match an id from the pool. The name field must match that pool entry's name verbatim.
 - Return EXACTLY ONE replacement. Populate sets / reps / rir / rest_seconds / role consistent with the original exercise's intent (accessory vs main lift, similar volume). If the reason is "too_hard", you may drop one set or widen the rep range; if "too_easy", you may add a set or tighten the rep range.
+- REST INTERVALS by role (match the original's bucket): compound main lift = 180s, accessory compound = 120s, isolation / pump = 75s, rehab primer = 30–45s.
+- WARMUP SETS: if the original role is a compound main lift, emit warmup_sets: [{"percent":50,"reps":10},{"percent":70,"reps":5},{"percent":85,"reps":3}]. If accessory compound or isolation at load, emit [{"percent":60,"reps":8}]. If rehab / mobility / core anti-movement, omit warmup_sets or pass []. Match whatever the original exercise would have had.
 - The "reason" field is a single short sentence (<= 140 chars) explaining why this substitution works — mention the matched muscle group and any injury/equipment consideration.
 
 SWAP REASON: ${reason}
