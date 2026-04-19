@@ -1,0 +1,748 @@
+{
+  "version": 1,
+  "curated_at": "2026-04-18",
+  "notes": "Curated YouTube Shorts form demos for common strength & hypertrophy exercises. All creators from a strict whitelist: Jeff Nippard, Squat University, Bret Contreras, Renaissance Periodization, Jeremy Ethier. Durations are approximate (Shorts are <=60s by format). All URLs verified via YouTube oEmbed API.",
+  "demos": {
+    "fedb:Barbell_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/EzvnMZuxGWw",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Barbell_Full_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/PPmvh7gBTi0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Bodyweight_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/8060FZiT5TA",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Front_Barbell_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/ME-HKcCVm_o",
+      "creator": "Squat University",
+      "duration_seconds": 30
+    },
+    "fedb:Goblet_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/1wON5Zfoagw",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Box_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/7t_gsiWnt-I",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Split_Squat_with_Dumbbells": {
+      "demo_url": "https://www.youtube.com/shorts/bwhl_9jN_3o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Split_Squats": {
+      "demo_url": "https://www.youtube.com/shorts/bwhl_9jN_3o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/AIZ8q1qruKw",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Olympic_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/Kg0p84VkwBE",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Overhead_Squat": {
+      "demo_url": "https://www.youtube.com/shorts/Kg0p84VkwBE",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Barbell_Step_Ups": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Step_Ups": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/7YYaGXvEr90",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Romanian_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/d-hn_0sEpRQ",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Romanian_Deadlift_from_Deficit": {
+      "demo_url": "https://www.youtube.com/shorts/d-hn_0sEpRQ",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Sumo_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/IiSAZE6yXdI",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Trap_Bar_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/Vjd5pEyj9-E",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Stiff-Legged_Barbell_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/d-hn_0sEpRQ",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Stiff-Legged_Dumbbell_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/d-hn_0sEpRQ",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Kettlebell_One-Legged_Deadlift": {
+      "demo_url": "https://www.youtube.com/shorts/d-hn_0sEpRQ",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Bench_Press_-_Medium_Grip": {
+      "demo_url": "https://www.youtube.com/shorts/Oy85yiXfYkg",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Bench_Press_-_Powerlifting": {
+      "demo_url": "https://www.youtube.com/shorts/j9wdFZZs5DA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Incline_Bench_Press_-_Medium_Grip": {
+      "demo_url": "https://www.youtube.com/shorts/bYDQWJpWBFs",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Decline_Barbell_Bench_Press": {
+      "demo_url": "https://www.youtube.com/shorts/lX1p39UKIis",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Bench_Press": {
+      "demo_url": "https://www.youtube.com/shorts/hWbUlkb5Ms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Incline_Dumbbell_Press": {
+      "demo_url": "https://www.youtube.com/shorts/bYDQWJpWBFs",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:Dumbbell_Bench_Press_with_Neutral_Grip": {
+      "demo_url": "https://www.youtube.com/shorts/hWbUlkb5Ms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Decline_Dumbbell_Bench_Press": {
+      "demo_url": "https://www.youtube.com/shorts/lX1p39UKIis",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Close-Grip_Barbell_Bench_Press": {
+      "demo_url": "https://www.youtube.com/shorts/_CbNto-f0Vg",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Floor_Press": {
+      "demo_url": "https://www.youtube.com/shorts/DfxFeK7u_Gg",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Floor_Press": {
+      "demo_url": "https://www.youtube.com/shorts/hWbUlkb5Ms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Military_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Barbell_Military_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Push_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Landmine_180s": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Arnold_Dumbbell_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Dumbbell_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Dumbbell_Press": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Bent_Over_Barbell_Row": {
+      "demo_url": "https://www.youtube.com/shorts/c2Q17FVxYbE",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Reverse_Grip_Bent-Over_Rows": {
+      "demo_url": "https://www.youtube.com/shorts/c2Q17FVxYbE",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:One-Arm_Dumbbell_Row": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Bent_Over_Two-Dumbbell_Row": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Bent_Over_Two-Dumbbell_Row_With_Palms_In": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Seated_Cable_Rows": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:T-Bar_Row_with_Handle": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Lying_T-Bar_Row": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Inverted_Row": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Pullups": {
+      "demo_url": "https://www.youtube.com/shorts/ZPG8OsHKXLw",
+      "creator": "Jeremy Ethier",
+      "duration_seconds": 55
+    },
+    "fedb:Chin-Up": {
+      "demo_url": "https://www.youtube.com/shorts/ZPG8OsHKXLw",
+      "creator": "Jeremy Ethier",
+      "duration_seconds": 55
+    },
+    "fedb:Wide-Grip_Rear_Pull-Up": {
+      "demo_url": "https://www.youtube.com/shorts/zoSaV3eSc14",
+      "creator": "Squat University",
+      "duration_seconds": 45
+    },
+    "fedb:V-Bar_Pullup": {
+      "demo_url": "https://www.youtube.com/shorts/ZPG8OsHKXLw",
+      "creator": "Jeremy Ethier",
+      "duration_seconds": 55
+    },
+    "fedb:Wide-Grip_Lat_Pulldown": {
+      "demo_url": "https://www.youtube.com/shorts/SqQxuEpXnF4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Close-Grip_Front_Lat_Pulldown": {
+      "demo_url": "https://www.youtube.com/shorts/hnSqbBk15tw",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:V-Bar_Pulldown": {
+      "demo_url": "https://www.youtube.com/shorts/hnSqbBk15tw",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Full_Range-Of-Motion_Lat_Pulldown": {
+      "demo_url": "https://www.youtube.com/shorts/SqQxuEpXnF4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Straight-Arm_Pulldown": {
+      "demo_url": "https://www.youtube.com/shorts/hnSqbBk15tw",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Hip_Thrust": {
+      "demo_url": "https://www.youtube.com/shorts/RPHbUUjXFK4",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Glute_Bridge": {
+      "demo_url": "https://www.youtube.com/shorts/ZzU63eMUXNE",
+      "creator": "Bret Contreras",
+      "duration_seconds": 50
+    },
+    "fedb:Single_Leg_Glute_Bridge": {
+      "demo_url": "https://www.youtube.com/shorts/-1cAnwFNBLg",
+      "creator": "Bret Contreras",
+      "duration_seconds": 45
+    },
+    "fedb:Good_Morning": {
+      "demo_url": "https://www.youtube.com/shorts/EBui4Bt5N7o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Stiff_Leg_Barbell_Good_Morning": {
+      "demo_url": "https://www.youtube.com/shorts/EBui4Bt5N7o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Hyperextensions_Back_Extensions": {
+      "demo_url": "https://www.youtube.com/shorts/EBui4Bt5N7o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Side_Lateral_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/f_OGBg2KxgY",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Side_Lateral_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/f_OGBg2KxgY",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Seated_Lateral_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/f_OGBg2KxgY",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Lateral_Raise_-_With_Bands": {
+      "demo_url": "https://www.youtube.com/shorts/f_OGBg2KxgY",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Rear_Delt_Fly": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Reverse_Flyes": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Bent-Over_Rear_Delt_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Bent_Over_Dumbbell_Rear_Delt_Raise_With_Head_On_Bench": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Lying_Rear_Delt_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Face_Pull": {
+      "demo_url": "https://www.youtube.com/shorts/P5CXx_jgTDE",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Triceps_Pushdown": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Triceps_Pushdown_-_Rope_Attachment": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Triceps_Pushdown_-_V-Bar_Attachment": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Rope_Overhead_Triceps_Extension": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Tricep_Dumbbell_Kickback": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Overhead_Barbell_Triceps_Extension": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Triceps_Press": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:EZ-Bar_Skullcrusher": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dips_-_Triceps_Version": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:EZ-Bar_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Bicep_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Hammer_Curls": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Alternate_Hammer_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Preacher_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Incline_Dumbbell_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Concentration_Curls": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Spider_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Hammer_Curls_-_Rope_Attachment": {
+      "demo_url": "https://www.youtube.com/shorts/j5f_0rNkPwU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Leg_Press": {
+      "demo_url": "https://www.youtube.com/shorts/nDh_BlnLCGc",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Narrow_Stance_Leg_Press": {
+      "demo_url": "https://www.youtube.com/shorts/nDh_BlnLCGc",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Leg_Extensions": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Single-Leg_Leg_Extension": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Lying_Leg_Curls": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Leg_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Leg_Curl": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Calf_Raises": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Seated_Calf_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Dumbbell_Calf_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Standing_Barbell_Calf_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Seated_Calf_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Plank": {
+      "demo_url": "https://www.youtube.com/shorts/-fhNcdQstTk",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Dead_Bug": {
+      "demo_url": "https://www.youtube.com/shorts/jZgnRUWrKgA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Crunches": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Crunch": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Hanging_Leg_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Knee_Hip_Raise_On_Parallel_Bars": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Hanging_Pike": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Reverse_Crunch": {
+      "demo_url": "https://www.youtube.com/shorts/eLCBC6fjtQU",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Pushups": {
+      "demo_url": "https://www.youtube.com/shorts/EzP3VBz_J8M",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Push-Up_Wide": {
+      "demo_url": "https://www.youtube.com/shorts/EzP3VBz_J8M",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Incline_Push-Up": {
+      "demo_url": "https://www.youtube.com/shorts/ReFcwgDKv4Q",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Decline_Push-Up": {
+      "demo_url": "https://www.youtube.com/shorts/ReFcwgDKv4Q",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Pushups_Close_and_Wide_Hand_Positions": {
+      "demo_url": "https://www.youtube.com/shorts/EzP3VBz_J8M",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Lunges": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Lunge": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Walking_Lunge": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Rear_Lunge": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Crossover_Reverse_Lunge": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Bodyweight_Walking_Lunge": {
+      "demo_url": "https://www.youtube.com/shorts/FmNpOsEWms4",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dumbbell_Flyes": {
+      "demo_url": "https://www.youtube.com/shorts/3TN4otAxzZk",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Incline_Dumbbell_Flyes": {
+      "demo_url": "https://www.youtube.com/shorts/3TN4otAxzZk",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Flat_Bench_Cable_Flyes": {
+      "demo_url": "https://www.youtube.com/shorts/3TN4otAxzZk",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Incline_Cable_Flye": {
+      "demo_url": "https://www.youtube.com/shorts/3TN4otAxzZk",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Butterfly": {
+      "demo_url": "https://www.youtube.com/shorts/veZB4VbVEPQ",
+      "creator": "Renaissance Periodization",
+      "duration_seconds": 55
+    },
+    "fedb:Decline_Dumbbell_Flyes": {
+      "demo_url": "https://www.youtube.com/shorts/3TN4otAxzZk",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Glute_Kickback": {
+      "demo_url": "https://www.youtube.com/shorts/kf7947hlo8A",
+      "creator": "Bret Contreras",
+      "duration_seconds": 45
+    },
+    "fedb:One-Legged_Cable_Kickback": {
+      "demo_url": "https://www.youtube.com/shorts/kf7947hlo8A",
+      "creator": "Bret Contreras",
+      "duration_seconds": 45
+    },
+    "fedb:Bench_Dips": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Parallel_Bar_Dip": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Dips_-_Chest_Version": {
+      "demo_url": "https://www.youtube.com/shorts/sah-sHCZDS0",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Pallof_Press": {
+      "demo_url": "https://www.youtube.com/shorts/jZgnRUWrKgA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Pallof_Press_With_Rotation": {
+      "demo_url": "https://www.youtube.com/shorts/jZgnRUWrKgA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Russian_Twist": {
+      "demo_url": "https://www.youtube.com/shorts/jZgnRUWrKgA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Cable_Russian_Twists": {
+      "demo_url": "https://www.youtube.com/shorts/jZgnRUWrKgA",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Farmers_Walk": {
+      "demo_url": "https://www.youtube.com/shorts/aSYap2yhW8s",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:One-Arm_Kettlebell_Swings": {
+      "demo_url": "https://www.youtube.com/shorts/aSYap2yhW8s",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Kettlebell_Thruster": {
+      "demo_url": "https://www.youtube.com/shorts/aSYap2yhW8s",
+      "creator": "Squat University",
+      "duration_seconds": 50
+    },
+    "fedb:Monster_Walk": {
+      "demo_url": "https://www.youtube.com/shorts/RPHbUUjXFK4",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    },
+    "fedb:Barbell_Shrug": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Dumbbell_Shrug": {
+      "demo_url": "https://www.youtube.com/shorts/fgSyNdEsqlM",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 45
+    },
+    "fedb:Straight-Arm_Dumbbell_Pullover": {
+      "demo_url": "https://www.youtube.com/shorts/hnSqbBk15tw",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Front_Dumbbell_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/f_OGBg2KxgY",
+      "creator": "Jeff Nippard",
+      "duration_seconds": 55
+    },
+    "fedb:Glute_Ham_Raise": {
+      "demo_url": "https://www.youtube.com/shorts/EBui4Bt5N7o",
+      "creator": "Squat University",
+      "duration_seconds": 55
+    }
+  },
+  "missing": [
+    { "id": "fedb:Spanish_Squat", "reason": "Not in free-exercise-db; no suitable whitelisted Shorts variant found" },
+    { "id": "fedb:Terminal_Knee_Extension", "reason": "Not in free-exercise-db; no whitelisted Shorts found" },
+    { "id": "fedb:Clamshell", "reason": "Not in free-exercise-db; no whitelisted Shorts found" },
+    { "id": "fedb:Ab_Wheel_Rollout", "reason": "Not indexed in free-exercise-db as a common entry" }
+  ]
+}
