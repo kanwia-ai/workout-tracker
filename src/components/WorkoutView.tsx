@@ -154,57 +154,6 @@ function preambleKey(tod: TimeOfDay): 'preamble_morning' | 'preamble_afternoon' 
       : 'preamble_evening'
 }
 
-// ─── Warmup classification (local — proper schema comes in later phase) ──
-// Compound lifts get 3 ramp sets; accessory / isolation gets 1 light set;
-// rehab / mobility / core / cardio skip warmups. We classify from `role`
-// first, then fall back to an exercise-name keyword heuristic so Gemini's
-// looser role strings (e.g. "main lift", "Main Lift", "compound") still
-// produce the correct count.
-
-type WarmupKind = 'compound' | 'accessory' | 'none'
-
-const COMPOUND_KEYWORDS = [
-  'squat',
-  'deadlift',
-  'bench',
-  'press',
-  'row',
-  'clean',
-  'snatch',
-  'pull-up',
-  'pullup',
-  'chin-up',
-  'chinup',
-  'dip',
-  'thrust',
-]
-
-function classifyWarmup(ex: PlannedExercise): WarmupKind {
-  const role = ex.role?.toLowerCase() ?? ''
-  if (/rehab|mobility|core|cardio|cool.?down/.test(role)) return 'none'
-  if (/main.?lift|compound/.test(role)) return 'compound'
-  if (/accessory|isolation/.test(role)) {
-    // Even in accessory role, if the name suggests a compound pattern, bump it.
-    const name = ex.name.toLowerCase()
-    if (COMPOUND_KEYWORDS.some((kw) => name.includes(kw))) return 'compound'
-    return 'accessory'
-  }
-  // Unknown role — fall back to the exercise name.
-  const name = ex.name.toLowerCase()
-  if (COMPOUND_KEYWORDS.some((kw) => name.includes(kw))) return 'compound'
-  return 'accessory'
-}
-
-interface WarmupRow {
-  /** Percentage of working weight (0..1), or null when no working weight yet. */
-  pct: number | null
-  /** Ramp rep target. */
-  reps: number
-  /** Label shown next to the circle ("warmup 1/3", "warmup"). */
-  label: string
-  /** Scaled load in lbs (rounded to nearest 5), or null when unknown. */
-  weight: number | null
-}
 
 /**
  * Compute the ramp-set rows for an exercise. Pure — safe to call per render.
@@ -218,57 +167,6 @@ interface WarmupRow {
  * weight is known yet, each row's `weight` is null and the render shows
  * "light" / "easy" instead of a number.
  */
-function computeWarmupSets(
-  ex: PlannedExercise,
-  workingWeight: number,
-): WarmupRow[] {
-  const kind = classifyWarmup(ex)
-  if (kind === 'none') return []
-
-  const round5 = (n: number): number | null => {
-    if (!(workingWeight > 0)) return null
-    return Math.max(0, Math.round(n / 5) * 5)
-  }
-
-  if (kind === 'compound') {
-    return [
-      {
-        pct: 0.5,
-        reps: 10,
-        label: 'warmup 1/3',
-        weight: round5(workingWeight * 0.5),
-      },
-      {
-        pct: 0.7,
-        reps: 5,
-        label: 'warmup 2/3',
-        weight: round5(workingWeight * 0.7),
-      },
-      {
-        pct: 0.85,
-        reps: 3,
-        label: 'warmup 3/3',
-        weight: round5(workingWeight * 0.85),
-      },
-    ]
-  }
-
-  return [
-    {
-      pct: 0.6,
-      reps: 8,
-      label: 'warmup',
-      weight: round5(workingWeight * 0.6),
-    },
-  ]
-}
-
-function formatWarmupDetail(row: WarmupRow, kind: WarmupKind): string {
-  if (row.weight != null) {
-    return `${Math.round(row.pct! * 100)}% · ${row.weight}lb × ${row.reps}`
-  }
-  return kind === 'compound' ? 'light' : 'easy'
-}
 
 // ─── Props ──────────────────────────────────────────────────────────────
 
@@ -378,11 +276,9 @@ export function WorkoutView({
   }
   const [reaction, setReaction] = useState<ReactionState | null>(null)
   const reactionTimeoutRef = useRef<number | null>(null)
-  // Anti-repeat refs for pool-sampled copy. Each pool gets its own ref so
-  // setDone and warmupDone rotate independently.
+  // Anti-repeat refs for pool-sampled copy. Each pool gets its own ref.
   const lastSetDoneRef = useRef<string | null>(null)
   const lastSetDonePRRef = useRef<string | null>(null)
-  const lastWarmupDoneRef = useRef<string | null>(null)
   const lastRestStartRef = useRef<string | null>(null)
   const lastRestSkipRef = useRef<string | null>(null)
   // Preamble line is picked once per session-mount.
@@ -649,28 +545,6 @@ export function WorkoutView({
     }
   }
 
-  // ─── Toggle a WARMUP tap. Smaller burst, softer haptic, warmupDone pool. ─
-  // Warmups are intentionally OUT of the PR-detection path — they're ramp
-  // sets, not working sets. They also use a shorter mini-rest so the screen
-  // doesn't stack a full RestBanner modal between every ramp.
-  const toggleWarmup = (exerciseIdx: number, warmupIdx: number) => {
-    const key = `${exerciseIdx}-${warmupIdx}`
-    const wasDone = !!checkedWarmups[key]
-    setCheckedWarmups((prev) => ({ ...prev, [key]: !wasDone }))
-    if (wasDone) return
-
-    try {
-      navigator.vibrate?.(5)
-    } catch {
-      // swallow
-    }
-
-    setBurstKey(`w-${key}`)
-    setBurstIsWarmup(true)
-    setBurstTrigger((t) => t + 1)
-
-    fireReaction(pickCopy('warmupDone', cheekLevel, lastWarmupDoneRef), false)
-  }
 
   const startTimer = (seconds: number, label: string, type: 'rest' | 'work') => {
     setTimer({ seconds, label, type })
@@ -1038,12 +912,7 @@ export function WorkoutView({
                   const workingDone = Array.from({ length: ex.sets }, (_, k) =>
                     checkedSets[`${ei}-${k}`],
                   ).every(Boolean)
-                  const workingWeight = effectiveWeight(ex)
-                  const warmupRows = computeWarmupSets(ex, workingWeight)
-                  const warmupsAllDone =
-                    warmupRows.length === 0 ||
-                    warmupRows.every((_, wi) => !!checkedWarmups[`${ei}-${wi}`])
-                  const isCompleted = workingDone && warmupsAllDone
+                  const isCompleted = workingDone
 
                   const perSetArr = perSetWeights[ex.library_id] ?? []
                   const perSetMax = perSetArr.reduce((m, v) => (v > m ? v : m), 0)
@@ -1067,13 +936,10 @@ export function WorkoutView({
                       lastWeight={lastW}
                       hasPRFlag={hasPRFlag}
                       checkedSets={checkedSets}
-                      checkedWarmups={checkedWarmups}
-                      warmupRows={warmupRows}
                       burstKey={burstKey}
                       burstTrigger={burstTrigger}
                       burstIsWarmup={burstIsWarmup}
                       onTapSet={(si) => toggleSet(ei, si)}
-                      onTapWarmup={(wi) => toggleWarmup(ei, wi)}
                       onInfo={() => setInfoLibraryId(ex.library_id)}
                       onSwap={() => setSwapIndex(ei)}
                       onOpenTimer={() => startTimer(ex.rest_seconds, 'Rest', 'rest')}
@@ -1285,13 +1151,10 @@ interface LiftCardProps {
   lastWeight?: number
   hasPRFlag: boolean
   checkedSets: Record<string, boolean>
-  checkedWarmups: Record<string, boolean>
-  warmupRows: WarmupRow[]
   burstKey: string | null
   burstTrigger: number
   burstIsWarmup: boolean
   onTapSet: (setIdx: number) => void
-  onTapWarmup: (warmupIdx: number) => void
   onInfo: () => void
   onSwap: () => void
   onOpenTimer: () => void
@@ -1311,13 +1174,10 @@ function LiftCard({
   lastWeight,
   hasPRFlag,
   checkedSets,
-  checkedWarmups,
-  warmupRows,
   burstKey,
   burstTrigger,
   burstIsWarmup,
   onTapSet,
-  onTapWarmup,
   onInfo,
   onSwap,
   onOpenTimer,
@@ -1325,7 +1185,6 @@ function LiftCard({
   onChangeWeight,
   onChangePerSet,
 }: LiftCardProps) {
-  const kind = classifyWarmup(ex)
   return (
     <div
       className="rounded-2xl p-3.5"
@@ -1516,35 +1375,6 @@ function LiftCard({
         </div>
       )}
 
-      {/* ── WARMUP ROWS — render BEFORE working-set circles ───────────── */}
-      {warmupRows.length > 0 && (
-        <div
-          className="mt-3 flex flex-col gap-1.5"
-          data-testid={`warmup-rows-${exIdx}`}
-          aria-label={`${warmupRows.length} warmup set${warmupRows.length === 1 ? '' : 's'} before working sets`}
-        >
-          {warmupRows.map((row, wi) => {
-            const key = `${exIdx}-${wi}`
-            const done = !!checkedWarmups[key]
-            const burstHere =
-              burstKey === `w-${key}` && burstTrigger > 0 && burstIsWarmup
-            return (
-              <WarmupRowView
-                key={wi}
-                done={done}
-                label={row.label}
-                detail={formatWarmupDetail(row, kind)}
-                onTap={() => onTapWarmup(wi)}
-                showBurst={burstHere}
-                burstTrigger={burstTrigger}
-                exerciseName={ex.name}
-                warmupIndex={wi}
-              />
-            )
-          })}
-        </div>
-      )}
-
       {/* Circular working-set buttons row */}
       <div className="flex items-center gap-2.5 mt-3 flex-wrap">
         {Array.from({ length: ex.sets }, (_, k) => {
@@ -1583,139 +1413,6 @@ function LiftCard({
 
 function weightsInputValue(n: number): number | '' {
   return n > 0 ? n : ''
-}
-
-// ─── WarmupRowView — lighter, smaller ramp-set row ──────────────────────
-// A single circle tap-to-complete, pinned-left, with the warmup label on the
-// right. Distinct visual weight (opacity 0.75, smaller circle, softer color)
-// so users know these are ramp sets, not working sets.
-
-interface WarmupRowViewProps {
-  done: boolean
-  label: string
-  detail: string
-  onTap: () => void
-  showBurst: boolean
-  burstTrigger: number
-  exerciseName: string
-  warmupIndex: number
-}
-
-function WarmupRowView({
-  done,
-  label,
-  detail,
-  onTap,
-  showBurst,
-  burstTrigger,
-  exerciseName,
-  warmupIndex,
-}: WarmupRowViewProps) {
-  const [pressed, setPressed] = useState(false)
-  const handle = () => {
-    onTap()
-    if (!done) {
-      setPressed(true)
-      window.setTimeout(() => setPressed(false), 400)
-    }
-  }
-
-  return (
-    <div
-      className="flex items-center gap-2.5"
-      style={{
-        opacity: done ? 0.6 : 0.85,
-        transition: 'opacity 300ms',
-      }}
-      data-testid={`warmup-row-${warmupIndex}`}
-    >
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <button
-          type="button"
-          onClick={handle}
-          data-testid={`warmup-circle-${warmupIndex}`}
-          data-warmup-done={done ? 'true' : 'false'}
-          aria-label={`${done ? 'Unmark' : 'Mark'} ${label} of ${exerciseName} as complete`}
-          aria-pressed={done}
-          className={pressed ? 'setcircle-pop' : undefined}
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: '50%',
-            background: done
-              ? 'color-mix(in srgb, var(--brand) 70%, transparent)'
-              : 'var(--lumo-input-bg)',
-            border: done
-              ? '2px solid color-mix(in srgb, var(--brand) 70%, transparent)'
-              : '1px dashed var(--lumo-border-strong)',
-            color: done ? '#fff' : 'var(--lumo-text-ter)',
-            fontSize: 11,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            padding: 0,
-            animation: pressed ? 'setcircle-pop 400ms cubic-bezier(.34,1.56,.64,1)' : 'none',
-          }}
-        >
-          <style>{SET_CIRCLE_KEYFRAMES}</style>
-          {done ? (
-            <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M6 13 L10 17 L18 8"
-                stroke="#fff"
-                strokeWidth={3}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          ) : (
-            <span style={{ fontSize: 10 }}>ᐧ</span>
-          )}
-        </button>
-        {showBurst && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: 17,
-              left: 17,
-              width: 0,
-              height: 0,
-              pointerEvents: 'none',
-              zIndex: 10,
-            }}
-          >
-            <ParticleBurst
-              key={burstTrigger}
-              trigger={burstTrigger}
-              color="var(--brand)"
-              count={4}
-              size={40}
-            />
-          </div>
-        )}
-      </div>
-      <div
-        className="text-[10px] font-bold uppercase"
-        style={{
-          color: 'var(--lumo-text-ter)',
-          letterSpacing: '0.14em',
-          minWidth: 78,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        className="text-[11px] tabular-nums"
-        style={{ color: 'var(--lumo-text-sec)' }}
-      >
-        {detail}
-      </div>
-    </div>
-  )
 }
 
 // ─── SetCircle ──────────────────────────────────────────────────────────
@@ -1856,34 +1553,37 @@ const REACTION_KEYFRAMES = `
 `
 
 function ReactionBubble({ text, isPR }: ReactionBubbleProps) {
+  // Fixed-position toast so it's visible regardless of scroll — you tap a set
+  // circle far from the preamble and need to see Lumo's reaction immediately.
   return (
     <div
       data-testid="lumo-reaction"
       data-is-pr={isPR ? 'true' : 'false'}
       className="reaction-bubble"
       style={{
-        position: 'absolute',
-        top: -14,
-        left: 58,
-        maxWidth: 220,
-        padding: '6px 10px',
-        borderRadius: 14,
-        borderBottomLeftRadius: 4,
+        position: 'fixed',
+        bottom: 88,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        maxWidth: 320,
+        padding: '10px 16px',
+        borderRadius: 20,
         background: isPR
-          ? 'color-mix(in srgb, var(--accent-plum) 20%, var(--lumo-raised))'
+          ? 'color-mix(in srgb, var(--accent-plum) 22%, var(--lumo-raised))'
           : 'var(--lumo-raised)',
         border: isPR
-          ? '1px solid color-mix(in srgb, var(--accent-plum) 40%, transparent)'
-          : '1px solid var(--lumo-border)',
+          ? '1px solid color-mix(in srgb, var(--accent-plum) 45%, transparent)'
+          : '1px solid var(--lumo-border-strong)',
         color: isPR ? 'var(--accent-plum)' : 'var(--lumo-text)',
         fontFamily: "'Fraunces', Georgia, serif",
         fontStyle: 'italic',
-        fontSize: 12,
+        fontSize: 14,
         lineHeight: 1.3,
-        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.12)',
+        whiteSpace: 'nowrap',
+        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.18)',
         animation:
           'reaction-bubble-in 220ms cubic-bezier(.34,1.56,.64,1) both, reaction-bubble-out 260ms 1600ms ease-in both',
-        zIndex: 6,
+        zIndex: 50,
         pointerEvents: 'none',
       }}
     >

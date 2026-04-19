@@ -38,7 +38,7 @@ export interface Tweaks {
 }
 
 export const DEFAULT_TWEAKS: Tweaks = {
-  theme: 'dark',
+  theme: 'light',
   cheek: 2,
   cheekiness: 2,
   brand: '#FF7A45',

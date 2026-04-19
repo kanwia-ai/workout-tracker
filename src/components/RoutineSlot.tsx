@@ -192,17 +192,16 @@ export function RoutineSlot({ session, kind, profile }: Props) {
         padding: '12px 14px',
       }}
     >
-      <div className="flex items-center justify-between gap-2">
-        {/* Tap header to expand/collapse. Button on the left spans title +
-            subline so the whole row is one big tap target — except for the
-            regenerate icon which is its own button on the right. */}
-        <button
-          type="button"
-          onClick={() => setExpanded(e => !e)}
-          aria-expanded={expanded}
-          className="flex items-center gap-[10px] bg-transparent border-0 p-0 flex-1 min-w-0 text-left cursor-pointer"
-          style={{ color: 'var(--lumo-text)' }}
-        >
+      {/* Whole header row is the expand/collapse tap target. The regenerate
+          button stops propagation so it doesn't accidentally toggle expand. */}
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between gap-2 bg-transparent border-0 p-0 text-left cursor-pointer"
+        style={{ color: 'var(--lumo-text)' }}
+      >
+        <span className="flex items-center gap-[10px] flex-1 min-w-0">
           <span
             aria-hidden="true"
             className="w-2 h-2 rounded-full shrink-0"
@@ -210,7 +209,7 @@ export function RoutineSlot({ session, kind, profile }: Props) {
           />
           <span className="flex flex-col min-w-0">
             <span
-              className="text-[14px] font-bold truncate"
+              className="text-[14px] font-bold"
               style={{
                 color: accent,
                 fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
@@ -220,25 +219,33 @@ export function RoutineSlot({ session, kind, profile }: Props) {
               {KIND_HEADER[kind]}
             </span>
             <span
-              className="text-[11px] mt-[1px] truncate tabular-nums"
+              className="text-[11px] mt-[1px] tabular-nums"
               style={{ color: 'var(--lumo-text-ter)' }}
             >
               {sub}
             </span>
           </span>
-        </button>
+        </span>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setPicking(true)}
+        <span className="flex items-center gap-2 shrink-0">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); setPicking(true) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                setPicking(true)
+              }
+            }}
             aria-label={`Regenerate ${KIND_LABELS[kind]}`}
             title="Regenerate"
-            className="p-1.5 rounded-lg transition active:scale-95"
+            className="p-1.5 rounded-lg transition active:scale-95 cursor-pointer"
             style={{ color: 'var(--lumo-text-ter)' }}
           >
             <RefreshCw size={14} />
-          </button>
+          </span>
           <ChevronDown
             size={14}
             aria-hidden="true"
@@ -248,15 +255,15 @@ export function RoutineSlot({ session, kind, profile }: Props) {
               transition: reducedMotion ? 'none' : 'transform 200ms ease',
             }}
           />
-        </div>
-      </div>
+        </span>
+      </button>
 
       {expanded && (
         <div
           className="mt-[10px] pt-[10px]"
           style={{ borderTop: '1px solid var(--lumo-border)' }}
         >
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] truncate"
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em]"
                style={{ color: 'var(--lumo-text-ter)' }}>
             {routine!.title}
           </div>
@@ -276,16 +283,17 @@ export function RoutineSlot({ session, kind, profile }: Props) {
                   }}
                 >
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="truncate" style={{ color: 'var(--lumo-text)' }}>
+                    <span style={{ color: 'var(--lumo-text)' }}>
                       {ex.name}
                     </span>
                     {ex.notes && (
                       <span
-                        className="text-[11px] mt-0.5 truncate"
+                        className="text-[11px] mt-0.5"
                         style={{
                           color: 'var(--lumo-text-sec)',
                           fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
                           fontStyle: 'italic',
+                          lineHeight: 1.4,
                         }}
                       >
                         {ex.notes}

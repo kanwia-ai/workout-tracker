@@ -107,14 +107,17 @@ export function RestBanner({
     }
   }, [done])
 
-  // Ring geometry. Diameter 72 (size 72x72, radius 32, stroke 4).
+  // Ring geometry. Diameter 72 (size 72x72, radius 34, stroke 4).
   const size = 72
   const stroke = 4
-  const radius = (size - stroke) / 2 // 34
+  const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
-  // Progress 0 (just started) → 1 (finished). Offset shrinks the visible arc.
-  const progress = totalMs > 0 ? 1 - remainingMs / totalMs : 1
-  const dashOffset = circumference * progress
+  // Visible arc length: full at start, shrinks to zero as time runs out.
+  // Combined with rotate(-90) at 12 o'clock, the arc's trailing edge walks
+  // counterclockwise back toward the start — the standard countdown feel.
+  const remainingRatio = totalMs > 0 ? remainingMs / totalMs : 0
+  const visibleLen = circumference * remainingRatio
+  const gapLen = circumference - visibleLen
 
   const reducedMotion = prefersReducedMotion()
   const digitsAnimation = reducedMotion
@@ -142,7 +145,7 @@ export function RestBanner({
   const digitsStyle: CSSProperties = {
     fontSize: 22,
     fontWeight: 700,
-    color: '#f4f4f5',
+    color: 'var(--lumo-text)',
     fontVariantNumeric: 'tabular-nums',
     lineHeight: 1,
     marginTop: 2,
@@ -151,7 +154,7 @@ export function RestBanner({
 
   const messageStyle: CSSProperties = {
     fontSize: 12,
-    color: '#a1a1aa',
+    color: 'var(--lumo-text-sec)',
     marginTop: 4,
     lineHeight: 1.3,
   }
@@ -188,7 +191,7 @@ export function RestBanner({
           stroke={BORDER_SUBTLE}
           strokeWidth={stroke}
         />
-        {/* Progress arc — shrinks as time passes */}
+        {/* Progress arc — full at start, shrinks back to 12 o'clock. */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -196,11 +199,11 @@ export function RestBanner({
           fill="none"
           stroke={ACCENT_MINT}
           strokeWidth={stroke}
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
+          strokeDasharray={`${visibleLen} ${gapLen}`}
+          strokeDashoffset={0}
           strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dashoffset 250ms linear' }}
+          style={{ transition: 'stroke-dasharray 250ms linear' }}
         />
       </svg>
 

@@ -12,6 +12,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './hooks/useAuth'
 import { useTweaks } from './hooks/useTweaks'
 import { WorkoutView } from './components/WorkoutView'
+import { HomeScreen } from './components/HomeScreen'
 import { LoginScreen } from './components/LoginScreen'
 import { ExerciseBrowser } from './components/ExerciseBrowser'
 import { MobilityRoutines } from './components/MobilityRoutines'
@@ -50,6 +51,10 @@ function App() {
     updateStreak,
   } = useAuth()
   const [view, setView] = useState<AppView>('workout')
+  // `sessionStarted` — when false we show the HomeScreen dashboard; when true
+  // we show the in-session WorkoutView. The user enters via the "let's go"
+  // CTA on HomeScreen and exits via onExitSession when they end the session.
+  const [sessionStarted, setSessionStarted] = useState(false)
   const [globalTimer, setGlobalTimer] = useState<TimerState | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
@@ -212,14 +217,26 @@ function App() {
 
   return (
     <>
-      {view === 'workout' && (
+      {view === 'workout' && !sessionStarted && (
+        <HomeScreen
+          userId={user.id}
+          profile={profile}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onStartSession={() => setSessionStarted(true)}
+        />
+      )}
+
+      {view === 'workout' && sessionStarted && (
         <>
           <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
           <WorkoutView
             userId={user.id}
             profile={profile}
             onSignOut={signOut}
-            onWorkoutComplete={updateStreak}
+            onWorkoutComplete={() => {
+              updateStreak()
+              setSessionStarted(false)
+            }}
             onNavigateToCapture={() => setView('capture')}
             onNavigateCardio={() => setView('cardio')}
             onNavigateProgress={() => setView('progress')}
