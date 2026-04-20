@@ -13,10 +13,12 @@ import { useEffect, useState } from 'react'
 import { Flame, Moon, ArrowRight, Sparkles, Check, Settings as SettingsIcon } from 'lucide-react'
 import { Lumo } from './Lumo'
 import { usePlan } from '../hooks/usePlan'
-import { getToday, getWeekView } from '../lib/planSelectors'
+import { getWeekView } from '../lib/planSelectors'
 import { loadPRs, loadSessionHistory } from '../lib/persistence'
+import { loadProfileLocal } from '../lib/profileRepo'
 import { pickCopy, DEFAULT_CHEEK } from '../lib/copy'
 import type { PlannedSession, MuscleGroup } from '../types/plan'
+import type { UserProgramProfile } from '../types/profile'
 
 // Matches the profile shape from useAuth (display-focused user profile, not
 // the full UserProgramProfile captured during onboarding).
@@ -90,22 +92,48 @@ export function HomeScreen({
   const [prCount, setPrCount] = useState(0)
   const [weekVolumeLb, setWeekVolumeLb] = useState(0)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
+  const [programProfile, setProgramProfile] = useState<UserProgramProfile | null>(null)
 
   const today = new Date()
   const weekStart = mondayOf(today)
   const todayDow = todayDowMon0()
   const greetTime = timeOfDay(today.getHours())
 
-  const todaySession = plan ? getToday(plan) : null
-  const weekSessions = plan ? getWeekView(plan, 1) : []
-  const cheek = DEFAULT_CHEEK
-  const firstName = profile?.display_name || 'you'
+  // Which day is selected for the TodayCard. Defaults to today; user can tap
+  // any weekday button on the DayStrip to peek at another day's session (or
+  // see the rest-day "build me one anyway" CTA when the day has no session).
+  const [selectedDow, setSelectedDow] = useState<number>(todayDow)
 
-  // Greeting line — short + cheeky, varies by time of day
-  const greetingText =
-    greetTime === 'morning' ? `hi ${firstName}, ready?`
-    : greetTime === 'afternoon' ? "you're back"
-    : `evening, ${firstName}`
+  const weekSessions = plan ? getWeekView(plan, 1) : []
+  const selectedSession: PlannedSession | null =
+    weekSessions.find((s) => s.day_of_week === selectedDow) ?? null
+  const isViewingToday = selectedDow === todayDow
+
+  const cheek = DEFAULT_CHEEK
+  const firstName =
+    programProfile?.first_name?.trim() ||
+    profile?.display_name?.trim() ||
+    ''
+
+  // Greeting line — short + cheeky, varies by time of day. If we don't have
+  // a name yet, skip the "hi Kyra" form and use the neutral version so we
+  // never render a literal "hi you, ready?".
+  const greetingText = (() => {
+    const hasName = firstName.length > 0
+    if (greetTime === 'morning') return hasName ? `hi ${firstName}, ready?` : 'ready?'
+    if (greetTime === 'afternoon') return "you're back"
+    return hasName ? `evening, ${firstName}` : 'evening'
+  })()
+
+  // Load the UserProgramProfile so the greeting can use `first_name` captured
+  // during onboarding (the Supabase `profile.display_name` may be empty).
+  useEffect(() => {
+    let cancelled = false
+    void loadProfileLocal(userId).then((p) => {
+      if (!cancelled) setProgramProfile(p)
+    }).catch(() => { /* non-fatal */ })
+    return () => { cancelled = true }
+  }, [userId])
 
   // Load PR count + week stats
   useEffect(() => {
@@ -201,9 +229,10 @@ export function HomeScreen({
 
         {/* Lumo greeting card */}
         <LumoGreeting
-          rationale={todaySession?.rationale}
-          isRestDay={!todaySession}
+          rationale={selectedSession?.rationale}
+          isRestDay={!selectedSession}
           cheekLevel={cheek}
+          firstName={firstName}
         />
 
         {/* This week label + DayStrip */}
@@ -211,18 +240,34 @@ export function HomeScreen({
         <HomeDayStrip
           weekSessions={weekSessions}
           todayDow={todayDow}
+          selectedDow={selectedDow}
+          onSelect={setSelectedDow}
           doneByDow={doneByDow}
           weekStart={weekStart}
         />
 
-        {/* Today label + Today or Rest card */}
-        <SectionLabel>today</SectionLabel>
+        {/* Today / selected-day card */}
+        <SectionLabel>{isViewingToday ? 'today' : DAY_LABELS[selectedDow].toLowerCase()}</SectionLabel>
         {loading ? (
           <LoadingCard />
-        ) : todaySession ? (
-          <TodayCard session={todaySession} onGo={onStartSession} />
+        ) : selectedSession ? (
+          <TodayCard
+            session={selectedSession}
+            onGo={isViewingToday ? onStartSession : undefined}
+            isToday={isViewingToday}
+          />
         ) : (
-          <RestCard cheekLevel={cheek} />
+          <RestCard
+            cheekLevel={cheek}
+            isToday={isViewingToday}
+            onBuildWorkout={() => {
+              // TODO wire to an ad-hoc session builder in a follow-up.
+              // For now we just flip the user to today and start — a real
+              // build-on-demand is a separate task.
+              setSelectedDow(todayDow)
+              onStartSession()
+            }}
+          />
         )}
 
         {/* Stats row */}
@@ -300,16 +345,19 @@ interface LumoGreetingProps {
   rationale?: string
   isRestDay: boolean
   cheekLevel: 0 | 1 | 2
+  firstName: string
 }
-function LumoGreeting({ rationale, isRestDay, cheekLevel }: LumoGreetingProps) {
-  // Use rationale from today's session if present, otherwise a cheeky fallback
-  const [bubbleText] = useState<string>(() => {
-    if (rationale && rationale.length > 0) return rationale
-    if (isRestDay) {
-      return pickCopy('preamble_morning', cheekLevel, { current: null }) // use a fallback pool
-    }
-    return pickCopy('preamble_morning', cheekLevel, { current: null })
-  })
+function LumoGreeting({ rationale, isRestDay, cheekLevel, firstName }: LumoGreetingProps) {
+  // Prefer the session's rationale (hand-crafted per-session from Gemini) over
+  // a generic pool pick. Re-pick when rationale changes (e.g. user taps a
+  // different day on the DayStrip) so the bubble stays in sync with the
+  // selected day's session.
+  const bubbleText =
+    rationale && rationale.length > 0
+      ? rationale
+      : pickCopy('preamble_morning', cheekLevel, { current: null }, {
+          name: firstName || 'friend',
+        })
 
   return (
     <div className="flex items-end gap-2.5">
@@ -341,10 +389,19 @@ function LumoGreeting({ rationale, isRestDay, cheekLevel }: LumoGreetingProps) {
 interface HomeDayStripProps {
   weekSessions: PlannedSession[]
   todayDow: number
+  selectedDow: number
+  onSelect: (dow: number) => void
   doneByDow: Map<number, boolean>
   weekStart: Date
 }
-function HomeDayStrip({ weekSessions, todayDow, doneByDow, weekStart }: HomeDayStripProps) {
+function HomeDayStrip({
+  weekSessions,
+  todayDow,
+  selectedDow,
+  onSelect,
+  doneByDow,
+  weekStart,
+}: HomeDayStripProps) {
   const sessionByDow = new Map<number, PlannedSession>()
   for (const s of weekSessions) sessionByDow.set(s.day_of_week, s)
 
@@ -353,29 +410,48 @@ function HomeDayStrip({ weekSessions, todayDow, doneByDow, weekStart }: HomeDayS
       {[0, 1, 2, 3, 4, 5, 6].map((dow) => {
         const s = sessionByDow.get(dow)
         const isToday = dow === todayDow
+        const isSelected = dow === selectedDow
         const done = doneByDow.get(dow) ?? false
         const focus = s ? focusAccent(s.focus) : null
 
         const date = new Date(weekStart)
         date.setDate(weekStart.getDate() + dow)
 
+        // Selected and today both get emphasis, but selected wins — we show a
+        // brand-tinted ring on the selected day and a subtle mascot-tinted
+        // background on today if it's not selected.
+        const border =
+          isSelected
+            ? '2px solid var(--brand)'
+            : isToday
+              ? '1px solid color-mix(in srgb, var(--mascot-color) 60%, transparent)'
+              : '1px solid var(--lumo-border)'
+        const bgImage =
+          isToday && !isSelected
+            ? 'linear-gradient(160deg, color-mix(in srgb, var(--mascot-color) 18%, transparent), transparent 60%)'
+            : 'none'
+        const boxShadow =
+          isSelected
+            ? '0 0 24px color-mix(in srgb, var(--brand) 22%, transparent)'
+            : isToday
+              ? '0 0 24px color-mix(in srgb, var(--mascot-color) 18%, transparent)'
+              : 'none'
+
         return (
-          <div
+          <button
             key={dow}
+            type="button"
+            onClick={() => onSelect(dow)}
+            aria-pressed={isSelected}
+            aria-label={`${DAY_LABELS[dow]} ${date.getDate()}${s ? ', training day' : ', rest day'}${isToday ? ', today' : ''}`}
             style={{
               flex: 1,
               aspectRatio: '0.62',
               borderRadius: 14,
               background: 'var(--lumo-raised)',
-              border: isToday
-                ? '1px solid color-mix(in srgb, var(--mascot-color) 60%, transparent)'
-                : '1px solid var(--lumo-border)',
-              backgroundImage: isToday
-                ? 'linear-gradient(160deg, color-mix(in srgb, var(--mascot-color) 18%, transparent), transparent 60%)'
-                : 'none',
-              boxShadow: isToday
-                ? '0 0 24px color-mix(in srgb, var(--mascot-color) 18%, transparent)'
-                : 'none',
+              border,
+              backgroundImage: bgImage,
+              boxShadow,
               padding: '8px 4px',
               display: 'flex',
               flexDirection: 'column',
@@ -383,9 +459,12 @@ function HomeDayStrip({ weekSessions, todayDow, doneByDow, weekStart }: HomeDayS
               justifyContent: 'space-between',
               position: 'relative',
               overflow: 'hidden',
+              cursor: 'pointer',
+              color: 'inherit',
             }}
             data-dow={dow}
             data-today={isToday}
+            data-selected={isSelected}
           >
             <div
               style={{
@@ -413,7 +492,7 @@ function HomeDayStrip({ weekSessions, todayDow, doneByDow, weekStart }: HomeDayS
             ) : (
               <RestDayIcon />
             )}
-          </div>
+          </button>
         )
       })}
     </div>
@@ -471,23 +550,33 @@ function RestDayIcon() {
 function TodayCard({
   session,
   onGo,
+  isToday,
 }: {
   session: PlannedSession
-  onGo: () => void
+  /** Fired when the user taps "let's go". Omit for non-today preview. */
+  onGo?: () => void
+  /** When false we render a preview (no CTA, gray out the button). */
+  isToday: boolean
 }) {
   const accent = focusAccent(session.focus)
   const subtitle = session.subtitle ?? session.focus.slice(0, 2).join(' · ').toUpperCase()
-  // Preview of rep schemes
-  const previews = session.exercises.slice(0, 4).map((ex) => `${ex.sets}×${ex.reps}`)
+  // Show the actual lift NAMES for the first 3 exercises (Kyra flagged
+  // that "5 lifts" by itself is meaningless — she wants a preview of what's
+  // in the session).
+  const liftNames = session.exercises.slice(0, 3).map((ex) => ex.name)
+  const moreCount = Math.max(0, session.exercises.length - liftNames.length)
+
+  const isInteractive = isToday && !!onGo
+  const Wrapper = isInteractive ? 'button' : 'div'
 
   return (
-    <button
-      onClick={onGo}
-      aria-label={`Start ${session.title}`}
+    <Wrapper
+      onClick={isInteractive ? onGo : undefined}
+      aria-label={isInteractive ? `Start ${session.title}` : undefined}
       style={{
         width: '100%',
         textAlign: 'left',
-        cursor: 'pointer',
+        cursor: isInteractive ? 'pointer' : 'default',
         background: 'var(--lumo-raised)',
         border: '1px solid var(--lumo-border)',
         padding: 16,
@@ -570,52 +659,88 @@ function TodayCard({
         {session.exercises.length} lifts · warm-up · cool-down
       </div>
 
-      {/* rep-scheme chips preview */}
-      <div className="relative flex gap-1.5 mb-3.5">
-        {previews.map((p, i) => (
+      {/* Exercise-name preview (top 3 lifts + "+N more" when there are more) */}
+      <div className="relative flex flex-col gap-1 mb-3.5">
+        {liftNames.map((name, i) => (
           <div
             key={i}
-            className="flex-1 tabular-nums"
+            className="flex items-center gap-2"
             style={{
-              padding: '7px 8px',
+              padding: '7px 10px',
               borderRadius: 10,
               background: 'var(--lumo-bg)',
               border: '1px solid var(--lumo-border)',
-              fontSize: 11,
-              color: 'var(--lumo-text-sec)',
-              textAlign: 'center',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
+              fontSize: 13,
+              color: 'var(--lumo-text)',
             }}
           >
-            {p}
+            <span
+              aria-hidden="true"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: accent,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {name}
+            </span>
+            <span className="tabular-nums" style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
+              {session.exercises[i].sets}×{session.exercises[i].reps}
+            </span>
           </div>
         ))}
+        {moreCount > 0 && (
+          <div
+            style={{
+              padding: '4px 10px',
+              fontSize: 11,
+              color: 'var(--lumo-text-ter)',
+              fontStyle: 'italic',
+              fontFamily: "'Fraunces', Georgia, serif",
+            }}
+          >
+            + {moreCount} more
+          </div>
+        )}
       </div>
 
-      {/* CTA */}
-      <div
-        className="relative flex items-center justify-center gap-1.5"
-        style={{
-          padding: 14,
-          borderRadius: 14,
-          background: 'var(--brand)',
-          color: '#fff',
-          fontWeight: 700,
-          fontSize: 15,
-          letterSpacing: '-0.01em',
-        }}
-      >
-        let's go
-        <ArrowRight size={14} />
-      </div>
-    </button>
+      {/* CTA — only rendered when this is today */}
+      {isInteractive && (
+        <div
+          className="relative flex items-center justify-center gap-1.5"
+          style={{
+            padding: 14,
+            borderRadius: 14,
+            background: 'var(--brand)',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 15,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          let's go
+          <ArrowRight size={14} />
+        </div>
+      )}
+    </Wrapper>
   )
 }
 
 // ─── RestCard ───────────────────────────────────────────────────────────────
-function RestCard({ cheekLevel }: { cheekLevel: 0 | 1 | 2 }) {
+function RestCard({
+  cheekLevel,
+  isToday,
+  onBuildWorkout,
+}: {
+  cheekLevel: 0 | 1 | 2
+  /** When false, this is a preview of a rest day, not today's rest. */
+  isToday: boolean
+  /** Fires when user taps "build one anyway". Only rendered when isToday. */
+  onBuildWorkout?: () => void
+}) {
   const [line] = useState(() =>
     pickCopy('preamble_morning', cheekLevel, { current: null }),
   )
@@ -627,28 +752,56 @@ function RestCard({ cheekLevel }: { cheekLevel: 0 | 1 | 2 }) {
         padding: 20,
         borderRadius: 22,
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
         gap: 14,
       }}
     >
-      <Lumo state="sleepy" size={64} color="var(--accent-plum)" />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-plum)' }}>
-          rest day
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: 'var(--lumo-text-sec)',
-            marginTop: 4,
-            fontFamily: "'Fraunces', Georgia, serif",
-            fontStyle: 'italic',
-            lineHeight: 1.4,
-          }}
-        >
-          {line || 'sleeping in is training too.'}
+      <div className="flex items-center gap-3.5">
+        <Lumo state="sleepy" size={64} color="var(--accent-plum)" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-plum)' }}>
+            {isToday ? 'rest day' : 'scheduled rest'}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: 'var(--lumo-text-sec)',
+              marginTop: 4,
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+              lineHeight: 1.4,
+            }}
+          >
+            {line || 'sleeping in is training too.'}
+          </div>
         </div>
       </div>
+      {isToday && onBuildWorkout && (
+        <button
+          type="button"
+          onClick={onBuildWorkout}
+          aria-label="Build me a workout anyway"
+          className="active:scale-[0.98] transition"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '12px 14px',
+            borderRadius: 14,
+            background: 'color-mix(in srgb, var(--accent-plum) 28%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent-plum) 50%, transparent)',
+            color: 'var(--accent-plum)',
+            fontWeight: 700,
+            fontSize: 14,
+            letterSpacing: '-0.01em',
+            cursor: 'pointer',
+          }}
+        >
+          feeling it? build me one anyway
+          <ArrowRight size={14} />
+        </button>
+      )}
     </div>
   )
 }

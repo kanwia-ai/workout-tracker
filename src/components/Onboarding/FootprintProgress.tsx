@@ -55,16 +55,17 @@ interface FootprintIconProps {
   size?: number
 }
 
-// A simple paw/foot shape. 3 toe-pads + heel pad. Keeps it readable at 24px
-// while still distinct from the other onboarding iconography.
-function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
+// A small heart. Outlined = pending, filled = completed, filled+glow = current.
+// Replaces the old paw-print icons — Kyra said "are these paws?? wtf?" so we
+// swapped to something less ambiguous and more on-brand.
+function FootprintIcon({ kind, glow, size = 20 }: FootprintIconProps) {
   const fill =
     kind === 'filled' || kind === 'current'
       ? 'var(--brand, #FF7A45)'
       : 'transparent'
   const stroke =
     kind === 'outlined'
-      ? 'var(--lumo-border, #2a2a36)'
+      ? 'color-mix(in srgb, var(--lumo-text-ter, #55556A) 60%, transparent)'
       : 'var(--brand, #FF7A45)'
   const glowStyle =
     glow && kind === 'current'
@@ -78,25 +79,18 @@ function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="0 0 20 20"
       fill="none"
       aria-hidden="true"
       style={glowStyle}
     >
-      {/* heel pad */}
-      <ellipse
-        cx="12"
-        cy="17"
-        rx="5"
-        ry="4"
+      <path
+        d="M10 17 C 2 11, 0 7, 4 4 C 7 2, 9 4, 10 6 C 11 4, 13 2, 16 4 C 20 7, 18 11, 10 17 Z"
         fill={fill}
         stroke={stroke}
-        strokeWidth="2"
+        strokeWidth={kind === 'outlined' ? 1.5 : 1}
+        strokeLinejoin="round"
       />
-      {/* three toe pads */}
-      <circle cx="6.5" cy="9" r="2" fill={fill} stroke={stroke} strokeWidth="1.8" />
-      <circle cx="12" cy="6" r="2" fill={fill} stroke={stroke} strokeWidth="1.8" />
-      <circle cx="17.5" cy="9" r="2" fill={fill} stroke={stroke} strokeWidth="1.8" />
     </svg>
   )
 }

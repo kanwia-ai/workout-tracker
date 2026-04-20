@@ -40,6 +40,11 @@ import { DEFAULT_TWEAKS, mergeTweaks, type Tweaks } from '../lib/tweaks'
 
 export type ThemeMode = 'dark' | 'light' | 'system'
 export const THEME_PREF_KEY = 'workout-tracker:theme-preference'
+export const THEME_PREF_VERSION_KEY = 'workout-tracker:theme-pref-version'
+// Bump this when we want to invalidate old stored theme preferences
+// (e.g. we changed the app's default and don't want old dark-mode choices
+// from an earlier beta to override the new light-mode default).
+const CURRENT_THEME_PREF_VERSION = '2'
 export const CHEEK_PREF_KEY = 'workout-tracker:cheek-preference'
 
 type EditModeSetMessage =
@@ -62,16 +67,28 @@ function isThemeMode(v: unknown): v is ThemeMode {
   return v === 'dark' || v === 'light' || v === 'system'
 }
 
-/** Read a persisted ThemeMode from localStorage. Defaults to 'dark'. */
+/** Read a persisted ThemeMode from localStorage. Defaults to 'light'.
+ *  Invalidates old preferences when the theme-pref version bumps, so users
+ *  who had 'dark' saved from a previous default don't keep seeing dark after
+ *  the app default flipped to light. */
 function readStoredMode(): ThemeMode {
-  if (typeof window === 'undefined') return 'dark'
+  if (typeof window === 'undefined') return 'light'
   try {
-    const raw = window.localStorage?.getItem(THEME_PREF_KEY)
+    const ls = window.localStorage
+    if (!ls) return 'light'
+    const version = ls.getItem(THEME_PREF_VERSION_KEY)
+    if (version !== CURRENT_THEME_PREF_VERSION) {
+      // Old or missing version — drop any stored pref + stamp the new version.
+      ls.removeItem(THEME_PREF_KEY)
+      ls.setItem(THEME_PREF_VERSION_KEY, CURRENT_THEME_PREF_VERSION)
+      return 'light'
+    }
+    const raw = ls.getItem(THEME_PREF_KEY)
     if (isThemeMode(raw)) return raw
   } catch {
     // localStorage can throw when access is denied (incognito + safari etc.).
   }
-  return 'dark'
+  return 'light'
 }
 
 /**
@@ -93,13 +110,13 @@ function readStoredCheek(): 0 | 1 | 2 | null {
 
 /** Read the current OS-level color scheme via matchMedia. */
 function readSystemTheme(): Theme {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'dark'
+  if (typeof window === 'undefined' || !window.matchMedia) return 'light'
   try {
     return window.matchMedia('(prefers-color-scheme: dark)').matches
       ? 'dark'
       : 'light'
   } catch {
-    return 'dark'
+    return 'light'
   }
 }
 
