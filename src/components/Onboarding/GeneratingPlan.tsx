@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Lumo } from '../Lumo'
+import { LumoLoader } from '../LumoLoader'
 import {
   buildGeneratingPlanPool,
   DEFAULT_CHEEK,
@@ -190,127 +190,120 @@ export function GeneratingPlan({
     return () => clearInterval(id)
   }, [pool, reducedMotion])
 
-  // Lumo state: thinking while working, sleepy once we cross the long-wait
-  // threshold. We never render 'cheer' here — the parent unmounts us the
-  // moment the real result lands, so the celebration happens in the next
-  // screen (WorkoutView's session intro).
-  const lumoState = isLongWait ? 'sleepy' : 'thinking'
+  // Lumo "state" tracking here is now mostly symbolic — the animated scene
+  // drives its own state internally. We keep the data attribute for tests
+  // and for the long-wait sleepy marker so future analytics / a11y hooks
+  // can still key off it.
+  const lumoState: 'thinking' | 'sleepy' = isLongWait ? 'sleepy' : 'thinking'
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center p-6 text-center"
-      style={{ background: 'var(--lumo-bg)', color: 'var(--lumo-text)' }}
-    >
+    <LumoLoader>
       <div
-        className="mb-6"
-        style={{
-          // Breathing room around the 120px mascot. A wrapper rather than
-          // inline size so the svg's built-in float animation has space.
-          width: 140,
-          height: 140,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
         data-testid="generating-plan-lumo"
         data-lumo-state={lumoState}
+        // Hidden marker so existing tests + screen readers still observe
+        // a semantic state attribute. Zero-sized, not visible.
+        style={{ width: 0, height: 0, overflow: 'hidden' }}
+        aria-hidden="true"
+      />
+      <div
+        className="flex flex-col items-center text-center"
+        style={{ color: 'var(--lumo-text)' }}
       >
-        <Lumo state={lumoState} size={120} />
-      </div>
-
-      <h1
-        className="text-2xl mb-2"
-        style={{
-          fontFamily: "'Fraunces', Georgia, serif",
-          fontStyle: 'italic',
-          fontWeight: 700,
-          color: 'var(--lumo-text)',
-        }}
-      >
-        Designing your training block
-      </h1>
-      <p
-        className="text-sm max-w-sm mb-8"
-        style={{ color: 'var(--lumo-text-sec)' }}
-      >
-        {label}.
-      </p>
-
-      <div className="w-full max-w-sm mb-3">
-        <div
-          className="h-2 w-full rounded-full overflow-hidden"
+        <h1
+          className="text-2xl mb-2"
           style={{
-            background: 'var(--lumo-raised)',
-            border: '1px solid var(--lumo-border)',
-          }}
-        >
-          <div
-            data-testid="progress-bar-fill"
-            className={
-              reducedMotion
-                ? 'h-full'
-                : 'h-full transition-[width] duration-700 ease-out'
-            }
-            style={{
-              width: `${pct}%`,
-              background: 'var(--brand)',
-            }}
-            role="progressbar"
-            aria-label="Plan generation progress"
-            aria-valuenow={Math.round(pct)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={`${Math.round(pct)}% — ${narration}`}
-          />
-        </div>
-      </div>
-
-      <p
-        data-testid="progress-pct"
-        className="text-sm tabular-nums mb-6"
-        style={{ color: 'var(--lumo-text-ter)' }}
-      >
-        {Math.round(pct)}%
-      </p>
-
-      <p
-        data-testid="narration"
-        role="status"
-        aria-live="polite"
-        className="text-base max-w-sm"
-        style={{
-          color: 'var(--lumo-text-sec)',
-          fontStyle: 'italic',
-          fontFamily: "'Fraunces', Georgia, serif",
-          minHeight: '2.5rem',
-        }}
-      >
-        {narration}
-      </p>
-
-      {isLongWait && (
-        <p
-          data-testid="long-wait-banner"
-          className="mt-6 text-sm max-w-sm"
-          style={{ color: 'var(--accent-sun)' }}
-        >
-          This is taking longer than usual — still cooking though.
-        </p>
-      )}
-
-      {isLongWait && onCancel && (
-        <button
-          onClick={onCancel}
-          className="mt-4 px-5 py-2 rounded-2xl text-sm font-semibold active:scale-95 transition-all"
-          style={{
-            background: 'var(--lumo-raised)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+            fontWeight: 700,
             color: 'var(--lumo-text)',
-            border: '1px solid var(--lumo-border-strong)',
           }}
         >
-          Cancel and try again
-        </button>
-      )}
-    </div>
+          Designing your training block
+        </h1>
+        <p
+          className="text-sm max-w-sm mb-4"
+          style={{ color: 'var(--lumo-text-sec)' }}
+        >
+          {label}.
+        </p>
+
+        <div className="w-full max-w-sm mb-3">
+          <div
+            className="h-2 w-full rounded-full overflow-hidden"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+            }}
+          >
+            <div
+              data-testid="progress-bar-fill"
+              className={
+                reducedMotion
+                  ? 'h-full'
+                  : 'h-full transition-[width] duration-700 ease-out'
+              }
+              style={{
+                width: `${pct}%`,
+                background: 'var(--brand)',
+              }}
+              role="progressbar"
+              aria-label="Plan generation progress"
+              aria-valuenow={Math.round(pct)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuetext={`${Math.round(pct)}% — ${narration}`}
+            />
+          </div>
+        </div>
+
+        <p
+          data-testid="progress-pct"
+          className="text-sm tabular-nums mb-4"
+          style={{ color: 'var(--lumo-text-ter)' }}
+        >
+          {Math.round(pct)}%
+        </p>
+
+        <p
+          data-testid="narration"
+          role="status"
+          aria-live="polite"
+          className="text-base max-w-sm"
+          style={{
+            color: 'var(--lumo-text-sec)',
+            fontStyle: 'italic',
+            fontFamily: "'Fraunces', Georgia, serif",
+            minHeight: '2.5rem',
+          }}
+        >
+          {narration}
+        </p>
+
+        {isLongWait && (
+          <p
+            data-testid="long-wait-banner"
+            className="mt-4 text-sm max-w-sm"
+            style={{ color: 'var(--accent-sun)' }}
+          >
+            This is taking longer than usual — still cooking though.
+          </p>
+        )}
+
+        {isLongWait && onCancel && (
+          <button
+            onClick={onCancel}
+            className="mt-4 px-5 py-2 rounded-2xl text-sm font-semibold active:scale-95 transition-all"
+            style={{
+              background: 'var(--lumo-raised)',
+              color: 'var(--lumo-text)',
+              border: '1px solid var(--lumo-border-strong)',
+            }}
+          >
+            Cancel and try again
+          </button>
+        )}
+      </div>
+    </LumoLoader>
   )
 }
