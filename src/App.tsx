@@ -22,7 +22,6 @@ import { CardioPage } from './components/CardioPage'
 import { BottomNav, type AppView } from './components/BottomNav'
 import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
-import { AppHeader } from './components/AppHeader'
 import { SettingsScreen } from './components/Settings'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { saveProfileLocal, syncProfileUp } from './lib/profileRepo'
@@ -227,21 +226,19 @@ function App() {
       )}
 
       {view === 'workout' && sessionStarted && (
-        <>
-          <AppHeader onOpenSettings={() => setSettingsOpen(true)} />
-          <WorkoutView
-            userId={user.id}
-            profile={profile}
-            onSignOut={signOut}
-            onWorkoutComplete={() => {
-              updateStreak()
-              setSessionStarted(false)
-            }}
-            onNavigateToCapture={() => setView('capture')}
-            onNavigateCardio={() => setView('cardio')}
-            onNavigateProgress={() => setView('progress')}
-          />
-        </>
+        <WorkoutView
+          userId={user.id}
+          profile={profile}
+          onSignOut={signOut}
+          onWorkoutComplete={() => {
+            updateStreak()
+            setSessionStarted(false)
+          }}
+          onNavigateToCapture={() => setView('capture')}
+          onNavigateCardio={() => setView('cardio')}
+          onNavigateProgress={() => setView('progress')}
+          onExitSession={() => setSessionStarted(false)}
+        />
       )}
 
       {view === 'exercises' && (

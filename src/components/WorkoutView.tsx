@@ -7,11 +7,6 @@ import {
   type CSSProperties,
 } from 'react'
 import {
-  LogOut,
-  Flame,
-  Plus,
-  BarChart3,
-  Timer,
   Loader2,
   Moon,
   RefreshCw,
@@ -20,7 +15,6 @@ import {
 } from 'lucide-react'
 import { SessionBar } from './SessionBar'
 import { TimerOverlay } from './TimerOverlay'
-import { DayStrip } from './DayStrip'
 import { RoutineSlot } from './RoutineSlot'
 import { ExerciseInfoSheet } from './ExerciseInfoSheet'
 import { Lumo, type LumoState } from './Lumo'
@@ -89,13 +83,6 @@ function toAppDow(jsDow: number): number {
 
 function todayDow(): number {
   return toAppDow(new Date().getDay())
-}
-
-/** Monday (local time) of the calendar week containing `d`. Pure. */
-function getWeekStartDate(d: Date): Date {
-  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  out.setDate(out.getDate() - toAppDow(out.getDay()))
-  return out
 }
 
 function loadSelectedDow(): number {
@@ -183,24 +170,21 @@ interface WorkoutViewProps {
   onNavigateToCapture: () => void
   onNavigateCardio: () => void
   onNavigateProgress: () => void
+  /** Back-to-home from the in-session view. */
+  onExitSession?: () => void
 }
 
 export function WorkoutView({
   userId,
   profile,
-  onSignOut,
   onWorkoutComplete,
-  onNavigateToCapture,
   onNavigateProgress,
+  onExitSession,
 }: WorkoutViewProps) {
   const { plan, loading } = usePlan(userId)
 
-  // ─── Selected day-of-week ──────────────────────────────────────────────
-  const [selectedDow, setSelectedDow] = useState<number>(() => loadSelectedDow())
-
-  useEffect(() => {
-    localStorage.setItem(SELECTED_DOW_KEY, JSON.stringify(selectedDow))
-  }, [selectedDow])
+  // ─── Selected day-of-week — in-session shows today's session only now.
+  const [selectedDow] = useState<number>(() => loadSelectedDow())
 
   const currentWeek = useMemo(() => getToday(plan)?.week_number ?? 1, [plan])
 
@@ -214,7 +198,6 @@ export function WorkoutView({
   }, [weekSessions, selectedDow])
 
   const selectedSessionKey = selectedSession?.id ?? null
-  const weekStartDate = useMemo(() => getWeekStartDate(new Date()), [])
 
   // ─── Per-session persistence ───────────────────────────────────────────
   const [weights, setWeights] = useState<Record<string, number>>(() =>
@@ -546,10 +529,6 @@ export function WorkoutView({
   }
 
 
-  const startTimer = (seconds: number, label: string, type: 'rest' | 'work') => {
-    setTimer({ seconds, label, type })
-  }
-
   const handleEndSession = useCallback(async () => {
     if (!session || !selectedSession) {
       endSession()
@@ -615,21 +594,32 @@ export function WorkoutView({
     clearSession,
   ])
 
-  // ─── Top bar (mock: back button / centered title / menu dots) ─────────
-  // We keep the real-app nav affordances (streak, progress, capture, sign out)
-  // tucked into the right cluster — they're not in the mock but they're
-  // load-bearing for the app.
+  // ─── Top bar (matches design: back arrow / centered IN SESSION + title / kebab)
   const TopBar = (
     <div className="flex items-center justify-between pt-1 pb-3" data-testid="workout-topbar">
-      <div className="flex flex-col">
+      <button
+        onClick={onExitSession}
+        aria-label="Back to home"
+        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          color: 'var(--lumo-text-sec)',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M9 2 L3 7 L9 12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      <div className="text-center flex-1 mx-2 min-w-0">
         <div
           className="text-[10px] font-bold uppercase"
           style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.14em' }}
         >
-          {selectedSession ? 'today' : 'rest day'}
+          {selectedSession ? 'in session' : 'rest day'}
         </div>
         <div
-          className="text-[15px] font-bold"
+          className="text-[15px] font-bold truncate"
           style={{
             color: 'var(--lumo-text)',
             fontFamily: "'Fraunces', Georgia, serif",
@@ -641,62 +631,22 @@ export function WorkoutView({
           {selectedSession?.title ?? 'rest day'}
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        {(profile?.streak ?? 0) > 0 && (
-          <div
-            className="flex items-center gap-1 px-2 py-1 rounded-lg"
-            style={{
-              background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
-            }}
-            title={`${profile?.streak} day streak`}
-          >
-            <Flame size={12} style={{ color: 'var(--brand)' }} />
-            <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--brand)' }}>
-              {profile?.streak}
-            </span>
-          </div>
-        )}
-        <button
-          onClick={onNavigateProgress}
-          className="p-1.5 rounded-lg active:scale-95 transition-all"
-          style={{
-            background: 'var(--lumo-raised)',
-            border: '1px solid var(--lumo-border)',
-            color: 'var(--lumo-text-sec)',
-          }}
-          title="View progress"
-          aria-label="View progress"
-        >
-          <BarChart3 size={14} />
-        </button>
-        <button
-          onClick={onNavigateToCapture}
-          className="p-1.5 rounded-lg active:scale-95 transition-all"
-          style={{
-            background: 'var(--lumo-raised)',
-            border: '1px solid var(--lumo-border)',
-            color: 'var(--brand)',
-          }}
-          title="Capture exercise"
-          aria-label="Capture exercise"
-        >
-          <Plus size={14} />
-        </button>
-        <button
-          onClick={onSignOut}
-          className="p-1.5 rounded-lg active:scale-95 transition-all"
-          style={{
-            background: 'var(--lumo-raised)',
-            border: '1px solid var(--lumo-border)',
-            color: 'var(--lumo-text-ter)',
-          }}
-          title="Sign out"
-          aria-label="Sign out"
-        >
-          <LogOut size={12} />
-        </button>
-      </div>
+      <button
+        aria-label="Session menu"
+        onClick={onNavigateProgress}
+        className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          color: 'var(--lumo-text-sec)',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <circle cx="3" cy="7" r="1.5" fill="currentColor"/>
+          <circle cx="7" cy="7" r="1.5" fill="currentColor"/>
+          <circle cx="11" cy="7" r="1.5" fill="currentColor"/>
+        </svg>
+      </button>
     </div>
   )
 
@@ -828,18 +778,8 @@ export function WorkoutView({
       <div className="max-w-lg mx-auto px-4 pb-20 safe-top safe-bottom">
         {TopBar}
 
-        {/* 7-day strip — above the bubble so the user sees week context first */}
-        <DayStrip
-          plan={plan}
-          weekNumber={currentWeek}
-          todayDow={todayDow()}
-          selectedDow={selectedDow}
-          onSelect={setSelectedDow}
-          weekStartDate={weekStartDate}
-        />
-
         {/* Lumo + speech bubble (the real greeting — cheeky, Lumo-voiced) */}
-        <div className="mt-4">{preamble}</div>
+        <div className="mt-2">{preamble}</div>
 
         {/* ProgressStrip — "today's work" */}
         {selectedSession && (
@@ -942,7 +882,6 @@ export function WorkoutView({
                       onTapSet={(si) => toggleSet(ei, si)}
                       onInfo={() => setInfoLibraryId(ex.library_id)}
                       onSwap={() => setSwapIndex(ei)}
-                      onOpenTimer={() => startTimer(ex.rest_seconds, 'Rest', 'rest')}
                       onToggleExpand={() =>
                         setPerSetExpanded((prev) => ({
                           ...prev,
@@ -1157,7 +1096,6 @@ interface LiftCardProps {
   onTapSet: (setIdx: number) => void
   onInfo: () => void
   onSwap: () => void
-  onOpenTimer: () => void
   onToggleExpand: () => void
   onChangeWeight: (v: number) => void
   onChangePerSet: (setIdx: number, v: number) => void
@@ -1180,7 +1118,6 @@ function LiftCard({
   onTapSet,
   onInfo,
   onSwap,
-  onOpenTimer,
   onToggleExpand,
   onChangeWeight,
   onChangePerSet,
@@ -1394,18 +1331,6 @@ function LiftCard({
             />
           )
         })}
-        <button
-          onClick={onOpenTimer}
-          className="h-10 px-2.5 rounded-xl active:scale-90 flex items-center gap-1"
-          style={{
-            background: 'var(--lumo-input-bg)',
-            border: '1px solid var(--lumo-border-strong)',
-            color: 'var(--lumo-text-ter)',
-          }}
-          aria-label={`Open rest timer for ${ex.name}`}
-        >
-          <Timer size={14} />
-        </button>
       </div>
     </div>
   )
