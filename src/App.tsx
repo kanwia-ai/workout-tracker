@@ -30,6 +30,44 @@ import type { TimerState } from './types'
 import type { ExtractedExercise } from './lib/gemini'
 import type { UserProgramProfile } from './types/profile'
 
+const VIEW_STORAGE_KEY = 'workout-tracker:view'
+const SESSION_STARTED_STORAGE_KEY = 'workout-tracker:session-started'
+const KNOWN_VIEWS: readonly AppView[] = [
+  'workout',
+  'exercises',
+  'mobility',
+  'progress',
+  'cardio',
+  'capture',
+]
+
+function isAppView(x: unknown): x is AppView {
+  return typeof x === 'string' && (KNOWN_VIEWS as readonly string[]).includes(x)
+}
+
+function readPersistedView(): AppView {
+  if (typeof window === 'undefined') return 'workout'
+  try {
+    const raw = window.localStorage.getItem(VIEW_STORAGE_KEY)
+    if (raw && isAppView(raw)) return raw
+  } catch {
+    // localStorage unavailable (private mode, SSR, etc.) — fall through.
+  }
+  return 'workout'
+}
+
+function readPersistedSessionStarted(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem(SESSION_STARTED_STORAGE_KEY)
+    if (raw === null) return false
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'boolean' ? parsed : false
+  } catch {
+    return false
+  }
+}
+
 function App() {
   // Wire the Lumo theme + EDITMODE postMessage protocol at the root. This
   // applies CSS vars on mount and keeps them in sync with host edits. The
@@ -49,11 +87,39 @@ function App() {
     signOut,
     updateStreak,
   } = useAuth()
-  const [view, setView] = useState<AppView>('workout')
+  // `view` + `sessionStarted` are persisted to localStorage so reloading
+  // mid-workout (or while on a non-workout tab) restores the user to the same
+  // screen instead of dumping them back on HomeScreen.
+  const [view, setView] = useState<AppView>(readPersistedView)
   // `sessionStarted` — when false we show the HomeScreen dashboard; when true
   // we show the in-session WorkoutView. The user enters via the "let's go"
   // CTA on HomeScreen and exits via onExitSession when they end the session.
-  const [sessionStarted, setSessionStarted] = useState(false)
+  const [sessionStarted, setSessionStarted] = useState<boolean>(readPersistedSessionStarted)
+
+  // Sync `view` to localStorage whenever it changes. Guarded for
+  // non-browser environments (tests, SSR) to keep behaviour safe.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, view)
+    } catch {
+      // Ignore write failures (quota, private mode).
+    }
+  }, [view])
+
+  // Sync `sessionStarted` to localStorage. Stored as JSON boolean so the
+  // reader can parse without ambiguity.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(
+        SESSION_STARTED_STORAGE_KEY,
+        JSON.stringify(sessionStarted),
+      )
+    } catch {
+      // Ignore write failures.
+    }
+  }, [sessionStarted])
   const [globalTimer, setGlobalTimer] = useState<TimerState | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)

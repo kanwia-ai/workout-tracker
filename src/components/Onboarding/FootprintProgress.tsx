@@ -55,18 +55,17 @@ interface FootprintIconProps {
   size?: number
 }
 
-// A small heart. Outlined = pending, filled = completed, filled+glow = current.
-// Replaces the old paw-print icons — Kyra said "are these paws?? wtf?" so we
-// swapped to something less ambiguous and more on-brand.
-function FootprintIcon({ kind, glow, size = 20 }: FootprintIconProps) {
-  const fill =
-    kind === 'filled' || kind === 'current'
-      ? 'var(--brand, #FF7A45)'
-      : 'transparent'
-  const stroke =
-    kind === 'outlined'
-      ? 'color-mix(in srgb, var(--lumo-text-ter, #55556A) 60%, transparent)'
-      : 'var(--brand, #FF7A45)'
+// A proper dumbbell with stacked plates: outer endcap, big plate, handle bar
+// with a small grip mark, then mirror. Reads unambiguously as a gym dumbbell
+// at 22px — not an "H". Kyra reference: classic line-art barbell w/ two
+// plate tiers per side.
+//   outlined = pending, filled = completed, filled + glow = current.
+function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
+  const isFilled = kind === 'filled' || kind === 'current'
+  const fill = isFilled ? 'var(--brand, #FF7A45)' : 'transparent'
+  const stroke = isFilled
+    ? 'var(--brand, #FF7A45)'
+    : 'color-mix(in srgb, var(--lumo-text-ter, #55556A) 70%, transparent)'
   const glowStyle =
     glow && kind === 'current'
       ? {
@@ -75,20 +74,93 @@ function FootprintIcon({ kind, glow, size = 20 }: FootprintIconProps) {
           animation: 'lumo-footprint-glow 1.6s ease-in-out infinite',
         }
       : undefined
+  const sw = kind === 'outlined' ? 1.4 : 1.1
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 20 20"
+      viewBox="0 0 28 20"
+      preserveAspectRatio="xMidYMid meet"
       fill="none"
       aria-hidden="true"
       style={glowStyle}
     >
-      <path
-        d="M10 17 C 2 11, 0 7, 4 4 C 7 2, 9 4, 10 6 C 11 4, 13 2, 16 4 C 20 7, 18 11, 10 17 Z"
+      {/* Left endcap */}
+      <rect
+        x="1"
+        y="7"
+        width="2.5"
+        height="6"
+        rx="1"
         fill={fill}
         stroke={stroke}
-        strokeWidth={kind === 'outlined' ? 1.5 : 1}
+        strokeWidth={sw}
+        strokeLinejoin="round"
+      />
+      {/* Left plate (taller than endcap) */}
+      <rect
+        x="3.5"
+        y="3"
+        width="4"
+        height="14"
+        rx="1.4"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={sw}
+        strokeLinejoin="round"
+      />
+      {/* Bar */}
+      <rect
+        x="7.5"
+        y="8.5"
+        width="13"
+        height="3"
+        rx="0.6"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={sw}
+        strokeLinejoin="round"
+      />
+      {/* Grip mark — short line in the middle of the bar, only when the icon
+          has fill (i.e. completed / current); otherwise the outline alone is
+          enough and this line would crowd the silhouette. */}
+      {isFilled && (
+        <line
+          x1="11"
+          y1="10"
+          x2="17"
+          y2="10"
+          stroke={
+            kind === 'outlined'
+              ? stroke
+              : 'color-mix(in srgb, var(--lumo-bg, #fff3ec) 80%, transparent)'
+          }
+          strokeWidth="0.8"
+          strokeLinecap="round"
+        />
+      )}
+      {/* Right plate */}
+      <rect
+        x="20.5"
+        y="3"
+        width="4"
+        height="14"
+        rx="1.4"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={sw}
+        strokeLinejoin="round"
+      />
+      {/* Right endcap */}
+      <rect
+        x="24.5"
+        y="7"
+        width="2.5"
+        height="6"
+        rx="1"
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={sw}
         strokeLinejoin="round"
       />
     </svg>

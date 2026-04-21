@@ -23,7 +23,8 @@ import { PRCelebration } from './PRCelebration'
 import { RestBanner } from './RestBanner'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
-import { getToday } from '../lib/planSelectors'
+import { useDayOverrides } from '../hooks/useDayOverrides'
+import { getToday, getSessionForDate } from '../lib/planSelectors'
 import {
   saveSession,
   saveLastWeight,
@@ -182,20 +183,25 @@ export function WorkoutView({
   onExitSession,
 }: WorkoutViewProps) {
   const { plan, loading } = usePlan(userId)
+  const overrides = useDayOverrides(userId)
 
   // ─── Selected day-of-week — in-session shows today's session only now.
   const [selectedDow] = useState<number>(() => loadSelectedDow())
 
   const currentWeek = useMemo(() => getToday(plan)?.week_number ?? 1, [plan])
 
-  const weekSessions = useMemo(
-    () => (plan ? plan.sessions.filter((s) => s.week_number === currentWeek) : []),
-    [plan, currentWeek],
-  )
+  const selectedDate = useMemo(() => {
+    const weekStart = new Date()
+    weekStart.setDate(weekStart.getDate() - toAppDow(weekStart.getDay()))
+    const d = new Date(weekStart)
+    d.setDate(weekStart.getDate() + selectedDow)
+    return d
+  }, [selectedDow])
 
   const selectedSession: PlannedSession | null = useMemo(() => {
-    return weekSessions.find((s) => s.day_of_week === selectedDow) ?? null
-  }, [weekSessions, selectedDow])
+    if (!plan) return null
+    return getSessionForDate(plan, overrides, selectedDate, currentWeek)
+  }, [plan, overrides, selectedDate, currentWeek])
 
   const selectedSessionKey = selectedSession?.id ?? null
 

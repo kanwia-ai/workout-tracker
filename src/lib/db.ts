@@ -113,6 +113,20 @@ interface LocalRoutine {
   synced: boolean
 }
 
+// Day-level override. A user decision to do a real workout on a scheduled
+// rest day (or to swap a different session onto a given date). Keyed by
+// `${user_id}:${dateISO}` so there's at most one override per date.
+// session_id references a session already in the user's mesocycle — we
+// don't duplicate session data, we just re-point the date.
+interface LocalDayOverride {
+  id: string                        // `${user_id}:${dateISO}`
+  user_id: string
+  date: string                      // YYYY-MM-DD (local time)
+  session_id: string                // refs PlannedSession.id
+  created_at: string
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -123,6 +137,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   userProgramProfiles: EntityTable<LocalProfile, 'user_id'>
   mesocycles: EntityTable<LocalMesocycle, 'id'>
   routines: EntityTable<LocalRoutine, 'id'>
+  dayOverrides: EntityTable<LocalDayOverride, 'id'>
 }
 
 db.version(1).stores({
@@ -175,5 +190,18 @@ db.version(5).stores({
   routines: 'id, session_id, kind, generated_at, synced',
 })
 
+db.version(6).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride }

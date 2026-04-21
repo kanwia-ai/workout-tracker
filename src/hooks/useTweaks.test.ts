@@ -1,6 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
-import { useTweaks } from './useTweaks'
+import {
+  useTweaks,
+  THEME_PREF_KEY,
+  THEME_PREF_VERSION_KEY,
+} from './useTweaks'
 import { THEMES } from '../lib/theme'
 
 // Reset the document root's inline styles between tests so CSS var
@@ -9,26 +13,44 @@ function clearRootStyles() {
   document.documentElement.removeAttribute('style')
 }
 
+// Stamp the current theme-pref version so readStoredMode() doesn't take the
+// invalidation path (which would wipe any pref we set and force 'light').
+// Kept in sync with CURRENT_THEME_PREF_VERSION in useTweaks.ts.
+const CURRENT_THEME_PREF_VERSION = '2'
+
 describe('useTweaks', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    // Stamp the version so stored preferences in individual tests are honored
+    // rather than invalidated on mount.
+    window.localStorage.setItem(THEME_PREF_VERSION_KEY, CURRENT_THEME_PREF_VERSION)
+  })
+
   afterEach(() => {
     cleanup()
     clearRootStyles()
+    window.localStorage.clear()
   })
 
   it('applies default theme CSS vars on mount', async () => {
     const { result } = renderHook(() => useTweaks())
-    // Default theme is dark.
+    // Default theme is light (no stored pref, version stamped so the
+    // invalidation path is skipped).
     await waitFor(() => {
       const bg = document.documentElement.style.getPropertyValue('--lumo-bg')
-      expect(bg).toBe(THEMES.dark['--lumo-bg'])
+      expect(bg).toBe(THEMES.light['--lumo-bg'])
     })
-    expect(result.current[0].theme).toBe('dark')
+    expect(result.current[0].theme).toBe('light')
     expect(result.current[0].brand).toBe('#FF7A45')
     expect(document.documentElement.style.getPropertyValue('--brand')).toBe('#FF7A45')
     expect(document.documentElement.style.getPropertyValue('--mascot-color')).toBe('#FFB4C6')
   })
 
   it('updates state + CSS vars when an EDITMODE:SET postMessage arrives', async () => {
+    // Seed a dark preference so we start in dark, then verify the message
+    // handler flips us to light. This keeps the test's intent (message
+    // handler mutates state + CSS vars) while honoring the new light default.
+    window.localStorage.setItem(THEME_PREF_KEY, 'dark')
     const { result } = renderHook(() => useTweaks())
 
     await waitFor(() => {
@@ -70,6 +92,9 @@ describe('useTweaks', () => {
   })
 
   it('cleans up the message listener on unmount', async () => {
+    // Seed dark so we can post a light message after unmount and assert
+    // nothing flipped — light default would make that assertion vacuous.
+    window.localStorage.setItem(THEME_PREF_KEY, 'dark')
     const { result, unmount } = renderHook(() => useTweaks())
 
     await waitFor(() => {

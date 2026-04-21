@@ -13,12 +13,40 @@ import { useEffect, useState } from 'react'
 import { Flame, Moon, ArrowRight, Sparkles, Check, Settings as SettingsIcon } from 'lucide-react'
 import { Lumo } from './Lumo'
 import { usePlan } from '../hooks/usePlan'
-import { getWeekView } from '../lib/planSelectors'
+import { useDayOverrides } from '../hooks/useDayOverrides'
+import {
+  getWeekView,
+  getSessionForDate,
+  getNextUpcomingSession,
+} from '../lib/planSelectors'
 import { loadPRs, loadSessionHistory } from '../lib/persistence'
 import { loadProfileLocal } from '../lib/profileRepo'
+import {
+  localDateISO,
+  setOverrideForDate,
+  clearOverrideForDate,
+} from '../lib/dayOverrides'
 import { pickCopy, DEFAULT_CHEEK } from '../lib/copy'
 import type { PlannedSession, MuscleGroup } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
+
+// Persisted day selection — survives bottom-nav round-trips and browser
+// reload. WorkoutView reads the same key so entering a session honors the
+// day the user was looking at on Home.
+const SELECTED_DOW_KEY = 'workout-tracker:selected-dow'
+
+function loadSelectedDow(fallback: number): number {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(SELECTED_DOW_KEY)
+    if (raw == null) return fallback
+    const n = JSON.parse(raw)
+    if (typeof n === 'number' && n >= 0 && n <= 6) return n
+  } catch {
+    // ignore
+  }
+  return fallback
+}
 
 // Matches the profile shape from useAuth (display-focused user profile, not
 // the full UserProgramProfile captured during onboarding).
@@ -98,16 +126,41 @@ export function HomeScreen({
   const weekStart = mondayOf(today)
   const todayDow = todayDowMon0()
   const greetTime = timeOfDay(today.getHours())
+  const overrides = useDayOverrides(userId)
 
-  // Which day is selected for the TodayCard. Defaults to today; user can tap
-  // any weekday button on the DayStrip to peek at another day's session (or
-  // see the rest-day "build me one anyway" CTA when the day has no session).
-  const [selectedDow, setSelectedDow] = useState<number>(todayDow)
+  // Which day is selected for the TodayCard. Persisted to localStorage so
+  // bottom-nav (home → progress → home) doesn't reset it and neither does a
+  // page reload. Falls back to today for first-time visitors.
+  const [selectedDow, setSelectedDowState] = useState<number>(() =>
+    loadSelectedDow(todayDow),
+  )
+  const setSelectedDow = (dow: number) => {
+    setSelectedDowState(dow)
+    try {
+      window.localStorage.setItem(SELECTED_DOW_KEY, JSON.stringify(dow))
+    } catch {
+      // ignore quota/denied
+    }
+  }
+
+  // Compute the date corresponding to selectedDow for override lookup.
+  const selectedDate = new Date(weekStart)
+  selectedDate.setDate(weekStart.getDate() + selectedDow)
 
   const weekSessions = plan ? getWeekView(plan, 1) : []
-  const selectedSession: PlannedSession | null =
-    weekSessions.find((s) => s.day_of_week === selectedDow) ?? null
+  // getSessionForDate merges plan + active day overrides so a session pulled
+  // onto a rest day via "build me one anyway" shows up just like a scheduled
+  // one.
+  const selectedSession: PlannedSession | null = getSessionForDate(
+    plan,
+    overrides,
+    selectedDate,
+    1,
+  )
   const isViewingToday = selectedDow === todayDow
+  const selectedDateISO = localDateISO(selectedDate)
+  const todayISO = localDateISO(today)
+  const selectedHasOverride = overrides.some((o) => o.date === selectedDateISO)
 
   const cheek = DEFAULT_CHEEK
   const firstName =
@@ -255,15 +308,40 @@ export function HomeScreen({
             session={selectedSession}
             onGo={isViewingToday ? onStartSession : undefined}
             isToday={isViewingToday}
+            isOverride={selectedHasOverride}
+            onRevertOverride={
+              selectedHasOverride && isViewingToday
+                ? async () => {
+                    try {
+                      await clearOverrideForDate(userId, todayISO)
+                    } catch (err) {
+                      console.error('clearOverrideForDate failed', err)
+                    }
+                  }
+                : undefined
+            }
           />
         ) : (
           <RestCard
             cheekLevel={cheek}
             isToday={isViewingToday}
-            onBuildWorkout={() => {
-              // TODO wire to an ad-hoc session builder in a follow-up.
-              // For now we just flip the user to today and start — a real
-              // build-on-demand is a separate task.
+            onBuildWorkout={async () => {
+              // Pick the next upcoming session from the plan and stamp it as
+              // an override for today. This persists to Dexie so navigating
+              // away and back (or reloading) still shows the chosen workout.
+              // If nothing's upcoming, bail — the plan is complete.
+              const pick = getNextUpcomingSession(plan)
+              if (!pick) {
+                onStartSession()
+                return
+              }
+              try {
+                await setOverrideForDate(userId, todayISO, pick.id)
+              } catch (err) {
+                console.error('setOverrideForDate failed', err)
+                // Fall through — still try to start, but the next render
+                // will re-show the rest card.
+              }
               setSelectedDow(todayDow)
               onStartSession()
             }}
@@ -551,12 +629,20 @@ function TodayCard({
   session,
   onGo,
   isToday,
+  isOverride = false,
+  onRevertOverride,
 }: {
   session: PlannedSession
   /** Fired when the user taps "let's go". Omit for non-today preview. */
   onGo?: () => void
   /** When false we render a preview (no CTA, gray out the button). */
   isToday: boolean
+  /** True when this session is shown via a day-override (user built a
+   *  workout on a rest day). Surfaces a subtle badge + revert button. */
+  isOverride?: boolean
+  /** Clears the override, restoring the scheduled rest/session. Only passed
+   *  in when isOverride && isToday. */
+  onRevertOverride?: () => void
 }) {
   const accent = focusAccent(session.focus)
   const subtitle = session.subtitle ?? session.focus.slice(0, 2).join(' · ').toUpperCase()
@@ -635,6 +721,45 @@ function TodayCard({
           ~ {session.estimated_minutes}min
         </span>
       </div>
+      {isOverride && (
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+            fontSize: 11,
+            color: 'var(--lumo-text-ter)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+          }}
+        >
+          <span>pulled from your plan — originally a rest day</span>
+          {onRevertOverride && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRevertOverride()
+              }}
+              style={{
+                fontSize: 11,
+                color: 'var(--accent-plum)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                textDecoration: 'underline',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              rest instead
+            </button>
+          )}
+        </div>
+      )}
       <div
         style={{
           position: 'relative',
