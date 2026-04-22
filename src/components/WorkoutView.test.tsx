@@ -325,8 +325,12 @@ describe('WorkoutView PR celebration', () => {
     })
 
     // Enter a heavier working weight so set-complete triggers PR detection.
-    const weightInput = screen.getAllByPlaceholderText(/lbs/i)[0]
+    // New UI: tap the center chip (aria-label="Set weight" when unset), type
+    // into the inline input (aria-label="Edit current weight"), commit via Enter.
+    fireEvent.click(screen.getAllByRole('button', { name: /^Set weight$/i })[0])
+    const weightInput = screen.getByLabelText(/Edit current weight/i)
     fireEvent.change(weightInput, { target: { value: '105' } })
+    fireEvent.keyDown(weightInput, { key: 'Enter' })
 
     // Tap the first set circle.
     fireEvent.click(
@@ -348,8 +352,11 @@ describe('WorkoutView PR celebration', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    const weightInput = screen.getAllByPlaceholderText(/lbs/i)[0]
+    // Enter a weight that ties the PR via the new chip-row editor.
+    fireEvent.click(screen.getAllByRole('button', { name: /^Set weight$/i })[0])
+    const weightInput = screen.getByLabelText(/Edit current weight/i)
     fireEvent.change(weightInput, { target: { value: '100' } })
+    fireEvent.keyDown(weightInput, { key: 'Enter' })
     fireEvent.click(
       screen.getByRole('button', { name: /Mark set 1 of romanian deadlift/i }),
     )
@@ -452,8 +459,11 @@ describe('WorkoutView preamble + Lumo per-set reactions', () => {
       await Promise.resolve()
     })
 
-    const weightInput = screen.getAllByPlaceholderText(/lbs/i)[0]
+    // New UI: enter weight via the chip-row center tap-to-edit input.
+    fireEvent.click(screen.getAllByRole('button', { name: /^Set weight$/i })[0])
+    const weightInput = screen.getByLabelText(/Edit current weight/i)
     fireEvent.change(weightInput, { target: { value: '105' } })
+    fireEvent.keyDown(weightInput, { key: 'Enter' })
     fireEvent.click(
       screen.getByRole('button', { name: /Mark set 1 of romanian deadlift/i }),
     )

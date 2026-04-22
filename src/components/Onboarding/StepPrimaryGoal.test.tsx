@@ -13,8 +13,8 @@ describe('StepPrimaryGoal', () => {
 
   it('renders all 7 goals with radio semantics', () => {
     render(<StepPrimaryGoal onNext={() => undefined} />)
-    const radios = screen.getAllByRole('radio')
-    expect(radios.length).toBe(7)
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes.length).toBe(7)
   })
 
   it('disables Next until a goal is picked', () => {
@@ -28,8 +28,8 @@ describe('StepPrimaryGoal', () => {
   it('emits the chosen primary_goal on Next', () => {
     const onNext = vi.fn()
     render(<StepPrimaryGoal onNext={onNext} />)
-    fireEvent.click(screen.getByRole('radio', { name: /get stronger/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /get stronger/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
-    expect(onNext).toHaveBeenCalledWith('get_stronger')
+    expect(onNext).toHaveBeenCalledWith(['get_stronger'])
   })
 })

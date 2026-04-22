@@ -286,6 +286,22 @@ function App() {
         themeMode={tweaksApi.themeMode}
         setThemeMode={tweaksApi.setThemeMode}
         onClose={() => setSettingsOpen(false)}
+        isGenerating={isGenerating}
+        onRegeneratePlan={() => {
+          // Reload the saved profile and re-run plan generation against the
+          // current prompt + backend. runGeneration flips isGenerating=true,
+          // which causes App.tsx's top-level guard to render GeneratingPlan
+          // above the settings overlay — so Settings closes implicitly.
+          void loadProfileLocal(user.id).then((p) => {
+            if (!p) {
+              console.warn(
+                'Regenerate plan: no profile found for user — skipping.',
+              )
+              return
+            }
+            return runGeneration(p, user.id)
+          })
+        }}
       />
     )
   }

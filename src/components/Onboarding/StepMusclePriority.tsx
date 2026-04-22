@@ -51,7 +51,7 @@ const SELECTABLE_MUSCLES = [
 export function StepMusclePriority({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: Props) {
   const [picks, setPicks] = useState<MuscleGroupValue[]>(value ?? [])
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingMusclePriority', cheek),
     [cheek],
   )
 

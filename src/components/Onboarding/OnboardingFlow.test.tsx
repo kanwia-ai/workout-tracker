@@ -18,7 +18,7 @@ describe('OnboardingFlow', () => {
 
     // primary goal
     expectStep('primary_goal')
-    fireEvent.click(screen.getByRole('radio', { name: /build muscle/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /build muscle/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
 
     // muscle priority — skip
@@ -33,10 +33,15 @@ describe('OnboardingFlow', () => {
     expectStep('specific_target')
     fireEvent.click(screen.getByTestId('step-skip'))
 
-    // sessions — pick 3, leave slider default
+    // sessions — pick 3
     expectStep('sessions')
     fireEvent.click(screen.getByRole('radio', { name: '3' }))
     fireEvent.click(screen.getByTestId('step-sessions-next'))
+
+    // active minutes — pick 45 (split from sessions step)
+    expectStep('active_minutes')
+    fireEvent.click(screen.getByRole('radio', { name: /45/ }))
+    fireEvent.click(screen.getByTestId('step-active-minutes-next'))
 
     // equipment — pick bodyweight_only
     expectStep('equipment')
@@ -92,14 +97,14 @@ describe('OnboardingFlow', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     fireEvent.click(screen.getByTestId('step-welcome-start'))
     // pick a goal, then go back to welcome
-    fireEvent.click(screen.getByRole('radio', { name: /get stronger/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /get stronger/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
     expectStep('muscle_priority')
     fireEvent.click(screen.getByTestId('onboarding-back'))
     expectStep('primary_goal')
     // Selection should still be visible as checked
-    const radio = screen.getByRole('radio', { name: /get stronger/i })
-    expect(radio).toHaveAttribute('aria-checked', 'true')
+    const checkbox = screen.getByRole('checkbox', { name: /get stronger/i })
+    expect(checkbox).toHaveAttribute('aria-checked', 'true')
   })
 
   it('welcome step has no back button (first step)', () => {
@@ -110,7 +115,7 @@ describe('OnboardingFlow', () => {
   it('footprint progress bar shows total steps and current index', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     const bar = screen.getByRole('progressbar')
-    expect(bar).toHaveAttribute('aria-valuemax', '13')
+    expect(bar).toHaveAttribute('aria-valuemax', '14')
     expect(bar).toHaveAttribute('aria-valuenow', '1')
   })
 
@@ -119,7 +124,7 @@ describe('OnboardingFlow', () => {
     render(<OnboardingFlow onComplete={onComplete} />)
 
     fireEvent.click(screen.getByTestId('step-welcome-start'))
-    fireEvent.click(screen.getByRole('radio', { name: /lean & strong/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /lean & strong/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
 
     // muscle priority — pick glutes then back (order = priority rank)
@@ -141,6 +146,10 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('radio', { name: '4' }))
     fireEvent.click(screen.getByTestId('step-sessions-next'))
 
+    // active minutes — pick 60 (split from sessions step)
+    fireEvent.click(screen.getByRole('radio', { name: /60/ }))
+    fireEvent.click(screen.getByTestId('step-active-minutes-next'))
+
     // equipment
     fireEvent.click(screen.getByRole('button', { name: /full gym/i }))
     fireEvent.click(screen.getByRole('button', { name: /^Next$/i }))
@@ -148,7 +157,8 @@ describe('OnboardingFlow', () => {
     // training
     fireEvent.click(screen.getByRole('radio', { name: /experienced/i }))
 
-    // body info
+    // body info — switch to metric so we can enter kg directly
+    fireEvent.click(screen.getByTestId('step-body-info-units-metric'))
     fireEvent.change(screen.getByLabelText(/^age$/i), { target: { value: '29' } })
     fireEvent.click(screen.getByLabelText(/^female$/i))
     fireEvent.change(screen.getByLabelText(/weight/i), { target: { value: '65' } })

@@ -11,10 +11,42 @@ import { supabase } from './supabase'
  * it from the legacy `goal` field so downstream code (onboarding summary,
  * personalization pipeline) sees a fully-populated profile without a forced
  * migration. Pure; called after Zod parsing so the profile is already valid.
+ *
+ * Also migrates `primary_goal` (single) → `primary_goals` (multi) so the new
+ * multi-select aware UI never sees a blank goal list. Back-fills `units` to
+ * 'metric' (legacy default — prior profiles were metric-only) and mirrors
+ * `time_budget_min` into `active_minutes` when the new field is missing so
+ * the planner prompt has a number to cap sets by either way.
  */
 function ensurePrimaryGoal(profile: UserProgramProfile): UserProgramProfile {
-  if (profile.primary_goal) return profile
-  return { ...profile, primary_goal: legacyGoalToPrimaryGoal(profile.goal) }
+  const withPrimary: UserProgramProfile = profile.primary_goal
+    ? profile
+    : { ...profile, primary_goal: legacyGoalToPrimaryGoal(profile.goal) }
+
+  const withGoals: UserProgramProfile =
+    withPrimary.primary_goals && withPrimary.primary_goals.length > 0
+      ? withPrimary
+      : {
+          ...withPrimary,
+          primary_goals: withPrimary.primary_goal
+            ? [withPrimary.primary_goal]
+            : undefined,
+        }
+
+  const withUnits: UserProgramProfile =
+    withGoals.units !== undefined
+      ? withGoals
+      : { ...withGoals, units: 'metric' }
+
+  // Legacy profiles only stored total gym time in `time_budget_min`. Treat
+  // that as the active-minutes proxy rather than forcing a re-prompt — close
+  // enough for the planner, and users can edit in Settings once it ships.
+  const withActive: UserProgramProfile =
+    withUnits.active_minutes !== undefined
+      ? withUnits
+      : { ...withUnits, active_minutes: withUnits.time_budget_min }
+
+  return withActive
 }
 
 /**

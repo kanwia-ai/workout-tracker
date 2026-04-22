@@ -78,6 +78,27 @@ type CopyShape = {
   readonly onboardingConfirm: readonly string[];
   /** Easter egg: tapping a completed footprint. 4+ per tier. */
   readonly onboardingFootprintTap: readonly string[];
+  // ── Per-step bubble pools (added 2026-04) ──────────────────────────────
+  /** Aesthetic-step bubble. 3+ per tier. */
+  readonly onboardingAesthetic: readonly string[];
+  /** Specific-target free-text step. 3+ per tier. */
+  readonly onboardingSpecificTarget: readonly string[];
+  /** Cadence step — sessions/week picker. 3+ per tier. */
+  readonly onboardingSessions: readonly string[];
+  /** Active-minutes step — lifting duration. 3+ per tier. */
+  readonly onboardingActiveMinutes: readonly string[];
+  /** Equipment step. 3+ per tier. */
+  readonly onboardingEquipment: readonly string[];
+  /** Experience / training-age step. 3+ per tier. */
+  readonly onboardingExperience: readonly string[];
+  /** Muscle-priority step. 3+ per tier. */
+  readonly onboardingMusclePriority: readonly string[];
+  /** Dislikes step. 3+ per tier. */
+  readonly onboardingDislikes: readonly string[];
+  /** Body-stats step — age, sex, weight, height. 3+ per tier. */
+  readonly onboardingBodyStats: readonly string[];
+  /** Posture / free-text notes step. 3+ per tier. */
+  readonly onboardingPosture: readonly string[];
 };
 
 /**
@@ -589,6 +610,56 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'done. keep going.',
       'logged.',
     ],
+    onboardingAesthetic: [
+      'pick a look.',
+      'what shape are we building.',
+      'optional. skip fine.',
+    ],
+    onboardingSpecificTarget: [
+      'any concrete target.',
+      'one line goal. optional.',
+      'skip if none.',
+    ],
+    onboardingSessions: [
+      'how many days.',
+      'weekly cadence.',
+      'pick 2-6.',
+    ],
+    onboardingActiveMinutes: [
+      'active lift minutes.',
+      'work time only. no rest.',
+      'pick a range.',
+    ],
+    onboardingEquipment: [
+      'what you have.',
+      'select all that apply.',
+      'gym or home.',
+    ],
+    onboardingExperience: [
+      'training history.',
+      'closest fit.',
+      'months lifting.',
+    ],
+    onboardingMusclePriority: [
+      'priority muscles.',
+      'tap in order.',
+      'optional.',
+    ],
+    onboardingDislikes: [
+      'list dislikes.',
+      'we will avoid these.',
+      'optional.',
+    ],
+    onboardingBodyStats: [
+      'basic stats.',
+      'age and sex needed.',
+      'weight + height optional.',
+    ],
+    onboardingPosture: [
+      'lifestyle notes.',
+      'optional context.',
+      'skip if none.',
+    ],
   },
   1: {
     greetMorning: 'Good morning, {name} \u273F',
@@ -817,6 +888,60 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "done step. keep going.",
       "nice, you cleared that.",
       'logged already, keep rolling.',
+    ],
+    onboardingAesthetic: [
+      "what do you want the mirror to show?",
+      'pick a shape — we can tune later.',
+      "what's the look you're after?",
+      'optional. skip if you just want results.',
+    ],
+    onboardingSpecificTarget: [
+      'any one specific goal?',
+      'concrete target, optional.',
+      'one line, if there is one.',
+      'skip if nothing comes to mind.',
+    ],
+    onboardingSessions: [
+      'how many sessions a week?',
+      'be honest — what you will actually show up for.',
+      "pick the number you'll hit.",
+      'weekly cadence.',
+    ],
+    onboardingActiveMinutes: [
+      'how long is your actual lifting time?',
+      'work minutes only — rest between sets not counted.',
+      'active time on the floor.',
+      'we budget rest separately.',
+    ],
+    onboardingEquipment: [
+      'what do you have access to?',
+      "we'll only program what you own.",
+      'pick every option that applies.',
+    ],
+    onboardingExperience: [
+      'how long have you been lifting?',
+      'shapes intensity — closest fit.',
+      'training experience.',
+    ],
+    onboardingMusclePriority: [
+      'any muscles to prioritize?',
+      'tap in order — first tap is top priority.',
+      'optional. skip for balanced.',
+    ],
+    onboardingDislikes: [
+      "anything you don't want to see?",
+      'tell me what to dodge.',
+      'totally valid. optional.',
+    ],
+    onboardingBodyStats: [
+      'a bit about you.',
+      'age + sex for calibration. rest optional.',
+      'quick stats.',
+    ],
+    onboardingPosture: [
+      'anything else about your lifestyle?',
+      'desk-job vibes? chronic tension? any context.',
+      'optional free text.',
     ],
   },
   2: {
@@ -1124,6 +1249,69 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "checked off, menace.",
       "you already told me that one.",
       'already in the bank, love.',
+    ],
+    onboardingAesthetic: [
+      "lock it in — what do you want the mirror to show?",
+      'what shape are we building today?',
+      "pick your vibe. you can tune later.",
+      "what do you want to look like, for real.",
+      'choose a look, no judgment.',
+    ],
+    onboardingSpecificTarget: [
+      'got one goal you’re gunning for? tell me.',
+      'one concrete target. optional but fun.',
+      'any specific thing? a pull-up? glutes by june?',
+      'name a target. totally skippable.',
+    ],
+    onboardingSessions: [
+      'how many days a week, honestly?',
+      'real talk — what will you actually show up for.',
+      "don't overpromise. pick what's real.",
+      'weekly cadence time. no lying.',
+      'sessions per week — real number.',
+    ],
+    onboardingActiveMinutes: [
+      "how long is your actual lifting? rest doesn't count.",
+      'work time only, menace. rest we budget separately.',
+      'active minutes on the floor — not total gym time.',
+      'how long are you actually under the bar?',
+      'time you’re actually lifting, not scrolling.',
+    ],
+    onboardingEquipment: [
+      "what's in your toolbox?",
+      'tell me what you have. i won’t make you buy anything.',
+      "pick everything you've got access to.",
+      "gym, garage, bands — what do you work with?",
+    ],
+    onboardingExperience: [
+      'how long you been lifting?',
+      "be real about your experience — i'll calibrate.",
+      'months under the bar, ballpark.',
+      'training history, closest fit.',
+    ],
+    onboardingMusclePriority: [
+      'any muscles to spotlight? first tap wins.',
+      'pick priorities in order. optional.',
+      'what do you want more of?',
+      'tap the ones you want fed. optional.',
+    ],
+    onboardingDislikes: [
+      "what do you refuse to do?",
+      "anything we should never see? flag it.",
+      'dealbreakers. i respect them.',
+      'what makes you want to go home?',
+    ],
+    onboardingBodyStats: [
+      'quick stats. for calibration, not vibes.',
+      'age + sex please. rest is optional.',
+      'just the basics, no judgment.',
+      "i don't care about the number. it just calibrates.",
+    ],
+    onboardingPosture: [
+      'anything else i should know? desk job? tight hips?',
+      'last free-text box. lifestyle, context, anything.',
+      'optional brain dump. tell me about your day.',
+      'skip or drop any last context.',
     ],
   },
 };

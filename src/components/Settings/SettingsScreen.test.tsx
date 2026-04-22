@@ -47,6 +47,7 @@ function renderWired() {
   installMatchMediaMock()
   const { result } = renderHook(() => useTweaks())
   const onClose = vi.fn()
+  const onRegeneratePlan = vi.fn()
   function Wrapped(): React.JSX.Element {
     const api = result.current
     return (
@@ -56,6 +57,7 @@ function renderWired() {
         themeMode={api.themeMode}
         setThemeMode={api.setThemeMode}
         onClose={onClose}
+        onRegeneratePlan={onRegeneratePlan}
       />
     )
   }
@@ -132,10 +134,8 @@ describe('SettingsScreen', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('Coming soon rows are disabled', () => {
+  it('Reset app row is disabled (coming soon)', () => {
     renderWired()
-    const regen = screen.getByTestId('coming-soon-regenerate-plan')
-    expect(regen).toBeDisabled()
     const reset = screen.getByTestId('coming-soon-reset-app')
     expect(reset).toBeDisabled()
   })

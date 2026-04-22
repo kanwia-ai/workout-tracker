@@ -34,7 +34,7 @@ export function StepDislikes({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: P
     () => new Set(value ?? []),
   )
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingDislikes', cheek),
     [cheek],
   )
 

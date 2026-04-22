@@ -12,7 +12,7 @@ supabase functions serve generate --env-file supabase/functions/.env --no-verify
 supabase functions deploy generate
 ```
 
-Required secret: `ANTHROPIC_API_KEY` (set in Supabase Dashboard -> Project Settings -> Functions). The function calls Claude Opus 4.7 via the Messages API with tool_use-forced structured output.
+Required secret: `ANTHROPIC_API_KEY` (set in Supabase Dashboard -> Project Settings -> Functions). The function calls Claude Opus 4.7 via the Messages API with tool_use-forced structured output. Image-based ops (`extract_exercises`) use the same key — Claude vision accepts base64 images inline on the Messages API. `VITE_GEMINI_API_KEY` is no longer consumed by any client path.
 
 ## Smoke test after deploy
 
@@ -162,4 +162,32 @@ Error responses:
 - `400` if `profile`, `sessionFocus`, `kind`, or `minutes` are missing / wrong
   shape, if `kind` is not one of `warmup|cooldown|cardio`, or if `minutes` is
   outside `[3, 60]`.
+- `502` if Claude returns no tool_use block or the call throws.
+
+## Smoke test `extract_exercises`
+
+Image → structured exercise list via Claude vision. Payload is a single
+base64-encoded image (strip the `data:image/...;base64,` prefix on the client)
+plus its MIME type; optional `hint` is a free-text nudge for ambiguous photos.
+
+```bash
+curl -X POST https://<project-ref>.supabase.co/functions/v1/generate \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer <anon-key>" \
+  -d '{
+    "op": "extract_exercises",
+    "payload": {
+      "mime_type": "image/jpeg",
+      "image_b64": "<base64 of a workout-board photo>",
+      "hint": "hand-written glute day"
+    }
+  }'
+```
+
+Expected: JSON of shape `{ "exercises": [{ "name": "...", "sets"?, "reps"?, "weight"?, "rest_seconds"?, "notes"? }, ...] }`. Only `name` is required per exercise — the prompt tells Claude to omit any field it cannot see in the image.
+
+Error responses:
+- `400` if `image_b64` is missing, empty, or longer than 14,000,000 chars
+  (≈ 10 MB raw); if `mime_type` is not one of `image/jpeg`, `image/png`,
+  `image/webp`; or if `hint` is provided but is not a string.
 - `502` if Claude returns no tool_use block or the call throws.

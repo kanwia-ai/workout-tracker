@@ -1283,7 +1283,9 @@ function LiftCard({
           )}
         </div>
 
-        {/* Weight pill — tap to expand per-set inputs */}
+        {/* Weight pill — two-line display (current + last).
+            Tap the pill to expand per-set inputs; tap center chip in the
+            5-chip row below to edit via numeric keyboard. */}
         <div className="shrink-0 flex items-center gap-1">
           <button
             type="button"
@@ -1292,7 +1294,7 @@ function LiftCard({
             style={{
               background: 'var(--lumo-input-bg)',
               border: '1px solid var(--lumo-border)',
-              minWidth: 60,
+              minWidth: 64,
             }}
             aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
             aria-expanded={expanded}
@@ -1304,28 +1306,26 @@ function LiftCard({
             >
               LBS
             </div>
-            <input
-              type="number"
-              inputMode="numeric"
-              placeholder="lbs"
-              value={perSetActive ? displayedWeight : weightsInputValue(displayedWeight)}
-              disabled={perSetActive}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onChangeWeight(Number(e.target.value))}
-              className="w-12 text-center text-[17px] font-bold bg-transparent outline-none tabular-nums disabled:opacity-60"
-              style={{ color: 'var(--lumo-text)', padding: 0 }}
-            />
             <div
-              className="text-[9px] tabular-nums mt-0.5"
-              style={{
-                color:
-                  lastWeight !== undefined && displayedWeight > lastWeight
-                    ? 'var(--accent-mint)'
-                    : 'var(--lumo-text-ter)',
-              }}
+              className="text-[17px] font-bold tabular-nums"
+              style={{ color: 'var(--lumo-text)', lineHeight: 1.1 }}
             >
-              {lastWeight !== undefined ? `last ${lastWeight}` : '—'}
+              {displayedWeight > 0 ? displayedWeight : '—'}
             </div>
+            {lastWeight !== undefined && lastWeight > 0 && (
+              <div
+                className="text-[10px] tabular-nums mt-0.5"
+                data-testid="weight-pill-last"
+                style={{
+                  color:
+                    displayedWeight > 0 && displayedWeight > lastWeight
+                      ? 'var(--accent-mint)'
+                      : 'var(--lumo-text-ter)',
+                }}
+              >
+                last {lastWeight}
+              </div>
+            )}
           </button>
           <button
             type="button"
@@ -1346,6 +1346,17 @@ function LiftCard({
           </button>
         </div>
       </div>
+
+      {/* 5-chip weight picker: [-5] [-2.5] [CURRENT] [+2.5] [+5].
+          Middle chip opens an inline numeric input (tap-to-edit).
+          When no weight is set, ± auto-starts at `lastWeight || 45`. */}
+      {!perSetActive && (
+        <WeightChipRow
+          current={displayedWeight}
+          lastWeight={lastWeight}
+          onChange={onChangeWeight}
+        />
+      )}
 
       {/* Per-set weight inputs (expand on caret tap) */}
       {expanded && (
@@ -1407,9 +1418,147 @@ function LiftCard({
   )
 }
 
-function weightsInputValue(n: number): number | '' {
-  return n > 0 ? n : ''
+// ─── WeightChipRow ──────────────────────────────────────────────────────
+// 5-chip weight picker: [-5] [-2.5] [CURRENT] [+2.5] [+5].
+//   - Middle chip: big, shows current weight. Tap to edit via numeric input.
+//     Shows "set" + opens editor when no weight is set.
+//   - ± chips: round the new value to the nearest 0.5 lb and clamp to 0.
+//     When unset, + auto-starts at `lastWeight || 45`.
+// Accessible: each chip has an explicit aria-label.
+interface WeightChipRowProps {
+  current: number
+  lastWeight?: number
+  onChange: (next: number) => void
 }
+
+function WeightChipRow({ current, lastWeight, onChange }: WeightChipRowProps) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<string>('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const startEdit = () => {
+    setDraft(current > 0 ? String(current) : '')
+    setEditing(true)
+  }
+
+  const commitEdit = () => {
+    const n = Number(draft)
+    if (Number.isFinite(n) && n >= 0) onChange(Math.round(n * 2) / 2)
+    setEditing(false)
+  }
+
+  const bump = (delta: number) => {
+    const base = current > 0 ? current : (lastWeight && lastWeight > 0 ? lastWeight : 45)
+    const next = Math.max(0, Math.round((base + delta) * 2) / 2)
+    onChange(next)
+  }
+
+  const hasWeight = current > 0
+
+  const baseChip: CSSProperties = {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    background: 'var(--lumo-input-bg)',
+    border: '1px solid var(--lumo-border)',
+    color: 'var(--lumo-text-sec)',
+    fontSize: 12,
+    fontWeight: 700,
+    fontVariantNumeric: 'tabular-nums',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    cursor: 'pointer',
+    transition: 'transform 120ms, background 160ms',
+  }
+
+  const middleChip: CSSProperties = {
+    ...baseChip,
+    width: 48,
+    height: 36,
+    fontSize: 16,
+    fontWeight: 700,
+    color: hasWeight ? 'var(--lumo-text)' : 'var(--lumo-text-ter)',
+  }
+
+  const chipLabel = (delta: number) =>
+    (delta > 0 ? '+' : '') + (Number.isInteger(delta) ? delta : delta.toString())
+
+  const renderDelta = (delta: number) => (
+    <button
+      key={delta}
+      type="button"
+      onClick={() => bump(delta)}
+      aria-label={`${delta > 0 ? 'Add' : 'Subtract'} ${Math.abs(delta)} pounds`}
+      className="active:scale-90 weight-chip"
+      style={baseChip}
+    >
+      {chipLabel(delta)}
+    </button>
+  )
+
+  return (
+    <div
+      className="flex items-center justify-end gap-1.5 mt-2"
+      data-testid="weight-chip-row"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <style>{WEIGHT_CHIP_KEYFRAMES}</style>
+      {renderDelta(-5)}
+      {renderDelta(-2.5)}
+
+      {editing ? (
+        <input
+          ref={inputRef}
+          type="number"
+          inputMode="decimal"
+          step={0.5}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitEdit()
+            else if (e.key === 'Escape') setEditing(false)
+          }}
+          aria-label="Edit current weight"
+          style={{
+            ...middleChip,
+            outline: 'none',
+            textAlign: 'center',
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={startEdit}
+          aria-label={hasWeight ? `Edit current weight (${current} pounds)` : 'Set weight'}
+          className="active:scale-90 weight-chip"
+          style={middleChip}
+        >
+          {hasWeight ? current : 'set'}
+        </button>
+      )}
+
+      {renderDelta(2.5)}
+      {renderDelta(5)}
+    </div>
+  )
+}
+
+const WEIGHT_CHIP_KEYFRAMES = `
+.weight-chip:active { background: color-mix(in srgb, var(--brand) 18%, var(--lumo-input-bg)); }
+@media (prefers-reduced-motion: reduce) {
+  .weight-chip { transition: none !important; }
+}
+`
 
 // ─── SetCircle ──────────────────────────────────────────────────────────
 interface SetCircleProps {

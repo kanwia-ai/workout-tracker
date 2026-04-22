@@ -30,7 +30,7 @@ export function StepEquipment({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
     () => new Set(value ?? []),
   )
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingEquipment', cheek),
     [cheek],
   )
 
@@ -47,7 +47,7 @@ export function StepEquipment({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
 
   return (
     <StepChrome
-      lumoState="flex"
+      lumoState="curious"
       bubbleText={bubble}
       title="What equipment do you have?"
       subtitle="Pick every option — we'll only program what's in your toolbox."

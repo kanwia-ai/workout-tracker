@@ -1,13 +1,17 @@
-// StepSessions — sessions/week + time budget, combined because they're both
-// short scalar pickers. Required (hard constraint for architecture lookup).
+// StepSessions — sessions/week picker. Required (hard constraint for
+// architecture lookup). Lumo does a squat here.
+//
+// Active-minutes (per-session duration) moved to its own step so the copy
+// can call out that it's WORK minutes only — rest between sets is budgeted
+// separately by the planner.
 
 import { useMemo, useState } from 'react'
 import { StepChrome } from './StepChrome'
 import { pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../../lib/copy'
 
 interface Props {
-  value?: { sessions_per_week?: number; time_budget_min?: number }
-  onNext: (patch: { sessions_per_week: number; time_budget_min: number }) => void
+  value?: { sessions_per_week?: number }
+  onNext: (patch: { sessions_per_week: number }) => void
   cheek?: CheekLevel
 }
 
@@ -15,18 +19,17 @@ const SESSION_OPTIONS = [2, 3, 4, 5, 6] as const
 
 export function StepSessions({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
   const [sessions, setSessions] = useState<number | undefined>(value?.sessions_per_week)
-  const [minutes, setMinutes] = useState<number>(value?.time_budget_min ?? 60)
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingSessions', cheek),
     [cheek],
   )
   const canSubmit = sessions !== undefined
 
   return (
     <StepChrome
-      lumoState="flex"
+      lumoState="squat"
       bubbleText={bubble}
-      title="Cadence & time"
+      title="How many sessions a week?"
       subtitle="Be honest — what you'll actually show up for."
     >
       <fieldset className="mb-5">
@@ -62,52 +65,11 @@ export function StepSessions({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
         </div>
       </fieldset>
 
-      <div
-        className="p-4 rounded-2xl mb-5"
-        style={{
-          background: 'var(--lumo-raised)',
-          border: '2px solid var(--lumo-border)',
-        }}
-      >
-        <div className="flex items-baseline justify-between mb-2">
-          <span
-            className="text-sm font-bold"
-            style={{ color: 'var(--lumo-text)' }}
-          >
-            Session length
-          </span>
-          <span
-            className="font-extrabold text-lg tabular-nums"
-            style={{ color: 'var(--brand)' }}
-          >
-            {minutes} min
-          </span>
-        </div>
-        <input
-          type="range"
-          min={15}
-          max={120}
-          step={5}
-          value={minutes}
-          onChange={(e) => setMinutes(Number(e.target.value))}
-          className="w-full accent-[var(--brand)]"
-          aria-label="Session length in minutes"
-        />
-        <div
-          className="flex justify-between text-xs mt-1"
-          style={{ color: 'var(--lumo-text-ter)' }}
-        >
-          <span>15</span>
-          <span>120</span>
-        </div>
-      </div>
-
       <button
         type="button"
         disabled={!canSubmit}
         onClick={() =>
-          canSubmit &&
-          onNext({ sessions_per_week: sessions!, time_budget_min: minutes })
+          canSubmit && onNext({ sessions_per_week: sessions! })
         }
         className="w-full min-h-[56px] p-4 rounded-2xl font-extrabold transition"
         style={{

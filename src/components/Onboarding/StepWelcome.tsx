@@ -20,7 +20,7 @@ export function StepWelcome({ onNext, cheek = DEFAULT_CHEEK }: Props) {
 
   return (
     <StepChrome
-      lumoState="cheer"
+      lumoState="wave"
       bubbleText={bubble}
       title="Let's build your plan."
       subtitle="A few questions so Lumo can program something that fits."

@@ -17,13 +17,13 @@ interface Props {
 export function StepPostureNotes({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: Props) {
   const [text, setText] = useState<string>(value ?? '')
   const bubble = useMemo(
-    () => pickCopy('onboardingInjuries', cheek),
+    () => pickCopy('onboardingPosture', cheek),
     [cheek],
   )
 
   return (
     <StepChrome
-      lumoState="sleepy"
+      lumoState="curious"
       bubbleText={bubble}
       title="Anything else?"
       subtitle="Posture, lifestyle, desk-job vibes — totally optional."

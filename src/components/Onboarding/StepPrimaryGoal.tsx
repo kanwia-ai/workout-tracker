@@ -1,5 +1,7 @@
-// StepPrimaryGoal — the 7-value primary_goal picker. Required step.
-// Radio-select. Each option has an emoji-free icon slot (keeps brand) + blurb.
+// StepPrimaryGoal — the 7-value primary_goal picker, NOW MULTI-SELECT (max 2).
+// First tap = dominant goal (drives split + rep ranges). Second tap adds a
+// secondary emphasis. Tapping a selected chip un-selects it. Min 1 required
+// to advance.
 
 import { useMemo, useState } from 'react'
 import { StepChrome } from './StepChrome'
@@ -7,8 +9,8 @@ import { pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../../lib/copy'
 import { type PrimaryGoal } from '../../types/profile'
 
 interface Props {
-  value?: PrimaryGoal
-  onNext: (goal: PrimaryGoal) => void
+  value?: PrimaryGoal[]
+  onNext: (goals: PrimaryGoal[]) => void
   cheek?: CheekLevel
 }
 
@@ -54,47 +56,78 @@ const OPTIONS: {
   },
 ]
 
+const MAX_PICKS = 2
+
 export function StepPrimaryGoal({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
-  const [selected, setSelected] = useState<PrimaryGoal | undefined>(value)
+  // Order preserved from user taps so `picks[0]` is the dominant goal.
+  const [picks, setPicks] = useState<PrimaryGoal[]>(() => value ?? [])
   const bubble = useMemo(
     () => pickCopy('onboardingGoal', cheek),
     [cheek],
   )
-  const canSubmit = selected !== undefined
+  const canSubmit = picks.length >= 1
+
+  const toggle = (id: PrimaryGoal) => {
+    setPicks((prev) => {
+      if (prev.includes(id)) return prev.filter((g) => g !== id)
+      if (prev.length >= MAX_PICKS) return prev // cap at 2; user must untoggle first
+      return [...prev, id]
+    })
+  }
 
   return (
     <StepChrome
-      lumoState="thinking"
+      lumoState="flex"
       bubbleText={bubble}
       title="What's the goal?"
-      subtitle="Pick the closest fit — you can tune later."
+      subtitle="Pick up to 2 — first tap is the top priority. Strength AND size? Both."
     >
-      <div className="grid gap-3 mb-4" role="radiogroup" aria-label="Primary goal">
+      <div
+        className="grid gap-3 mb-4"
+        role="group"
+        aria-label="Primary goals (pick up to 2)"
+      >
         {OPTIONS.map((opt) => {
-          const isOn = selected === opt.id
+          const rank = picks.indexOf(opt.id)
+          const isOn = rank >= 0
+          const atCap = !isOn && picks.length >= MAX_PICKS
           return (
             <button
               key={opt.id}
               type="button"
-              role="radio"
+              role="checkbox"
               aria-checked={isOn}
-              onClick={() => setSelected(opt.id)}
-              className="min-h-[56px] p-4 rounded-2xl text-left transition active:scale-[0.98]"
+              aria-disabled={atCap}
+              onClick={() => toggle(opt.id)}
+              className="min-h-[56px] p-4 rounded-2xl text-left transition active:scale-[0.98] flex items-center gap-3"
               style={{
                 background: isOn
-                  ? 'color-mix(in srgb, var(--brand) 14%, var(--lumo-raised))'
+                  ? 'color-mix(in srgb, var(--brand) 18%, var(--lumo-raised))'
                   : 'var(--lumo-raised)',
                 border: `2px solid ${isOn ? 'var(--brand)' : 'var(--lumo-border)'}`,
                 color: 'var(--lumo-text)',
+                opacity: atCap ? 0.45 : 1,
+                cursor: atCap ? 'not-allowed' : 'pointer',
               }}
             >
-              <div className="font-bold">{opt.title}</div>
-              <div
-                className="text-sm mt-0.5"
-                style={{ color: 'var(--lumo-text-sec)' }}
-              >
-                {opt.blurb}
+              <div className="flex-1">
+                <div className="font-bold">{opt.title}</div>
+                <div
+                  className="text-sm mt-0.5"
+                  style={{ color: 'var(--lumo-text-sec)' }}
+                >
+                  {opt.blurb}
+                </div>
               </div>
+              {isOn && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: 'var(--brand)', color: 'var(--lumo-bg)' }}
+                  aria-label={`priority ${rank + 1}`}
+                >
+                  {rank + 1}
+                </span>
+              )}
             </button>
           )
         })}
@@ -102,7 +135,7 @@ export function StepPrimaryGoal({ value, onNext, cheek = DEFAULT_CHEEK }: Props)
       <button
         type="button"
         disabled={!canSubmit}
-        onClick={() => canSubmit && onNext(selected!)}
+        onClick={() => canSubmit && onNext(picks)}
         className="w-full min-h-[56px] p-4 rounded-2xl font-extrabold transition"
         style={{
           background: canSubmit ? 'var(--brand)' : 'var(--lumo-overlay)',
@@ -110,7 +143,7 @@ export function StepPrimaryGoal({ value, onNext, cheek = DEFAULT_CHEEK }: Props)
         }}
         data-testid="step-primary-goal-next"
       >
-        Next
+        {picks.length <= 1 ? 'Next' : `Next — ${picks.length} picked`}
       </button>
     </StepChrome>
   )

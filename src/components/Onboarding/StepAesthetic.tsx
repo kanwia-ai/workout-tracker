@@ -1,4 +1,6 @@
-// StepAesthetic — OPTIONAL. What "good" looks like. 4 cards + "no preference".
+// StepAesthetic — OPTIONAL. What "good" looks like. 5 cards + "no preference".
+// Added 2026-04: `muscle_size_bulk` card for users who want muscle size /
+// width (not definition). Lumo winks on this step.
 
 import { useMemo, useState } from 'react'
 import { StepChrome } from './StepChrome'
@@ -24,6 +26,11 @@ const CARDS: { id: AestheticPreference; title: string; blurb: string }[] = [
     blurb: 'Muscular, built, confident',
   },
   {
+    id: 'muscle_size_bulk',
+    title: 'Muscle size',
+    blurb: 'Wide, thick, bear-mode — size over definition',
+  },
+  {
     id: 'athletic',
     title: 'Athletic',
     blurb: 'Fast, agile, capable',
@@ -38,13 +45,13 @@ const CARDS: { id: AestheticPreference; title: string; blurb: string }[] = [
 export function StepAesthetic({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: Props) {
   const [selected, setSelected] = useState<AestheticPreference | undefined>(value)
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingAesthetic', cheek),
     [cheek],
   )
 
   return (
     <StepChrome
-      lumoState="thinking"
+      lumoState="wink"
       bubbleText={bubble}
       title="What look are you chasing?"
       subtitle="Shapes the muscle bias — not your worth. Skip if you don't care."

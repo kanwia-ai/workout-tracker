@@ -15,7 +15,7 @@
  */
 
 import { X } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ThemeToggle } from './ThemeToggle'
 import {
   CHEEK_PREF_KEY,
@@ -32,6 +32,8 @@ export interface SettingsScreenProps {
   themeMode: ThemeMode
   setThemeMode: (mode: ThemeMode) => void
   onClose: () => void
+  onRegeneratePlan: () => void
+  isGenerating?: boolean
 }
 
 const CHEEK_OPTIONS: readonly { value: Cheek; label: string }[] = [
@@ -43,7 +45,6 @@ const CHEEK_OPTIONS: readonly { value: Cheek; label: string }[] = [
 const COMING_SOON: readonly string[] = [
   'Edit profile',
   'Edit goals',
-  'Regenerate plan',
   'Export data',
   'Reset app',
 ]
@@ -54,7 +55,11 @@ export function SettingsScreen({
   themeMode,
   setThemeMode,
   onClose,
+  onRegeneratePlan,
+  isGenerating = false,
 }: SettingsScreenProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
   const handleCheek = (value: Cheek) => {
     setTweaks({ cheek: value, cheekiness: value })
     try {
@@ -62,6 +67,11 @@ export function SettingsScreen({
     } catch {
       // best-effort persistence — don't crash on denied writes.
     }
+  }
+
+  const handleConfirmRegenerate = () => {
+    setConfirmOpen(false)
+    onRegeneratePlan()
   }
 
   return (
@@ -173,6 +183,44 @@ export function SettingsScreen({
           </Row>
         </Section>
 
+        <Section title="Plan">
+          <div style={{ padding: '4px 0' }}>
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              disabled={isGenerating}
+              data-testid="regenerate-plan-button"
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'var(--lumo-warn, #f59e0b)',
+                color: 'var(--lumo-bg)',
+                border: 'none',
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: '0.01em',
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                opacity: isGenerating ? 0.6 : 1,
+                transition: 'opacity 180ms ease',
+              }}
+            >
+              {isGenerating ? 'Regenerating…' : 'Regenerate my plan'}
+            </button>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-sec)',
+                marginTop: 10,
+                lineHeight: 1.5,
+              }}
+            >
+              Rebuild your training block with the latest version of the
+              generator. Your in-progress session (if any) will be preserved.
+            </div>
+          </div>
+        </Section>
+
         <Section title="About">
           <Row label="Version">
             <span
@@ -244,6 +292,107 @@ export function SettingsScreen({
           ))}
         </Section>
       </div>
+
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="regenerate-dialog-title"
+          data-testid="regenerate-confirm-dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 1000,
+          }}
+          onClick={() => setConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              borderRadius: 20,
+              padding: 24,
+              color: 'var(--lumo-text)',
+            }}
+          >
+            <h2
+              id="regenerate-dialog-title"
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                fontWeight: 700,
+                fontSize: 22,
+                margin: '0 0 12px',
+                color: 'var(--lumo-text)',
+              }}
+            >
+              Regenerate your plan?
+            </h2>
+            <p
+              style={{
+                fontSize: 14,
+                lineHeight: 1.55,
+                color: 'var(--lumo-text-sec)',
+                margin: '0 0 20px',
+              }}
+            >
+              This replaces your current mesocycle with a fresh one. Past
+              sessions stay logged; any upcoming sessions not yet started will
+              be recreated.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                justifyContent: 'flex-end',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                data-testid="regenerate-cancel"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 12,
+                  background: 'transparent',
+                  color: 'var(--lumo-text-sec)',
+                  border: '1px solid var(--lumo-border)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRegenerate}
+                data-testid="regenerate-confirm"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 12,
+                  background: 'var(--brand)',
+                  color: 'var(--lumo-bg)',
+                  border: 'none',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Regenerate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

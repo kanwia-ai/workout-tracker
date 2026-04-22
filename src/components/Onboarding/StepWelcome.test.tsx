@@ -14,8 +14,8 @@ describe('StepWelcome', () => {
 
   it('renders Lumo in the cheer state', () => {
     render(<StepWelcome onNext={() => undefined} />)
-    const lumo = screen.getByRole('img', { name: /cheering/i })
-    expect(lumo).toHaveAttribute('data-lumo-state', 'cheer')
+    const lumo = screen.getByRole('img', { name: /waving hello/i })
+    expect(lumo).toHaveAttribute('data-lumo-state', 'wave')
   })
 
   it('calls onNext when Start is tapped', () => {

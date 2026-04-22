@@ -197,18 +197,22 @@ If profile.equipment = ["bands_only"] → no barbell/cable/machine. If "bodyweig
 
 ═══ 13. PERSONALIZATION OVERLAY ═══
 
-Read profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.specific_target:
+Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.specific_target, profile.active_minutes:
 
+• primary_goals (ordered list of 1-2): dominant first. When both "get_stronger" AND "build_muscle" appear, treat as 60% hypertrophy / 40% strength — 3-4 sets of 6-10 reps on main compounds at RIR 1-2, plus 3-4 sets of 8-12 on accessories. When "lean_and_strong" is combined with anything, bias toward compound work + mixed rep ranges. When "mobility" appears as a second goal, pad warmups and insert 1 mobility/rehab exercise per session. When only one goal is present, apply its rep-range bucket as spec'd in rule 5.3.
 • muscle_priority (ordered list): prioritize these muscles. Give them more sets (toward MAV, not MEV), better position early in the session, and the compound lift slot when relevant.
 • aesthetic_preference:
-     "toned_lean"      → full-body compound dominance + higher reps (8-15)
-     "strong_defined"  → PPL-biased, compound-heavy, RIR 1-2 on main work
-     "athletic"        → keep some plyo/power if cleared + movement variety
-     "balanced"        → even
-     "none"            → ignore
+     "toned_lean"       → full-body compound dominance + higher reps (8-15)
+     "strong_defined"   → PPL-biased, compound-heavy, RIR 1-2 on main work
+     "muscle_size_bulk" → HYPERTROPHY-HEAVY. Compound-dominant. Add arm + shoulder emphasis for a "wide" silhouette (extra 2-4 weekly sets on side/rear delts, biceps, triceps). Rep ranges 6-12, RIR 1-2, volume toward MAV. User wants size, not definition.
+     "athletic"         → keep some plyo/power if cleared + movement variety
+     "balanced"         → even
+     "none"             → ignore
 • exercise_dislikes (multi-select): EXCLUDE entirely. Never emit any exercise matching a dislike tag.
 • specific_target (free text, e.g. "first pull-up"): bias selection toward progressive loading of that goal — e.g. pull-up progressions in every upper session.
 • want_demo_videos: no effect on generation (UI concern only).
+• active_minutes (int, optional): ACTIVE LIFTING MINUTES — the user's work time only, rest between sets NOT counted. When present, use this (NOT time_budget_min) to cap set counts: assume ~60-90 seconds of actual work per set (reps × tempo), and set rest per rule 5.4. Example: active_minutes=45 on a pull day → ~25-30 working sets max across the session. If only time_budget_min is present, subtract ~30% to estimate active work time.
+• units: UI display preference only — no effect on generation.
 
 ═══ OUTPUT ═══
 

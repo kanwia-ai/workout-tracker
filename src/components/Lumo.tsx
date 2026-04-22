@@ -14,6 +14,17 @@ export type LumoState =
   | 'sad'
   | 'thinking'
   | 'celebrate'
+  // ── Onboarding-contextual states (added 2026-04) ────────────────────────
+  // These reuse the core eye/mouth/body renderers and only change body
+  // animation + an optional small prop so Lumo can act out the current step
+  // (wave on welcome, squat on sessions, point on injuries, etc.). Keep the
+  // deltas tiny — the mascot must still read as "Lumo" at a glance.
+  | 'wave'       // welcome / first-name — friendly hello, one arm up
+  | 'squat'      // sessions-per-week — slow bounce hinting at a squat rep
+  | 'run'        // active-minutes — quick two-beat bounce
+  | 'curious'    // body-stats / equipment — tilted, attentive, pencil-free
+  | 'pointing'   // injuries — subtle arm-gesture indicating empathy
+  | 'wink'       // aesthetic — one eye half-closed
 
 export interface LumoProps {
   state: LumoState
@@ -31,6 +42,12 @@ const STATE_LABELS: Record<LumoState, string> = {
   sad: 'Lumo is sad',
   thinking: 'Lumo is thinking',
   celebrate: 'Lumo is celebrating',
+  wave: 'Lumo is waving hello',
+  squat: 'Lumo is doing a squat',
+  run: 'Lumo is bouncing',
+  curious: 'Lumo is curious',
+  pointing: 'Lumo is pointing',
+  wink: 'Lumo is winking',
 }
 
 // shade — mix toward white (pct > 0) or black (pct < 0)
@@ -83,6 +100,22 @@ function bodyAnimation(state: LumoState): string {
       return 'lumo-rock 2.4s ease-in-out infinite'
     case 'thinking':
       return 'lumo-wiggle 1.6s ease-in-out infinite'
+    case 'wave':
+      // gentle float — the wave itself is animated on the arm.
+      return 'lumo-float 2.4s ease-in-out infinite'
+    case 'squat':
+      // slow squat rhythm: one rep every ~1.4s.
+      return 'lumo-flex 1.4s ease-in-out infinite'
+    case 'run':
+      // fast double-bounce like light jogging in place.
+      return 'lumo-bounce 0.55s ease-in-out infinite'
+    case 'curious':
+      return 'lumo-wiggle 2.2s ease-in-out infinite'
+    case 'pointing':
+      // very subtle rock — the arm does the talking.
+      return 'lumo-float 3s ease-in-out infinite'
+    case 'wink':
+      return 'lumo-float 3s ease-in-out infinite'
     default:
       return 'lumo-float 3s ease-in-out infinite'
   }
@@ -212,6 +245,57 @@ function renderEyes(state: LumoState): ReactNode {
             />
             <ellipse cx={cx + 2} cy="52" rx="3" ry="4" fill={eyeDark} />
             <circle cx={cx + 2.5} cy="51" r="1.3" fill="#fff" />
+          </g>
+        ))}
+      </>
+    )
+  }
+
+  if (state === 'wink') {
+    // Right eye closed (arc), left eye open + sparkling. Simple & readable.
+    return (
+      <>
+        {/* left: standard open eye */}
+        <ellipse
+          cx={36}
+          cy="55"
+          rx="6.5"
+          ry="8"
+          fill="#fff"
+          stroke={eyeDark}
+          strokeWidth="2"
+        />
+        <ellipse cx={36} cy="56" rx="4.5" ry="6" fill={eyeDark} />
+        <circle cx={34.5} cy="53" r="2" fill="#fff" />
+        {/* right: closed happy arc */}
+        <path
+          d="M56 56 Q64 49 72 56"
+          stroke={eyeDark}
+          strokeWidth="2.6"
+          fill="none"
+          strokeLinecap="round"
+        />
+      </>
+    )
+  }
+
+  if (state === 'curious') {
+    // Slightly larger, offset pupils — "looking up and to the side".
+    return (
+      <>
+        {[36, 64].map((cx) => (
+          <g key={cx}>
+            <ellipse
+              cx={cx}
+              cy="55"
+              rx="6.5"
+              ry="8"
+              fill="#fff"
+              stroke={eyeDark}
+              strokeWidth="2"
+            />
+            <ellipse cx={cx + 1.2} cy="53.5" rx="4" ry="5.5" fill={eyeDark} />
+            <circle cx={cx + 1.8} cy="51.5" r="1.8" fill="#fff" />
           </g>
         ))}
       </>
@@ -494,6 +578,78 @@ export function Lumo({
       </g>
     ) : null
 
+  // A raised, waving arm on the right side for the welcome / hi step. Reuses
+  // the lumo-tap keyframe so the arm rocks side-to-side like a real wave.
+  const waveArm: ReactNode =
+    state === 'wave' ? (
+      <g
+        transform="translate(86 48)"
+        style={{ animation: 'lumo-tap 0.9s ease-in-out infinite', transformOrigin: '0 14px' }}
+      >
+        <ellipse
+          cx="0"
+          cy="0"
+          rx="5"
+          ry="3.5"
+          fill={bodyFill}
+          stroke={outline}
+          strokeWidth="2"
+        />
+        <ellipse
+          cx="2"
+          cy="-10"
+          rx="4"
+          ry="7"
+          fill={bodyFill}
+          stroke={outline}
+          strokeWidth="2"
+        />
+        <circle
+          cx="3"
+          cy="-15"
+          r="3.5"
+          fill={highlight}
+          stroke={outline}
+          strokeWidth="1.8"
+        />
+      </g>
+    ) : null
+
+  // A small right-side arm with an extended "finger" for the injuries step,
+  // reading as Lumo gently pointing at a body region. Static (no bounce) so
+  // it feels attentive rather than chaotic.
+  const pointArm: ReactNode =
+    state === 'pointing' ? (
+      <g transform="translate(82 70)">
+        <ellipse
+          cx="0"
+          cy="0"
+          rx="6"
+          ry="4"
+          fill={bodyFill}
+          stroke={outline}
+          strokeWidth="2"
+        />
+        <ellipse
+          cx="8"
+          cy="-2"
+          rx="5"
+          ry="3"
+          fill={bodyFill}
+          stroke={outline}
+          strokeWidth="2"
+        />
+        <circle
+          cx="13"
+          cy="-3"
+          r="2.6"
+          fill={highlight}
+          stroke={outline}
+          strokeWidth="1.6"
+        />
+      </g>
+    ) : null
+
   const zzz: ReactNode =
     state === 'sleepy' ? (
       <text
@@ -631,6 +787,8 @@ export function Lumo({
           {renderEyes(state)}
           {renderMouth(state)}
           {flexArm}
+          {waveArm}
+          {pointArm}
           {sweat}
 
           {/* tiny feet stubs */}

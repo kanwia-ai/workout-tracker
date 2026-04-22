@@ -107,8 +107,9 @@ export function StepInjuries({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
     onNext(cleaned)
   }
 
-  // Lumo reacts sadly if the user has >=3 issues. Small touch of empathy.
-  const lumoState: LumoState = injuries.length >= 3 ? 'sad' : 'thinking'
+  // Lumo reacts sadly if the user has >=3 issues. Otherwise points at the
+  // user to signal "tell me" / acknowledgement of a body region.
+  const lumoState: LumoState = injuries.length >= 3 ? 'sad' : 'pointing'
 
   return (
     <StepChrome

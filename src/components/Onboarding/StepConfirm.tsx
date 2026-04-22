@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { StepChrome } from './StepChrome'
 import { pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../../lib/copy'
 import type { UserProgramProfile, PrimaryGoal, AestheticPreference, ExerciseDislike } from '../../types/profile'
+import { formatHeight, formatWeight } from '../../lib/units'
 
 interface Props {
   draft: Partial<UserProgramProfile>
@@ -49,6 +50,7 @@ const AESTHETIC_LABELS: Record<AestheticPreference, string> = {
   toned_lean: 'Toned & lean',
   strong_defined: 'Strong & defined',
   athletic: 'Athletic',
+  muscle_size_bulk: 'Muscle size (bear-mode)',
   balanced: 'Balanced',
   none: 'No preference',
 }
@@ -120,15 +122,27 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK }: Props) {
       ? draft.muscle_priority.join(', ')
       : 'Balanced'
 
-  const goalLabel = draft.primary_goal
-    ? PRIMARY_GOAL_LABELS[draft.primary_goal]
-    : draft.goal
-      ? GOAL_LABELS[draft.goal]
-      : '—'
+  // Prefer the new multi-goal array when available — show the dominant
+  // first and tag any secondary. Falls back to legacy single-goal fields.
+  const goalLabel =
+    draft.primary_goals && draft.primary_goals.length > 0
+      ? draft.primary_goals
+          .map(
+            (g, i) =>
+              `${PRIMARY_GOAL_LABELS[g]}${
+                i === 0 && draft.primary_goals!.length > 1 ? ' (main)' : ''
+              }`,
+          )
+          .join(' + ')
+      : draft.primary_goal
+        ? PRIMARY_GOAL_LABELS[draft.primary_goal]
+        : draft.goal
+          ? GOAL_LABELS[draft.goal]
+          : '—'
 
   return (
     <StepChrome
-      lumoState="cheer"
+      lumoState="celebrate"
       bubbleText={bubble}
       title="Does this look right?"
       subtitle="Double-check before we generate. You can edit later in Settings."
@@ -152,8 +166,12 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK }: Props) {
         )}
         <Row label="Priority muscles">{priorityText}</Row>
         <Row label="Sessions / week">{draft.sessions_per_week ?? '—'}</Row>
-        <Row label="Session length">
-          {draft.time_budget_min ? `${draft.time_budget_min} min` : '—'}
+        <Row label="Active lifting minutes">
+          {draft.active_minutes
+            ? `${draft.active_minutes} min (work only)`
+            : draft.time_budget_min
+              ? `${draft.time_budget_min} min`
+              : '—'}
         </Row>
         <Row label="Experience">{experienceLabel(draft.training_age_months)}</Row>
         <Row label="Equipment">{equipmentText}</Row>
@@ -162,10 +180,10 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK }: Props) {
         {draft.age !== undefined && <Row label="Age">{draft.age}</Row>}
         <Row label="Sex">{draft.sex ? SEX_LABELS[draft.sex] : '—'}</Row>
         {draft.weight_kg !== undefined && (
-          <Row label="Weight">{draft.weight_kg} kg</Row>
+          <Row label="Weight">{formatWeight(draft.weight_kg, draft.units)}</Row>
         )}
         {draft.height_cm !== undefined && (
-          <Row label="Height">{draft.height_cm} cm</Row>
+          <Row label="Height">{formatHeight(draft.height_cm, draft.units)}</Row>
         )}
         {draft.posture_notes && draft.posture_notes.length > 0 && (
           <Row label="Notes">{draft.posture_notes}</Row>

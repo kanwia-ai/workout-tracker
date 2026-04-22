@@ -27,6 +27,8 @@ describe('StepBodyInfo', () => {
   it('submits weight and height when provided', () => {
     const onNext = vi.fn()
     render(<StepBodyInfo onNext={onNext} />)
+    // Default units is 'imperial' — switch to metric so the test speaks kg/cm directly.
+    fireEvent.click(screen.getByTestId('step-body-info-units-metric'))
     fireEvent.change(screen.getByLabelText(/^age$/i), { target: { value: '28' } })
     fireEvent.click(screen.getByLabelText(/^male$/i))
     fireEvent.change(screen.getByLabelText(/weight/i), { target: { value: '72' } })
@@ -37,6 +39,7 @@ describe('StepBodyInfo', () => {
       sex: 'male',
       weight_kg: 72,
       height_cm: 175,
+      units: 'metric',
     })
   })
 })

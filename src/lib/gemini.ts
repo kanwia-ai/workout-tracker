@@ -1,19 +1,26 @@
-// ─── Gemini 2.5 Flash — Exercise Extraction from Video/Image ────────────────
+// ─── Exercise Extraction (Claude Vision via edge function) ──────────────────
 //
-// TODO(phase-2): This file still calls Gemini directly from the browser
-// because it's the only provider with native YouTube video understanding.
-// When we migrate exercise-capture to Claude (or a multimodal alternative),
-// we MUST route it through a Supabase edge function to keep the API key
-// server-side — exposing ANTHROPIC_API_KEY in the browser bundle is not
-// acceptable. The main LLM surface (plan / swap / routine generation) was
-// moved to Claude Opus on 2026-04-20; exercise capture remains on Gemini.
+// Previously called Gemini 2.5 Flash directly from the browser, which leaked
+// VITE_GEMINI_API_KEY in the production bundle. Now routed through the
+// `extract_exercises` op on the Supabase `generate` edge function, which
+// invokes Claude Opus 4.7 server-side with ANTHROPIC_API_KEY.
+//
+// The file name is kept as `gemini.ts` to avoid cascading import churn in
+// ExerciseCapture.tsx; semantically this module is "image → exercises"
+// regardless of provider.
+//
+// NOTE: Claude vision does NOT accept YouTube URLs the way Gemini did. The
+// `extractFromYouTubeUrl` / `extractFromUrl` entry points are preserved as
+// guidance stubs that route users to the screenshot flow.
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+import { callEdge } from './generate'
+import { ExtractedExercisesSchema } from './extract'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+// Shape is stable for ExerciseCapture.tsx. Fields Claude vision cannot infer
+// from a photo (muscle_groups, equipment, form_cues, difficulty) are filled
+// with sensible empty defaults so the existing review UI renders without
+// crashes — the user can edit them before saving.
 
 export interface ExtractedExercise {
   name: string
@@ -33,198 +40,107 @@ export interface ExtractionResult {
   error?: string
 }
 
-// ─── Prompts ─────────────────────────────────────────────────────────────────
+// ─── Internals ───────────────────────────────────────────────────────────────
 
-const EXTRACTION_PROMPT = `You are an expert personal trainer analyzing exercise content.
+// Map the edge-function response (strict: name + optional primitives) into the
+// UI-facing ExtractedExercise shape with array defaults.
+function hydrateExercise(raw: {
+  name: string
+  sets?: number
+  reps?: string
+  weight?: number
+  rest_seconds?: number
+  notes?: string
+}): ExtractedExercise {
+  // Stash weight + rest_seconds into notes (free-text) if present, since the
+  // UI schema doesn't have first-class fields for them. Users can move the
+  // info wherever they like during review.
+  const noteParts: string[] = []
+  if (raw.notes) noteParts.push(raw.notes)
+  if (typeof raw.weight === 'number') noteParts.push(`weight: ${raw.weight}`)
+  if (typeof raw.rest_seconds === 'number') noteParts.push(`rest: ${raw.rest_seconds}s`)
+  const notes = noteParts.length > 0 ? noteParts.join(' | ') : undefined
 
-Extract ALL exercises shown or described. For each exercise, return a JSON object with:
-- name: string (common gym name, e.g. "Bulgarian Split Squat")
-- muscle_groups: string[] (primary muscles worked, e.g. ["quads", "glutes"])
-- equipment: string[] (equipment needed, e.g. ["dumbbells", "bench"]. Use "bodyweight" if none)
-- sets: number | null (if mentioned)
-- reps: string | null (if mentioned, e.g. "12" or "8-10" or "30 sec")
-- duration_seconds: number | null (if it's a timed hold/exercise)
-- form_cues: string[] (2-4 key form tips for this exercise)
-- difficulty: "beginner" | "intermediate" | "advanced" | null
-- notes: string | null (any additional context like tempo, rest periods, variations shown)
-
-Return ONLY a JSON array of exercise objects. No markdown, no code fences, no explanation.
-Example: [{"name": "Goblet Squat", "muscle_groups": ["quads", "glutes"], "equipment": ["kettlebell"], "sets": 3, "reps": "12", "duration_seconds": null, "form_cues": ["Keep chest up", "Push knees out over toes", "Sit back into heels"], "difficulty": "beginner", "notes": null}]`
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function extractYouTubeVideoId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
-  ]
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) return match[1]
+  return {
+    name: raw.name,
+    muscle_groups: [],
+    equipment: [],
+    form_cues: [],
+    sets: raw.sets,
+    reps: raw.reps,
+    notes,
   }
-  return null
 }
 
-function isYouTubeUrl(url: string): boolean {
-  return /(?:youtube\.com|youtu\.be)/.test(url)
-}
-
-function parseExerciseJson(text: string): ExtractedExercise[] {
-  // Strip markdown code fences if present
-  let cleaned = text.trim()
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
+async function extractFromSingleImage(
+  base64: string,
+  mimeType: string,
+): Promise<ExtractedExercise[]> {
+  // Edge function only accepts the three common web formats. Anything else
+  // would 400 server-side; catch it here with a friendlier message.
+  const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
+  if (!allowed.has(mimeType)) {
+    throw new Error(
+      `Unsupported image type: ${mimeType}. Use JPEG, PNG, or WebP.`,
+    )
   }
-
-  try {
-    const parsed = JSON.parse(cleaned)
-    if (Array.isArray(parsed)) return parsed
-    if (parsed && typeof parsed === 'object' && 'exercises' in parsed) {
-      return parsed.exercises
-    }
-    return [parsed]
-  } catch {
-    // Try to find JSON array in the response
-    const arrayMatch = cleaned.match(/\[[\s\S]*\]/)
-    if (arrayMatch) {
-      try {
-        return JSON.parse(arrayMatch[0])
-      } catch {
-        // Fall through
-      }
-    }
-    throw new Error('Could not parse exercise data from AI response')
-  }
+  const parsed = await callEdge(
+    'extract_exercises',
+    { image_b64: base64, mime_type: mimeType },
+    ExtractedExercisesSchema,
+  )
+  return parsed.exercises.map(hydrateExercise)
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Extract exercises from a YouTube URL using Gemini's native video understanding.
- * Gemini can process YouTube URLs directly — no download needed.
- */
-export async function extractFromYouTubeUrl(url: string): Promise<ExtractionResult> {
-  if (!GEMINI_API_KEY) {
-    return { exercises: [], source_url: url, error: 'Gemini API key not configured. Add VITE_GEMINI_API_KEY to your environment.' }
-  }
-
-  const videoId = extractYouTubeVideoId(url)
-  if (!videoId) {
-    return { exercises: [], source_url: url, error: 'Could not parse YouTube video ID from URL.' }
-  }
-
-  try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                fileData: {
-                  mimeType: 'video/*',
-                  fileUri: `https://www.youtube.com/watch?v=${videoId}`,
-                },
-              },
-              { text: EXTRACTION_PROMPT },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-        },
-      }),
-    })
-
-    if (!response.ok) {
-      const err = await response.text()
-      return { exercises: [], source_url: url, error: `Gemini API error: ${response.status}. ${err}` }
-    }
-
-    const data = await response.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) {
-      return { exercises: [], source_url: url, error: 'No response from Gemini. The video may be too long or unavailable.' }
-    }
-
-    const exercises = parseExerciseJson(text)
-    return { exercises, source_url: url }
-  } catch (err) {
-    return { exercises: [], source_url: url, error: `Failed to analyze video: ${err instanceof Error ? err.message : String(err)}` }
-  }
-}
-
-/**
- * Extract exercises from screenshot images using Gemini Vision.
- * Accepts an array of base64-encoded image data with MIME types.
+ * Extract exercises from screenshot images using Claude vision via the
+ * `extract_exercises` edge-function op. Accepts 1–3 base64-encoded images with
+ * their MIME types; runs one edge call per image and concatenates results (the
+ * server op is single-image by design so we can cap per-image size cleanly).
  */
 export async function extractFromScreenshots(
   images: Array<{ base64: string; mimeType: string }>,
 ): Promise<ExtractionResult> {
-  if (!GEMINI_API_KEY) {
-    return { exercises: [], error: 'Gemini API key not configured. Add VITE_GEMINI_API_KEY to your environment.' }
-  }
-
   if (images.length === 0) {
     return { exercises: [], error: 'No images provided.' }
   }
 
   try {
-    const imageParts = images.map(img => ({
-      inlineData: {
-        mimeType: img.mimeType,
-        data: img.base64,
-      },
-    }))
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              ...imageParts,
-              { text: EXTRACTION_PROMPT },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-        },
-      }),
-    })
-
-    if (!response.ok) {
-      const err = await response.text()
-      return { exercises: [], error: `Gemini API error: ${response.status}. ${err}` }
+    const all: ExtractedExercise[] = []
+    for (const img of images) {
+      const exs = await extractFromSingleImage(img.base64, img.mimeType)
+      all.push(...exs)
     }
-
-    const data = await response.json()
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) {
-      return { exercises: [], error: 'No response from Gemini. Try clearer screenshots.' }
-    }
-
-    const exercises = parseExerciseJson(text)
-    return { exercises }
+    return { exercises: all }
   } catch (err) {
-    return { exercises: [], error: `Failed to analyze images: ${err instanceof Error ? err.message : String(err)}` }
+    return {
+      exercises: [],
+      error: `Failed to analyze images: ${err instanceof Error ? err.message : String(err)}`,
+    }
   }
 }
 
 /**
- * Main entry point: takes a URL and routes to the right extraction method.
- * Returns an ExtractionResult with guidance for non-YouTube URLs.
+ * Legacy entry point — Claude vision cannot ingest YouTube URLs directly (that
+ * was a Gemini-specific capability). Returns a SCREENSHOT_NEEDED signal so
+ * callers can route users to the screenshot flow, matching the existing
+ * TikTok/Instagram fallback.
+ */
+export async function extractFromYouTubeUrl(url: string): Promise<ExtractionResult> {
+  return {
+    exercises: [],
+    source_url: url,
+    error: 'SCREENSHOT_NEEDED',
+  }
+}
+
+/**
+ * Main entry point. All URL inputs now route to the screenshot flow because
+ * the Claude-backed extractor only handles images.
  */
 export async function extractFromUrl(url: string): Promise<ExtractionResult> {
-  if (isYouTubeUrl(url)) {
-    return extractFromYouTubeUrl(url)
-  }
-
-  // TikTok / Instagram / other — can't process directly in browser
   return {
     exercises: [],
     source_url: url,

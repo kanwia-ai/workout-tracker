@@ -1,7 +1,7 @@
 // OnboardingFlow — v2 orchestrator.
-// Routes the user through 13 steps (11 of which capture data, 2 are chrome).
-// Progress bar = row of Lumo footprints. Every step has Lumo + speech bubble.
-// Optional steps surface a "skip for now" button (handled by children).
+// Routes the user through a sequence of steps. Progress bar = row of Lumo
+// footprints. Every step has Lumo + speech bubble. Optional steps surface a
+// "skip for now" button (handled by children).
 //
 // State: a running Partial<UserProgramProfile> draft + completedSteps set.
 // Validation: the final confirm screen hands the Zod-parsed profile up.
@@ -23,6 +23,7 @@ import { StepMusclePriority } from './StepMusclePriority'
 import { StepAesthetic } from './StepAesthetic'
 import { StepSpecificTarget } from './StepSpecificTarget'
 import { StepSessions } from './StepSessions'
+import { StepActiveMinutes } from './StepActiveMinutes'
 import { StepEquipment } from './StepEquipment'
 import { StepTrainingAge } from './StepTrainingAge'
 import { StepBodyInfo } from './StepBodyInfo'
@@ -38,6 +39,8 @@ interface Props {
 }
 
 // Canonical step order. Keep the ids readable so debugging is easy.
+// `active_minutes` is a separate step (split from sessions) so the copy can
+// explain that it's WORK minutes only — rest between sets budgeted elsewhere.
 const STEPS = [
   'welcome',
   'primary_goal',
@@ -45,6 +48,7 @@ const STEPS = [
   'aesthetic',
   'specific_target',
   'sessions',
+  'active_minutes',
   'equipment',
   'training_age',
   'body_info',
@@ -63,6 +67,8 @@ export function OnboardingFlow({ onComplete }: Props) {
     posture_notes: '',
     muscle_priority: [],
     exercise_dislikes: [],
+    // Default to imperial. StepBodyInfo lets users switch to metric.
+    units: 'imperial',
   })
   const [completed, setCompleted] = useState<ReadonlySet<number>>(new Set())
 
@@ -90,13 +96,24 @@ export function OnboardingFlow({ onComplete }: Props) {
   }
 
   const finalize = () => {
-    // Build a complete profile: derive legacy `goal` from primary_goal when
-    // present, otherwise fall back to the default. Required defaults are
-    // filled here so Zod always passes (optional fields stay undefined).
-    const primary = draft.primary_goal
-    const legacyGoal = primary
-      ? primaryGoalToLegacyGoal(primary)
+    // Build a complete profile:
+    // • derive legacy `goal` from the dominant primary goal when present,
+    // • mirror `active_minutes` into `time_budget_min` so legacy readers
+    //   keep working (planner + settings screens),
+    // • keep single `primary_goal` in sync with the first entry of
+    //   `primary_goals` so the v3 prompt still has something to read.
+    const primaryGoals =
+      draft.primary_goals && draft.primary_goals.length > 0
+        ? draft.primary_goals
+        : draft.primary_goal
+          ? [draft.primary_goal]
+          : undefined
+    const dominant: PrimaryGoal | undefined = primaryGoals?.[0]
+    const legacyGoal = dominant
+      ? primaryGoalToLegacyGoal(dominant)
       : (draft.goal ?? 'general_fitness')
+    const activeMinutes = draft.active_minutes ?? draft.time_budget_min ?? 45
+    const timeBudget = draft.time_budget_min ?? activeMinutes
     const complete: UserProgramProfile = {
       goal: legacyGoal,
       sessions_per_week: draft.sessions_per_week ?? 3,
@@ -105,10 +122,11 @@ export function OnboardingFlow({ onComplete }: Props) {
         ? draft.equipment
         : ['bodyweight_only']) as UserProgramProfile['equipment'],
       injuries: draft.injuries ?? [],
-      time_budget_min: draft.time_budget_min ?? 45,
+      time_budget_min: timeBudget,
       sex: draft.sex ?? 'prefer_not_to_say',
       posture_notes: draft.posture_notes ?? '',
-      primary_goal: primary,
+      primary_goal: dominant,
+      primary_goals: primaryGoals,
       muscle_priority:
         draft.muscle_priority && draft.muscle_priority.length > 0
           ? draft.muscle_priority
@@ -130,6 +148,8 @@ export function OnboardingFlow({ onComplete }: Props) {
       weight_kg: draft.weight_kg,
       height_cm: draft.height_cm,
       first_name: draft.first_name,
+      active_minutes: activeMinutes,
+      units: draft.units ?? 'imperial',
     }
     const parsed = UserProgramProfileSchema.safeParse(complete)
     if (!parsed.success) {
@@ -187,9 +207,14 @@ export function OnboardingFlow({ onComplete }: Props) {
           )}
           {stepId === 'primary_goal' && (
             <StepPrimaryGoal
-              value={draft.primary_goal}
-              onNext={(primary_goal: PrimaryGoal) =>
-                advance({ primary_goal })
+              value={draft.primary_goals}
+              onNext={(primary_goals: PrimaryGoal[]) =>
+                advance({
+                  primary_goals,
+                  // Keep the legacy single-field in lockstep so any code
+                  // reading it mid-flow sees the dominant goal.
+                  primary_goal: primary_goals[0],
+                })
               }
             />
           )}
@@ -220,11 +245,21 @@ export function OnboardingFlow({ onComplete }: Props) {
           )}
           {stepId === 'sessions' && (
             <StepSessions
-              value={{
-                sessions_per_week: draft.sessions_per_week,
-                time_budget_min: draft.time_budget_min,
-              }}
+              value={{ sessions_per_week: draft.sessions_per_week }}
               onNext={(patch) => advance(patch)}
+            />
+          )}
+          {stepId === 'active_minutes' && (
+            <StepActiveMinutes
+              value={{ active_minutes: draft.active_minutes }}
+              onNext={(patch) =>
+                // Mirror into time_budget_min so readers of the legacy field
+                // (settings screen, planner fallback) see the same number.
+                advance({
+                  active_minutes: patch.active_minutes,
+                  time_budget_min: patch.active_minutes,
+                })
+              }
             />
           )}
           {stepId === 'equipment' && (
@@ -248,6 +283,7 @@ export function OnboardingFlow({ onComplete }: Props) {
                 sex: draft.sex,
                 weight_kg: draft.weight_kg,
                 height_cm: draft.height_cm,
+                units: draft.units,
               }}
               onNext={(patch) => advance(patch)}
             />

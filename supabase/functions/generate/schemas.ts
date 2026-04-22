@@ -122,6 +122,42 @@ export const swapExerciseSchema = {
   propertyOrdering: ['replacement', 'reason'],
 } as const
 
+// Extract-exercises response — structured output from Claude vision, parsing a
+// photo of a workout board / planner / written list into a list of exercises.
+// Client-side Zod (ExtractedExercisesSchema in src/lib/extract.ts) mirrors this
+// shape exactly; update both when adding/removing fields.
+//
+// Notes:
+// - `reps` is a string because gym notation is messy ("10", "8-10", "AMRAP",
+//   "30 sec"). We keep the raw string and let the UI display it as-is.
+// - `rest_seconds` is an integer count of seconds; the prompt converts "90s"
+//   or "1:30" into a number before emitting.
+// - All fields except `name` are optional — the prompt explicitly tells the
+//   model not to invent values it can't see in the image.
+export const extractExercisesSchema = {
+  type: 'object',
+  properties: {
+    exercises: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          sets: { type: 'integer', minimum: 1, maximum: 20 },
+          reps: { type: 'string' },
+          weight: { type: 'number', minimum: 0 },
+          rest_seconds: { type: 'integer', minimum: 0, maximum: 1800 },
+          notes: { type: 'string' },
+        },
+        required: ['name'],
+        propertyOrdering: ['name', 'sets', 'reps', 'weight', 'rest_seconds', 'notes'],
+      },
+    },
+  },
+  required: ['exercises'],
+  propertyOrdering: ['exercises'],
+} as const
+
 // Routine response — warmup / cooldown / cardio content attached to a main
 // session. Each exercise carries EITHER duration_seconds (holds, cardio
 // intervals) OR reps (movement drills, activation) — enforced by the prompt,

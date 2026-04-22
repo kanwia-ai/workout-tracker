@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Loader2, X } from 'lucide-react'
 import { db, type LibraryExercise } from '../lib/db'
+import { getDemo } from '../data/exercise-demos'
+import { extractYouTubeVideoId } from '../lib/youtube'
 
 // ─── ExerciseInfoSheet ────────────────────────────────────────────────────
 // Full-screen overlay that shows rich library data for a single exercise.
@@ -106,16 +108,60 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
               )}
             </div>
 
-            {/* First image (if available). Hotlinked straight from the
-                free-exercise-db repo so we don't ship 100MB of JPGs. */}
-            {exercise.imageCount > 0 && (
-              <img
-                src={`${IMAGE_BASE}/${exercise.rawId}/0.jpg`}
-                alt={exercise.name}
-                className="w-full max-h-64 object-contain rounded-2xl bg-black/40 mb-4"
-                loading="lazy"
-              />
-            )}
+            {/* Curated form demo (YouTube Short from whitelisted creators).
+                If no demo is curated, fall back to the hotlinked first image
+                from free-exercise-db; if neither, show a gentle "no demo" note. */}
+            {(() => {
+              const demo = getDemo(exercise.id)
+              const videoId = extractYouTubeVideoId(demo?.demo_url)
+              if (videoId) {
+                return (
+                  <div className="mb-4">
+                    <iframe
+                      data-testid="exercise-demo-iframe"
+                      width="100%"
+                      height="220"
+                      src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+                      title={`Demo: ${exercise.name}`}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{ border: 0, borderRadius: 12 }}
+                    />
+                    {demo?.creator && (
+                      <div
+                        className="text-[10px] mt-1.5"
+                        style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.08em' }}
+                      >
+                        DEMO · {demo.creator.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              if (exercise.imageCount > 0) {
+                return (
+                  <img
+                    src={`${IMAGE_BASE}/${exercise.rawId}/0.jpg`}
+                    alt={exercise.name}
+                    className="w-full max-h-64 object-contain rounded-2xl bg-black/40 mb-4"
+                    loading="lazy"
+                  />
+                )
+              }
+              return (
+                <div
+                  data-testid="exercise-demo-empty"
+                  className="text-[12px] mb-4"
+                  style={{
+                    color: 'var(--lumo-text-ter)',
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontStyle: 'italic',
+                  }}
+                >
+                  no demo curated yet — swipe down to close
+                </div>
+              )
+            })()}
 
             {/* Muscles */}
             {(exercise.primaryMuscles.length > 0 ||

@@ -81,6 +81,12 @@ export interface ExercisePoolEntry {
 
 // Build a lean exercise pool suitable for stuffing into a Gemini prompt. Caps
 // at 200 entries to stay well under token limits.
+//
+// TODO(custom-exercises): fold `db.customExercises.where('user_id').equals(userId)`
+// into this pool so Claude can select the user's own variations (e.g. "incline
+// push-ups") when generating a plan. Requires threading a userId into the
+// signature (currently only profile) and updating the 4 call-sites + tests,
+// plus a prompt update so the model knows these rows come from the user.
 export async function buildExercisePool(profile: UserProgramProfile): Promise<ExercisePoolEntry[]> {
   const rows = await db.exerciseLibrary.toArray()
   return rows

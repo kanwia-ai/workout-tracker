@@ -258,17 +258,50 @@ export function RoutineSlot({ session, kind, profile }: Props) {
         </span>
       </button>
 
-      {expanded && (
-        <div
-          className="mt-[10px] pt-[10px]"
-          style={{ borderTop: '1px solid var(--lumo-border)' }}
-        >
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em]"
-               style={{ color: 'var(--lumo-text-ter)' }}>
-            {routine!.title}
-          </div>
-          <ul className="flex flex-col">
-            {routine!.exercises.map((ex, i) => {
+      {expanded && (() => {
+        const exercises = routine!.exercises
+        // Cardio special case: if there's only one entry, render as a single
+        // compact row — name on left, duration/reps/notes on right. No list.
+        if (kind === 'cardio' && exercises.length === 1) {
+          const ex = exercises[0]
+          const primary =
+            typeof ex.duration_seconds === 'number'
+              ? formatDuration(ex.duration_seconds)
+              : (ex.reps ?? '')
+          const right = ex.notes || primary
+          return (
+            <div
+              className="mt-[8px] pt-[8px] flex items-baseline justify-between gap-3"
+              style={{
+                borderTop: '1px solid color-mix(in srgb, var(--lumo-border-strong) 40%, transparent)',
+                padding: '4px 2px',
+              }}
+            >
+              <span
+                className="text-[15px] min-w-0 truncate"
+                style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
+              >
+                {ex.name}
+              </span>
+              {right && (
+                <span
+                  className="text-[12px] shrink-0 tabular-nums"
+                  style={{ color: 'var(--lumo-text-ter)' }}
+                >
+                  {right}
+                </span>
+              )}
+            </div>
+          )
+        }
+        return (
+          <ul
+            className="mt-[4px] flex flex-col"
+            style={{
+              borderTop: '1px solid color-mix(in srgb, var(--lumo-border-strong) 40%, transparent)',
+            }}
+          >
+            {exercises.map((ex, i) => {
               const primary =
                 typeof ex.duration_seconds === 'number'
                   ? formatDuration(ex.duration_seconds)
@@ -276,33 +309,24 @@ export function RoutineSlot({ session, kind, profile }: Props) {
               return (
                 <li
                   key={`${ex.name}-${i}`}
-                  className="flex items-baseline justify-between gap-3 text-[13px]"
+                  className="flex items-baseline justify-between gap-3"
                   style={{
-                    padding: '8px 4px',
-                    borderTop: i === 0 ? 'none' : '1px solid var(--lumo-border)',
+                    padding: '11px 2px',
+                    borderBottom:
+                      i === exercises.length - 1
+                        ? 'none'
+                        : '1px solid color-mix(in srgb, var(--lumo-border-strong) 40%, transparent)',
                   }}
                 >
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span style={{ color: 'var(--lumo-text)' }}>
-                      {ex.name}
-                    </span>
-                    {ex.notes && (
-                      <span
-                        className="text-[11px] mt-0.5"
-                        style={{
-                          color: 'var(--lumo-text-sec)',
-                          fontFamily: "'Fraunces', 'Iowan Old Style', Georgia, serif",
-                          fontStyle: 'italic',
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {ex.notes}
-                      </span>
-                    )}
-                  </div>
+                  <span
+                    className="text-[15px] min-w-0 truncate"
+                    style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
+                  >
+                    {ex.name}
+                  </span>
                   {primary && (
                     <span
-                      className="text-[11px] shrink-0 tabular-nums"
+                      className="text-[12px] shrink-0 tabular-nums"
                       style={{ color: 'var(--lumo-text-ter)' }}
                     >
                       {primary}
@@ -312,8 +336,8 @@ export function RoutineSlot({ session, kind, profile }: Props) {
               )
             })}
           </ul>
-        </div>
-      )}
+        )
+      })()}
 
       {picking && (
         <RegeneratePicker

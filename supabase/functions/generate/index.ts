@@ -8,7 +8,7 @@
 // verbatim — only the provider swapped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import Anthropic from 'npm:@anthropic-ai/sdk@0.90.0'
-import { mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
+import { extractExercisesSchema, mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 import { buildRoutinePrompt, type RoutineKind } from './prompts/generateRoutine.ts'
@@ -27,7 +27,7 @@ const CORS_HEADERS = {
 const JSON_HEADERS = { 'content-type': 'application/json', ...CORS_HEADERS }
 
 // Ops that require the LLM backend. Keep in sync as new LLM-backed ops land.
-const LLM_OPS = new Set(['ping', 'generate_plan', 'swap_exercise', 'generate_routine'])
+const LLM_OPS = new Set(['ping', 'generate_plan', 'swap_exercise', 'generate_routine', 'extract_exercises'])
 
 // Claude model ID. Opus 4.7 is the current highest-quality model. If cost
 // becomes a concern, swap to `claude-sonnet-4-7` (same API surface).
@@ -38,6 +38,31 @@ const CLAUDE_MODEL = 'claude-opus-4-7'
 // prompt to rack up token costs. ~500KB of JSON is already ~5x our typical
 // 200-entry pool.
 const MAX_POOL_JSON_BYTES = 500_000
+
+// Image extraction caps. Base64 inflates raw bytes by ~1.37x, so 14M chars of
+// base64 ≈ 10MB of image data. Claude's vision endpoint accepts up to ~5MB per
+// image practically, but rejecting obvious runaways before the API call saves
+// us the round-trip cost.
+const MAX_IMAGE_B64_CHARS = 14_000_000
+const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+// Vision prompt — concise, anti-hallucination framing. The model sees a photo
+// of a workout (gym board, planner, handwritten list, phone screen, etc.) and
+// returns whatever structured fields it can read. Omitting a field is much
+// better than inventing one; the prompt hammers that point.
+const EXTRACT_PROMPT = `Extract every exercise you can see in this image.
+
+The image is a photo of a workout board, planner, phone screen, or handwritten
+list. For each exercise, emit its name exactly as written, and if visible:
+sets, reps, weight (in lb or kg as written — just the number), rest time (as
+total seconds), notes.
+
+Rules:
+- If a value is not visible in the image, OMIT that field. Do not guess.
+- Do not invent exercises that aren't in the image.
+- Preserve exercise names verbatim (typos and all).
+- Return an array even if there's only one exercise.
+- If the image contains no exercises, return an empty array.`
 
 // Read the key and construct the SDK on demand so a key added AFTER boot
 // takes effect on the next request (instead of waiting for the isolate to
@@ -498,6 +523,98 @@ Deno.serve(async (req) => {
           console.warn('post-validate JSON parse failed', parseErr)
         }
         return new Response(text, { headers: JSON_HEADERS })
+      } catch (err) {
+        return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    if (body.op === 'extract_exercises') {
+      // Vision op — converts a photo of a workout list into structured
+      // exercises. Uses an inline Claude call (not callClaudeAsTool) because
+      // the shared helper takes a string userPrompt, and this op needs a
+      // multi-block content array (image + text).
+      const payload = (body.payload ?? {}) as {
+        image_b64?: unknown
+        mime_type?: unknown
+        hint?: unknown
+      }
+      if (typeof payload.image_b64 !== 'string' || payload.image_b64.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'payload.image_b64 is required and must be a non-empty string' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (payload.image_b64.length > MAX_IMAGE_B64_CHARS) {
+        return new Response(
+          JSON.stringify({
+            error: `payload.image_b64 exceeds ${MAX_IMAGE_B64_CHARS} chars (got ${payload.image_b64.length}); resize the image client-side`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (typeof payload.mime_type !== 'string' || !ALLOWED_IMAGE_MIMES.has(payload.mime_type)) {
+        return new Response(
+          JSON.stringify({
+            error: `payload.mime_type must be one of: ${[...ALLOWED_IMAGE_MIMES].join(', ')}`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (payload.hint !== undefined && typeof payload.hint !== 'string') {
+        return new Response(
+          JSON.stringify({ error: 'payload.hint must be a string when provided' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      const imageB64 = payload.image_b64
+      const mimeType = payload.mime_type as 'image/jpeg' | 'image/png' | 'image/webp'
+      const hint = (payload.hint as string | undefined)?.trim()
+      const userText = hint ? `${EXTRACT_PROMPT}\n\nAdditional context from the user: ${hint}` : EXTRACT_PROMPT
+
+      try {
+        const sanitized = sanitizeSchemaForAnthropic(extractExercisesSchema) as Record<string, unknown>
+        const response = await client.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 4096,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: { type: 'base64', media_type: mimeType, data: imageB64 },
+                },
+                { type: 'text', text: userText },
+              ],
+            },
+          ],
+          tools: [
+            {
+              name: 'emit_exercises',
+              description: 'Emit the extracted exercise list parsed from the image.',
+              // deno-lint-ignore no-explicit-any
+              input_schema: sanitized as any,
+            },
+          ],
+          tool_choice: { type: 'tool', name: 'emit_exercises' },
+        })
+        const toolUse = response.content.find(
+          (c): c is Anthropic.ToolUseBlock => c.type === 'tool_use',
+        )
+        if (!toolUse) {
+          const stop = response.stop_reason ?? 'unknown'
+          return new Response(
+            JSON.stringify({
+              error: `Claude returned no tool_use block (stop_reason=${stop}).`,
+            }),
+            { status: 502, headers: JSON_HEADERS },
+          )
+        }
+        return new Response(JSON.stringify(toolUse.input), { headers: JSON_HEADERS })
       } catch (err) {
         return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
           status: 502,

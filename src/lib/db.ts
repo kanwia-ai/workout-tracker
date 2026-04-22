@@ -127,6 +127,23 @@ interface LocalDayOverride {
   synced: boolean
 }
 
+// User-authored custom exercise (e.g. "incline push-ups"). Lives alongside the
+// curated EXERCISE_LIBRARY and the seeded exerciseLibrary (free-exercise-db).
+// IDs are prefixed `custom:` to avoid collisions with curated (`ex-...`) or
+// free-exercise-db (`fedb:...`) ids.
+interface LocalCustomExercise {
+  id: string                        // `custom:<uuid>`
+  user_id: string
+  name: string
+  primary_muscles: string[]
+  secondary_muscles: string[]
+  equipment: string | null          // bodyweight, dumbbell, barbell, cable, machine, kettlebell, bands, other
+  video_url: string | null          // optional YouTube URL
+  notes: string | null
+  created_at: string
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -138,6 +155,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   mesocycles: EntityTable<LocalMesocycle, 'id'>
   routines: EntityTable<LocalRoutine, 'id'>
   dayOverrides: EntityTable<LocalDayOverride, 'id'>
+  customExercises: EntityTable<LocalCustomExercise, 'id'>
 }
 
 db.version(1).stores({
@@ -203,5 +221,22 @@ db.version(6).stores({
   dayOverrides: 'id, user_id, date, session_id, synced',
 })
 
+// v7 — customExercises table (additive). Indexed fields mirror the free-exercise-db
+// columns the ExerciseBrowser filters against, so a "mine" query is a cheap
+// where-clause rather than a full scan + filter.
+db.version(7).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+  customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise }

@@ -32,13 +32,13 @@ const OPTIONS: { months: number; title: string; blurb: string }[] = [
 
 export function StepTrainingAge({ value, onNext, cheek = DEFAULT_CHEEK }: Props) {
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingExperience', cheek),
     [cheek],
   )
 
   return (
     <StepChrome
-      lumoState="thinking"
+      lumoState="idle"
       bubbleText={bubble}
       title="How much lifting experience?"
       subtitle="Shapes intensity + exercise selection. Pick closest."

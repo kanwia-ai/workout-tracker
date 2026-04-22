@@ -17,7 +17,7 @@ interface Props {
 export function StepSpecificTarget({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: Props) {
   const [text, setText] = useState<string>(value ?? '')
   const bubble = useMemo(
-    () => pickCopy('onboardingGoal', cheek),
+    () => pickCopy('onboardingSpecificTarget', cheek),
     [cheek],
   )
 

@@ -131,7 +131,9 @@ describe('RoutineSlot', () => {
 
     render(<RoutineSlot session={baseSession} kind="warmup" profile={baseProfile} />)
 
-    expect(screen.getByText('Glute Warm-up')).toBeInTheDocument()
+    // Compact layout: the header shows the kind ("warm-up"), not the routine
+    // title. Per-row notes were dropped too — only names + reps/duration show.
+    expect(screen.getByText('warm-up')).toBeInTheDocument()
     expect(screen.getByText('Banded glute bridge')).toBeInTheDocument()
     expect(screen.getByText('Hip airplane')).toBeInTheDocument()
     expect(screen.getByText('90/90 hip switch')).toBeInTheDocument()
@@ -139,8 +141,7 @@ describe('RoutineSlot', () => {
     expect(screen.getByText('00:30')).toBeInTheDocument()
     // Reps rendered as string
     expect(screen.getByText('15')).toBeInTheDocument()
-    // Notes shown
-    expect(screen.getByText('Squeeze at top')).toBeInTheDocument()
+    expect(screen.getByText('10/side')).toBeInTheDocument()
   })
 
   it('does NOT show the regenerate picker by default after a routine is ready', () => {

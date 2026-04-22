@@ -22,14 +22,23 @@ export type PrimaryGoal = z.infer<typeof PrimaryGoal>
 
 // AestheticPreference — what "good" looks like to the user. Optional; feeds
 // muscle-priority weighting in Pass 3 but never overrides safety rules.
+// `muscle_size_bulk` added 2026-04 for "muscle bear" users — prioritize
+// hypertrophy-heavy, compound-dominant work with arm + shoulder emphasis.
 export const AestheticPreference = z.enum([
   'toned_lean',
   'strong_defined',
   'athletic',
+  'muscle_size_bulk',
   'balanced',
   'none',
 ])
 export type AestheticPreference = z.infer<typeof AestheticPreference>
+
+// Units preference — controls input widgets and display strings. Stored on
+// the profile so Settings and Home can honor it without re-asking. Internal
+// storage is always metric (single source of truth); `units` only affects UX.
+export const Units = z.enum(['imperial', 'metric'])
+export type Units = z.infer<typeof Units>
 
 // ExerciseDislike — multi-select pool of things the user wants zero of. The
 // pool filter downweights these; banned (injury) exercises still win.
@@ -79,8 +88,19 @@ export const UserProgramProfileSchema = z.object({
   posture_notes: z.string().max(500),
 
   // ── NEW v2 fields (all optional; missing → sensible defaults) ──────────
-  /** 7-goal taxonomy from MASTER-SYNTHESIS. When present, supersedes `goal`. */
+  /**
+   * 7-goal taxonomy from MASTER-SYNTHESIS (single). When present, supersedes
+   * `goal`. Kept for back-compat; `primary_goals` is the new preferred shape
+   * (multi-select, max 2). When both are present, `primary_goals[0]` wins.
+   */
   primary_goal: PrimaryGoal.optional(),
+  /**
+   * Multi-select primary goals — up to 2. First entry is the dominant goal
+   * (drives split / rep ranges); second adds secondary emphasis. Lets users
+   * combine e.g. "get_stronger" + "build_muscle" instead of having to pick
+   * the hybrid `lean_and_strong` bucket.
+   */
+  primary_goals: z.array(PrimaryGoal).min(1).max(2).optional(),
   /** Ordered highest→lowest priority muscles. Empty = balanced. */
   muscle_priority: z.array(MuscleGroup).optional(),
   /** What "good" looks like — weight hint for Pass 3. */
@@ -99,6 +119,21 @@ export const UserProgramProfileSchema = z.object({
   height_cm: z.number().min(100).max(250).optional(),
   /** Display name for session rationales / Lumo greetings. */
   first_name: z.string().max(50).optional(),
+  /**
+   * Active lifting minutes (work only, rest between sets NOT counted). When
+   * present, the planner uses this — not `time_budget_min` — to cap the set
+   * count per session. `time_budget_min` stays around so legacy profiles and
+   * the Settings screen still render; new profiles mirror `active_minutes`
+   * into it at save time so downstream code can read either.
+   */
+  active_minutes: z.number().int().min(15).max(180).optional(),
+  /**
+   * Display preference for weight + height units. Internal storage is always
+   * metric; this controls UI widgets and formatted output. Defaults to
+   * 'imperial' for new profiles (US-first); legacy profiles without the key
+   * are back-filled to 'metric' on load so nothing silently switches.
+   */
+  units: Units.optional(),
 })
 
 export type UserProgramProfile = z.infer<typeof UserProgramProfileSchema>

@@ -10,7 +10,7 @@ A mobile-first PWA for tracking strength training workouts at the gym, with sess
 - **Adjustable rest timers** -- tap the rest time on any exercise to change it (15s, 30s, 45s, 60s, 90s, 120s), plus work timers for timed exercises like planks
 - **Weight logging** -- log weight per exercise with last-session reference and personal record tracking
 - **Weekly schedule** -- 5-day training split (4 gym + 1 at-home) with rest days, tap any day to preview
-- **Exercise capture from social media** (planned) -- paste a TikTok/IG/YouTube URL and extract exercise details via Gemini AI
+- **Exercise capture from screenshots** -- upload 1–3 screenshots of a workout (gym board, planner, social post) and Claude vision extracts the exercise names, sets, reps, and notes server-side via the `extract_exercises` edge-function op
 - **Adaptive warm-ups/cool-downs** (planned) -- warm-up and cool-down routines that match the day's muscle focus, with knee-safety flags
 
 ## Tech Stack
@@ -39,13 +39,14 @@ Copy `.env.example` to `.env` and fill in:
 
 - `VITE_SUPABASE_URL` -- your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` -- your Supabase anon/public key
-- `VITE_GEMINI_API_KEY` -- (optional, for Phase 5 video/image exercise extraction — still on Gemini because of native YouTube support)
+- `VITE_GEMINI_API_KEY` -- **no longer required**. Exercise extraction was migrated off client-side Gemini on 2026-04-20 (the key was leaking into the production bundle); image-based extraction now runs through the `extract_exercises` op on the server. Delete the line from your `.env` if present.
 
 ### Server-side secrets (set in Supabase Dashboard -> Project Settings -> Functions)
 
 - `ANTHROPIC_API_KEY` -- used by the `generate` edge function for plan
-  generation, exercise swap, and warmup/cooldown/cardio routines (Claude
-  Opus 4.7). Replaced `GEMINI_API_KEY` on 2026-04-20.
+  generation, exercise swap, warmup/cooldown/cardio routines, AND image-based
+  exercise extraction (all on Claude Opus 4.7). Replaced `GEMINI_API_KEY` on
+  2026-04-20.
 
 ## Install on iPhone
 

@@ -1,7 +1,16 @@
-import { useState, useMemo } from 'react'
-import { Search, Filter, ChevronLeft, X } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { Search, Filter, ChevronLeft, X, Plus, Trash2 } from 'lucide-react'
 import { EXERCISE_LIBRARY } from '../data/exercises'
 import { ExerciseDetail } from './ExerciseDetail'
+import { supabase } from '../lib/supabase'
+import {
+  loadCustomExercises,
+  saveCustomExercise,
+  deleteCustomExercise,
+  type CustomExerciseEquipment,
+} from '../lib/customExercises'
+import { extractYouTubeVideoId } from '../lib/youtube'
+import type { LocalCustomExercise } from '../lib/db'
 import type { Exercise, MuscleGroup, BodyRegion, Difficulty, KneeSafety, Equipment } from '../types'
 
 // ─── Display helpers ────────────────────────────────────────────────────────
@@ -62,6 +71,39 @@ const BODY_REGION_OPTIONS: BodyRegion[] = ['lower_body', 'upper_body', 'core', '
 const DIFFICULTY_OPTIONS: Difficulty[] = ['beginner', 'intermediate', 'advanced']
 const KNEE_SAFETY_OPTIONS: KneeSafety[] = ['knee_safe', 'knee_caution', 'knee_avoid']
 
+// ─── Custom-exercise form constants ─────────────────────────────────────────
+// Use the simple flat muscle list from the brief rather than the granular
+// MuscleGroup enum — users building their own exercise don't need to decide
+// between `back_upper`/`back_lower`/`lats`, and these map cleanly for display.
+const CUSTOM_MUSCLE_OPTIONS = [
+  'quads', 'hamstrings', 'glutes', 'calves',
+  'chest', 'back', 'shoulders', 'biceps', 'triceps',
+  'core', 'cardio',
+] as const
+type CustomMuscle = typeof CUSTOM_MUSCLE_OPTIONS[number]
+
+const CUSTOM_MUSCLE_LABELS: Record<CustomMuscle, string> = {
+  quads: 'Quads', hamstrings: 'Hamstrings', glutes: 'Glutes', calves: 'Calves',
+  chest: 'Chest', back: 'Back', shoulders: 'Shoulders',
+  biceps: 'Biceps', triceps: 'Triceps', core: 'Core', cardio: 'Cardio',
+}
+
+const CUSTOM_EQUIPMENT_OPTIONS: CustomExerciseEquipment[] = [
+  'bodyweight', 'dumbbell', 'barbell', 'cable',
+  'machine', 'kettlebell', 'bands', 'other',
+]
+
+const CUSTOM_EQUIPMENT_LABELS: Record<CustomExerciseEquipment, string> = {
+  bodyweight: 'Body only',
+  dumbbell: 'Dumbbell',
+  barbell: 'Barbell',
+  cable: 'Cable',
+  machine: 'Machine',
+  kettlebell: 'Kettlebell',
+  bands: 'Bands',
+  other: 'Other',
+}
+
 interface ExerciseBrowserProps {
   onBack: () => void
 }
@@ -77,8 +119,37 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
   const [bodyRegionFilter, setBodyRegionFilter] = useState<BodyRegion | null>(null)
   const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | null>(null)
   const [kneeSafetyFilter, setKneeSafetyFilter] = useState<KneeSafety | null>(null)
+  const [mineOnly, setMineOnly] = useState(false)
 
-  const activeFilterCount = [muscleFilter, equipmentFilter, bodyRegionFilter, difficultyFilter, kneeSafetyFilter]
+  // Custom-exercise state
+  const [userId, setUserId] = useState<string | null>(null)
+  const [customExercises, setCustomExercises] = useState<LocalCustomExercise[]>([])
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  // Resolve user id. In dev-bypass mode (useAuth also does this) we fall
+  // back to `dev-user` so local testing works without Supabase credentials.
+  useEffect(() => {
+    let cancelled = false
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return
+      setUserId(data.session?.user?.id ?? 'dev-user')
+    }).catch(() => {
+      if (!cancelled) setUserId('dev-user')
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Load custom exercises once we know who the user is.
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    loadCustomExercises(userId).then(rows => {
+      if (!cancelled) setCustomExercises(rows)
+    })
+    return () => { cancelled = true }
+  }, [userId])
+
+  const activeFilterCount = [muscleFilter, equipmentFilter, bodyRegionFilter, difficultyFilter, kneeSafetyFilter, mineOnly ? 'mine' : null]
     .filter(Boolean).length
 
   const clearFilters = () => {
@@ -87,9 +158,33 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
     setBodyRegionFilter(null)
     setDifficultyFilter(null)
     setKneeSafetyFilter(null)
+    setMineOnly(false)
+  }
+
+  async function handleSaveCustom(input: {
+    name: string
+    primary_muscles: string[]
+    secondary_muscles: string[]
+    equipment: CustomExerciseEquipment
+    video_url: string | null
+    notes: string | null
+  }) {
+    if (!userId) return
+    const row = await saveCustomExercise(userId, input)
+    setCustomExercises(prev => [row, ...prev])
+    setShowAddModal(false)
+  }
+
+  async function handleDeleteCustom(id: string) {
+    await deleteCustomExercise(id)
+    setCustomExercises(prev => prev.filter(c => c.id !== id))
   }
 
   const filtered = useMemo(() => {
+    // "Mine only" short-circuits to the user's custom exercises — we skip the
+    // curated library entirely. The downstream UI keys off `isCustom`.
+    if (mineOnly) return [] as Exercise[]
+
     let pool = EXERCISE_LIBRARY
 
     // Search
@@ -131,7 +226,28 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
     }
 
     return pool
-  }, [search, muscleFilter, equipmentFilter, bodyRegionFilter, difficultyFilter, kneeSafetyFilter])
+  }, [search, muscleFilter, equipmentFilter, bodyRegionFilter, difficultyFilter, kneeSafetyFilter, mineOnly])
+
+  // Custom exercises visible right now. When "mine" is on we show ALL custom
+  // rows (still respecting the search query). When filters target muscle or
+  // equipment we also surface matching custom rows above the curated list so
+  // the user's own work is never buried.
+  const visibleCustom = useMemo(() => {
+    let rows = customExercises
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      rows = rows.filter(c => c.name.toLowerCase().includes(q)
+        || c.primary_muscles.some(m => m.toLowerCase().includes(q))
+        || (c.notes && c.notes.toLowerCase().includes(q)))
+    }
+    if (muscleFilter) {
+      rows = rows.filter(c =>
+        c.primary_muscles.includes(muscleFilter) ||
+        c.secondary_muscles.includes(muscleFilter),
+      )
+    }
+    return rows
+  }, [customExercises, search, muscleFilter])
 
   // Exercise detail view
   if (selectedExercise) {
@@ -155,14 +271,23 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
           >
             <ChevronLeft size={20} />
           </button>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-[20px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
               Exercise Library
             </h1>
             <p className="text-[11px] text-zinc-500 mt-0.5">
-              {filtered.length} exercise{filtered.length !== 1 ? 's' : ''}
+              {filtered.length + visibleCustom.length} exercise{(filtered.length + visibleCustom.length) !== 1 ? 's' : ''}
             </p>
           </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            disabled={!userId}
+            aria-label="Add your own exercise"
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold bg-brand text-white active:scale-95 transition-transform disabled:opacity-40"
+          >
+            <Plus size={14} />
+            Add
+          </button>
         </div>
 
         {/* Search bar */}
@@ -185,19 +310,32 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
           )}
         </div>
 
-        {/* Filter toggle button */}
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95"
-          style={{
-            background: showFilters || activeFilterCount > 0 ? '#f9731622' : '#1a1a1e',
-            color: showFilters || activeFilterCount > 0 ? '#f97316' : '#888',
-            border: activeFilterCount > 0 ? '1px solid #f9731644' : '1px solid #2a2a2e',
-          }}
-        >
-          <Filter size={14} />
-          Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-        </button>
+        {/* Filter toggle button + "mine" chip */}
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            style={{
+              background: showFilters || activeFilterCount > 0 ? '#f9731622' : '#1a1a1e',
+              color: showFilters || activeFilterCount > 0 ? '#f97316' : '#888',
+              border: activeFilterCount > 0 ? '1px solid #f9731644' : '1px solid #2a2a2e',
+            }}
+          >
+            <Filter size={14} />
+            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </button>
+          <button
+            onClick={() => setMineOnly(v => !v)}
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+            style={{
+              background: mineOnly ? 'var(--accent-plum, #a78bfa)' : '#1a1a1e',
+              color: mineOnly ? '#fff' : '#888',
+              border: mineOnly ? '1px solid transparent' : '1px solid #2a2a2e',
+            }}
+          >
+            Mine{customExercises.length > 0 ? ` (${customExercises.length})` : ''}
+          </button>
+        </div>
 
         {/* Filter panels */}
         {showFilters && (
@@ -317,6 +455,51 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
         {/* Exercise list */}
         <div className="space-y-1.5">
+          {visibleCustom.map(c => (
+            <div
+              key={c.id}
+              className="relative bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm font-bold text-zinc-200 truncate">{c.name}</div>
+                    <span
+                      className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                      style={{ color: 'var(--accent-plum, #a78bfa)', background: 'rgba(167, 139, 250, 0.14)' }}
+                    >
+                      Custom
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {c.primary_muscles.slice(0, 3).map(m => (
+                      <span key={m} className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded">
+                        {CUSTOM_MUSCLE_LABELS[m as CustomMuscle] || m}
+                      </span>
+                    ))}
+                    {c.equipment && (
+                      <span className="text-[10px] font-semibold text-zinc-500 bg-surface-overlay px-1.5 py-0.5 rounded">
+                        {CUSTOM_EQUIPMENT_LABELS[c.equipment as CustomExerciseEquipment] || c.equipment}
+                      </span>
+                    )}
+                  </div>
+                  {c.notes && (
+                    <div className="text-[11px] text-zinc-500 mt-1 line-clamp-1">
+                      {c.notes}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDeleteCustom(c.id)}
+                  aria-label={`Delete ${c.name}`}
+                  className="text-zinc-600 hover:text-red-400 p-1 shrink-0 active:scale-95 transition-transform"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+
           {filtered.map(exercise => (
             <button
               key={exercise.id}
@@ -357,11 +540,17 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
         </div>
 
         {/* Empty state */}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && visibleCustom.length === 0 && (
           <div className="text-center py-16 bg-surface-raised rounded-2xl mt-2 border border-border-subtle">
-            <div className="text-4xl mb-3">{'🔍'}</div>
-            <div className="text-lg font-bold text-zinc-400">No exercises found</div>
-            <div className="text-zinc-500 text-sm mt-1.5">Try adjusting your search or filters</div>
+            <div className="text-4xl mb-3">{mineOnly ? '✨' : '🔍'}</div>
+            <div className="text-lg font-bold text-zinc-400">
+              {mineOnly ? 'No custom exercises yet' : 'No exercises found'}
+            </div>
+            <div className="text-zinc-500 text-sm mt-1.5">
+              {mineOnly
+                ? 'Tap "Add" to save your own variations.'
+                : 'Try adjusting your search or filters'}
+            </div>
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
@@ -372,6 +561,233 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
             )}
           </div>
         )}
+      </div>
+
+      {showAddModal && userId && (
+        <AddCustomExerciseModal
+          onCancel={() => setShowAddModal(false)}
+          onSave={handleSaveCustom}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Add-custom modal ───────────────────────────────────────────────────────
+
+interface AddCustomModalProps {
+  onCancel: () => void
+  onSave: (input: {
+    name: string
+    primary_muscles: string[]
+    secondary_muscles: string[]
+    equipment: CustomExerciseEquipment
+    video_url: string | null
+    notes: string | null
+  }) => void | Promise<void>
+}
+
+function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
+  const [name, setName] = useState('')
+  const [primary, setPrimary] = useState<CustomMuscle[]>([])
+  const [secondary, setSecondary] = useState<CustomMuscle[]>([])
+  const [equipment, setEquipment] = useState<CustomExerciseEquipment>('bodyweight')
+  const [videoUrl, setVideoUrl] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const nameError = name.trim().length === 0 ? 'Name is required.' : null
+  const muscleError = primary.length === 0 ? 'Pick at least one muscle.' : null
+  // Tolerant URL validation — an empty value is fine, but if the user typed
+  // something that isn't a parseable URL at all we surface an inline warning.
+  // We don't block save on an unparseable URL (user might paste a raw ID);
+  // we only flag URLs that look like YouTube but don't have a video id.
+  const videoWarning = (() => {
+    const trimmed = videoUrl.trim()
+    if (!trimmed) return null
+    if (/youtube\.com|youtu\.be/i.test(trimmed) && !extractYouTubeVideoId(trimmed)) {
+      return 'This looks like a YouTube URL but we couldn\'t find a video ID.'
+    }
+    return null
+  })()
+  const canSave = !nameError && !muscleError && !saving
+
+  function toggleMuscle(m: CustomMuscle, target: 'primary' | 'secondary') {
+    if (target === 'primary') {
+      setPrimary(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])
+    } else {
+      setSecondary(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])
+    }
+  }
+
+  async function handleSave() {
+    if (!canSave) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        primary_muscles: primary,
+        // Filter out any muscle that's also in `primary` — keep the two lists
+        // disjoint so we don't double-count in downstream filtering.
+        secondary_muscles: secondary.filter(m => !primary.includes(m)),
+        equipment,
+        video_url: videoUrl.trim() || null,
+        notes: notes.trim() || null,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center px-3 pb-3 pt-6 safe-top"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-lg bg-surface-raised border border-border-subtle rounded-2xl p-4 max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-base font-extrabold text-zinc-100">Add your own exercise</div>
+          <button
+            onClick={onCancel}
+            aria-label="Close"
+            className="p-1.5 rounded-lg text-zinc-500 active:scale-95"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Name */}
+        <label className="block mb-3">
+          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Name</span>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Incline Push-ups"
+            autoFocus
+            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand"
+          />
+        </label>
+
+        {/* Primary muscles */}
+        <div className="mb-3">
+          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Primary muscles <span className="text-zinc-600">(required)</span></div>
+          <div className="flex flex-wrap gap-1">
+            {CUSTOM_MUSCLE_OPTIONS.map(m => {
+              const on = primary.includes(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleMuscle(m, 'primary')}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+                  style={{
+                    background: on ? '#f97316' : '#2a2a2e',
+                    color: on ? '#fff' : '#888',
+                  }}
+                >
+                  {CUSTOM_MUSCLE_LABELS[m]}
+                </button>
+              )
+            })}
+          </div>
+          {muscleError && (
+            <div className="text-[11px] text-red-400 mt-1.5">{muscleError}</div>
+          )}
+        </div>
+
+        {/* Secondary muscles */}
+        <div className="mb-3">
+          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Secondary muscles <span className="text-zinc-600">(optional)</span></div>
+          <div className="flex flex-wrap gap-1">
+            {CUSTOM_MUSCLE_OPTIONS.map(m => {
+              const on = secondary.includes(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleMuscle(m, 'secondary')}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+                  style={{
+                    background: on ? '#7c3aed' : '#2a2a2e',
+                    color: on ? '#fff' : '#888',
+                  }}
+                >
+                  {CUSTOM_MUSCLE_LABELS[m]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Equipment */}
+        <div className="mb-3">
+          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Equipment</div>
+          <div className="flex flex-wrap gap-1">
+            {CUSTOM_EQUIPMENT_OPTIONS.map(eq => {
+              const on = equipment === eq
+              return (
+                <button
+                  key={eq}
+                  type="button"
+                  onClick={() => setEquipment(eq)}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
+                  style={{
+                    background: on ? '#f97316' : '#2a2a2e',
+                    color: on ? '#fff' : '#888',
+                  }}
+                >
+                  {CUSTOM_EQUIPMENT_LABELS[eq]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Video URL */}
+        <label className="block mb-3">
+          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Video URL <span className="text-zinc-600">(optional)</span></span>
+          <input
+            value={videoUrl}
+            onChange={e => setVideoUrl(e.target.value)}
+            placeholder="https://youtu.be/..."
+            inputMode="url"
+            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand"
+          />
+          {videoWarning && (
+            <div className="text-[11px] text-amber-400 mt-1.5">{videoWarning}</div>
+          )}
+        </label>
+
+        {/* Notes */}
+        <label className="block mb-4">
+          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Notes <span className="text-zinc-600">(optional)</span></span>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Form cues, weight range, rest time..."
+            rows={2}
+            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand resize-none"
+          />
+        </label>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-surface-overlay text-zinc-400 border border-border-subtle active:scale-95 transition-transform"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-brand text-white active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   )
