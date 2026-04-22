@@ -445,7 +445,23 @@ export function Lumo({
   // the CSS var at runtime; fall back to DEFAULT_COLOR. We can't read the CSS var
   // synchronously in a pure render without a DOM ref, so use DEFAULT_COLOR for shade
   // computations and apply var(--mascot-color) directly via fill style on the body.
-  const resolvedColor = color ?? DEFAULT_COLOR
+  //
+  // Known palette mapping: when callers pass a CSS var like `var(--accent-sun)`,
+  // we can't synchronously resolve it to a hex for shade() math, so we look up
+  // the hex from a prebuilt table. Without this, shade() returns "#NaNNaNNaN"
+  // and strokes render as a dark smudge ("the mole" Kyra flagged).
+  const CSS_VAR_TO_HEX: Record<string, string> = {
+    'var(--accent-sun)': '#FFD86E',
+    'var(--accent-plum)': '#C9A0FF',
+    'var(--accent-mint)': '#6EE7C7',
+    'var(--accent-blush)': '#FFA9C9',
+    'var(--brand)': '#FF7A45',
+  }
+  const isHex = typeof color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(color)
+  const resolvedHex = isHex
+    ? (color as string)
+    : (color && CSS_VAR_TO_HEX[color]) || DEFAULT_COLOR
+  const resolvedColor = resolvedHex
   const outline = shade(resolvedColor, -40)
   const highlight = shade(resolvedColor, 25)
   const bellyTone = shade(resolvedColor, 10)
@@ -476,6 +492,11 @@ export function Lumo({
       </>
     )
 
+  // Bow only on the default pink Lumo. Colored variants (yellow for cardio,
+  // plum for mobility, etc.) skip the bow — at small render sizes the tiny
+  // purple bow reads as a dark "mole" against a non-pink body, which Kyra
+  // (rightly) flagged as not cute.
+  const showBow = color === undefined
   const hairTuft: ReactNode = (
     <g>
       <path
@@ -485,22 +506,24 @@ export function Lumo({
         strokeWidth="2.2"
         strokeLinejoin="round"
       />
-      <g transform="translate(62 10)">
-        <path
-          d="M-4 0 Q-8 -4 -8 0 Q-8 4 -4 0 Z"
-          fill={bowPurple}
-          stroke={bowOutline}
-          strokeWidth="1"
-        />
-        <path
-          d="M4 0 Q8 -4 8 0 Q8 4 4 0 Z"
-          fill={bowPurple}
-          stroke={bowOutline}
-          strokeWidth="1"
-        />
-        <circle cx="0" cy="0" r="2.2" fill="#A77EE6" />
-        <circle cx="-0.8" cy="-0.8" r="0.7" fill="#fff" opacity="0.8" />
-      </g>
+      {showBow && (
+        <g transform="translate(62 10)">
+          <path
+            d="M-4 0 Q-8 -4 -8 0 Q-8 4 -4 0 Z"
+            fill={bowPurple}
+            stroke={bowOutline}
+            strokeWidth="1"
+          />
+          <path
+            d="M4 0 Q8 -4 8 0 Q8 4 4 0 Z"
+            fill={bowPurple}
+            stroke={bowOutline}
+            strokeWidth="1"
+          />
+          <circle cx="0" cy="0" r="2.2" fill="#A77EE6" />
+          <circle cx="-0.8" cy="-0.8" r="0.7" fill="#fff" opacity="0.8" />
+        </g>
+      )}
     </g>
   )
 
