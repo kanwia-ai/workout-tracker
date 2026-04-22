@@ -59,7 +59,7 @@ export const plannedExerciseSchema = {
       maxItems: 6,
     },
   },
-  required: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role'],
+  required: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'warmup_sets'],
   propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets'],
 } as const
 
@@ -87,7 +87,7 @@ const plannedSessionSchema = {
     status: { type: 'string', enum: SESSION_STATUS_ENUM },
     intended_date: { type: 'string' },
   },
-  required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status'],
+  required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'subtitle', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status'],
   propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'subtitle', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date'],
 } as const
 

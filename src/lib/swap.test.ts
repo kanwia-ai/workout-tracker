@@ -65,6 +65,7 @@ function makePlannedExercise(overrides: Partial<PlannedExercise> = {}): PlannedE
     rir: overrides.rir ?? 2,
     rest_seconds: overrides.rest_seconds ?? 120,
     role: overrides.role ?? 'main lift',
+    warmup_sets: overrides.warmup_sets ?? [],
     notes: overrides.notes,
   }
 }
@@ -76,6 +77,7 @@ function makeSession(exercises: PlannedExercise[]): PlannedSession {
     ordinal: 1,
     focus: ['glutes'],
     title: 'Lower A',
+    subtitle: '',
     estimated_minutes: 55,
     status: 'upcoming',
     day_of_week: 0,

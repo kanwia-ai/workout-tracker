@@ -16,6 +16,7 @@ function makePlannedExercise(overrides: Partial<Record<string, unknown>> = {}) {
     rir: 2,
     rest_seconds: 120,
     role: 'main lift',
+    warmup_sets: [],
     ...overrides,
   }
 }
@@ -37,6 +38,7 @@ function makeSession(week: number, ordinal: number, id: string) {
     ordinal,
     focus,
     title: `Week ${week} — Session ${ordinal}`,
+    subtitle: 'LOWER · PULL-DOMINANT',
     estimated_minutes: 55,
     day_of_week: (ordinal - 1) * 2, // 0, 2, 4 for 3/wk cadence
     rationale: `Week ${week} session ${ordinal}; placed for recovery balance.`,
@@ -111,8 +113,8 @@ describe('MesocycleSchema', () => {
 describe('PlannedSessionSchema rejections', () => {
   const baseSession = {
     id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
-    title: 'x', estimated_minutes: 45,
-    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
+    title: 'x', subtitle: 'FULL BODY · RECOVERY', estimated_minutes: 45,
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift', warmup_sets: [] }],
     status: 'upcoming',
     day_of_week: 0,
     rationale: 'Monday full-body; fresh week start, 48h to next session.',
@@ -140,11 +142,11 @@ describe('PlannedSessionSchema rejections', () => {
 describe('PlannedSessionSchema day_of_week + rationale', () => {
   const baseSession = {
     id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
-    title: 'x', estimated_minutes: 45,
-    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
+    title: 'x', subtitle: 'LOWER · PULL-DOMINANT', estimated_minutes: 45,
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift', warmup_sets: [] }],
     status: 'upcoming',
     day_of_week: 0,
-    rationale: 'Lower body Monday; 48h before Thursday Lower B.',
+    rationale: 'Lower body Monday; 48h before next lower session.',
   } as const
 
   it('accepts a session with valid day_of_week + rationale', () => {
@@ -204,9 +206,12 @@ describe('PlannedExerciseSchema warmup_sets', () => {
     expect(ok.success).toBe(true)
   })
 
-  it('accepts omitted warmup_sets (back-compat with legacy plans)', () => {
-    const ok = PlannedExerciseSchema.safeParse(base)
-    expect(ok.success).toBe(true)
+  it('rejects an exercise missing warmup_sets (schema requires the key in v3)', () => {
+    // v3 makes warmup_sets a REQUIRED field at the schema level. Back-compat
+    // for legacy Dexie plans without the key is handled in loadMesocycle via
+    // a JSON back-fill (same pattern as day_of_week), NOT at the schema layer.
+    const bad = PlannedExerciseSchema.safeParse(base)
+    expect(bad.success).toBe(false)
   })
 
   it('rejects a ramp set with percent > 100', () => {
@@ -241,7 +246,7 @@ describe('PlannedSessionSchema subtitle', () => {
     id: 's-1', week_number: 1, ordinal: 1, focus: ['glutes'] as const,
     title: 'glutes & hammies',
     estimated_minutes: 55,
-    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 120, role: 'main lift' }],
+    exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 120, role: 'main lift', warmup_sets: [] }],
     status: 'upcoming' as const,
     day_of_week: 0,
     rationale: 'Monday lower, fresh week.',
@@ -252,8 +257,11 @@ describe('PlannedSessionSchema subtitle', () => {
     expect(ok.success).toBe(true)
   })
 
-  it('accepts a session without subtitle (back-compat)', () => {
-    expect(PlannedSessionSchema.safeParse(base).success).toBe(true)
+  it('rejects a session missing subtitle (schema requires the key in v3)', () => {
+    // v3 makes subtitle a REQUIRED field at the schema level. Legacy plans
+    // without the key are back-filled to '' in loadMesocycle, NOT at the
+    // schema layer.
+    expect(PlannedSessionSchema.safeParse(base).success).toBe(false)
   })
 
   it('rejects a subtitle longer than 60 chars', () => {
@@ -268,8 +276,8 @@ describe('MesocycleSchema rejections', () => {
     length_weeks: 6, profile_snapshot: {},
     sessions: [{
       id: 's-1', week_number: 1, ordinal: 1, focus: ['full_body'],
-      title: 'x', estimated_minutes: 45,
-      exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift' }],
+      title: 'x', subtitle: 'FULL BODY · RECOVERY', estimated_minutes: 45,
+      exercises: [{ library_id: 'fedb:x', name: 'x', sets: 3, reps: '10', rir: 2, rest_seconds: 60, role: 'main lift', warmup_sets: [] }],
       status: 'upcoming',
       day_of_week: 0,
       rationale: 'Baseline session for schema test.',

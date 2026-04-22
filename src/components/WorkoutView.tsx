@@ -37,6 +37,7 @@ import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
 import { SwapSheet } from './SwapSheet'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
+import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { TimerState, SessionPhase } from '../types'
 import type { PlannedSession, PlannedExercise } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
@@ -600,6 +601,13 @@ export function WorkoutView({
     clearSession,
   ])
 
+  // Display-side remap: legacy Dexie plans may have generic titles like
+  // "Lower A"/"Upper B". Derive a body-part title from the exercise list
+  // when that happens. The stored plan is never mutated.
+  const displayTitle = selectedSession
+    ? remapTitleIfGeneric(selectedSession.title, selectedSession.exercises)
+    : null
+
   // ─── Top bar (matches design: back arrow / centered IN SESSION + title / kebab)
   const TopBar = (
     <div className="flex items-center justify-between pt-1 pb-3" data-testid="workout-topbar">
@@ -634,7 +642,7 @@ export function WorkoutView({
             marginTop: 1,
           }}
         >
-          {selectedSession?.title ?? 'rest day'}
+          {displayTitle ?? 'rest day'}
         </div>
       </div>
       <button
@@ -793,7 +801,7 @@ export function WorkoutView({
             <ProgressStrip
               done={doneSets}
               total={totalSets}
-              title={selectedSession.title}
+              title={displayTitle ?? selectedSession.title}
               estMinutes={selectedSession.estimated_minutes}
             />
           </div>
@@ -1204,6 +1212,63 @@ function LiftCard({
           >
             {ex.sets} × {ex.reps} · {ex.rest_seconds}s rest · RIR {ex.rir}
           </div>
+          {ex.warmup_sets.length > 0 && (() => {
+            const rounded = Math.round(displayedWeight / 5) * 5
+            const hasWorkingWeight = rounded > 0
+            const headline =
+              ex.warmup_sets.length > 1
+                ? hasWorkingWeight
+                  ? `warmup · ${ex.warmup_sets.length} sets working up to ${rounded} lb`
+                  : `warmup · ${ex.warmup_sets.length} sets ramping up`
+                : null
+            return (
+              <div className="mt-1.5" data-testid="warmup-block">
+                {headline && (
+                  <div
+                    className="text-[11px] leading-snug"
+                    style={{
+                      color: 'var(--lumo-text-ter)',
+                      fontFamily: "'Fraunces', Georgia, serif",
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {headline}
+                  </div>
+                )}
+                <ul
+                  className="text-[11px] leading-snug mt-0.5 pl-0 list-none tabular-nums"
+                  style={{ color: 'var(--lumo-text-ter)' }}
+                >
+                  {ex.warmup_sets.map((w, wi) => {
+                    const pct = w.percent / 100
+                    const rawW = displayedWeight * pct
+                    const rW = Math.round(rawW / 5) * 5
+                    const useNumeric = hasWorkingWeight && rW > 0
+                    const verbal =
+                      pct < 0.55
+                        ? 'light'
+                        : pct < 0.8
+                          ? 'medium'
+                          : 'almost working weight'
+                    const single = ex.warmup_sets.length === 1
+                    const label = useNumeric
+                      ? single
+                        ? `1 set @ ${rW} lb × ${w.reps} reps`
+                        : `${w.reps} reps @ ${rW} lb`
+                      : single
+                        ? `1 set · ${w.reps} reps (${verbal})`
+                        : `${w.reps} reps (${verbal})`
+                    return (
+                      <li key={wi} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--lumo-text-ter)' }}>·</span>
+                        <span>{label}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })()}
           {ex.notes && (
             <div
               className="text-[11px] mt-1"

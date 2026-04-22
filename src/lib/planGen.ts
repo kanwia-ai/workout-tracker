@@ -166,14 +166,26 @@ export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
     profile_snapshot: JSON.parse(row.profile_snapshot_json),
   }
 
-  // Back-fill `day_of_week` + `rationale` for pre-2P.1 plans. Without this,
+  // Back-fill missing fields for pre-2P.1 plans. Without this,
   // MesocycleSchema.parse would throw on every legacy row the moment Phase 2
-  // ships and make the user's app unbootable until they regenerate. We accept
-  // a slightly imprecise fallback pattern to keep the app loading — the user
-  // can always regenerate for a fresh coach-authored rationale.
+  // (or v3 prompt) ships and make the user's app unbootable until they
+  // regenerate. We accept a slightly imprecise fallback pattern to keep the
+  // app loading — the user can always regenerate for a fresh coach-authored
+  // rationale + ramp-set prescriptions.
+  //
+  // Fields back-filled:
+  //   - day_of_week (pre-2P.1)                → picked from recovery pattern
+  //   - rationale (pre-2P.1)                  → stub with regenerate hint
+  //   - subtitle (pre-v3 prompt)              → "" (UI hides when empty)
+  //   - exercises[].warmup_sets (pre-v3)      → [] (UI falls back to role heuristic)
   const rawSessions = candidate.sessions as Array<Record<string, unknown>>
   const needsBackfill = rawSessions.some(
-    s => s.day_of_week === undefined || s.rationale === undefined,
+    s => s.day_of_week === undefined
+      || s.rationale === undefined
+      || s.subtitle === undefined
+      || (Array.isArray(s.exercises) && (s.exercises as Array<Record<string, unknown>>).some(
+        ex => ex.warmup_sets === undefined,
+      )),
   )
   if (needsBackfill) {
     const perWeek = Math.max(
@@ -188,6 +200,16 @@ export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
       }
       if (s.rationale === undefined) {
         s.rationale = 'Migrated from an earlier plan — regenerate for a fresher rationale.'
+      }
+      if (s.subtitle === undefined) {
+        s.subtitle = ''
+      }
+      if (Array.isArray(s.exercises)) {
+        for (const ex of s.exercises as Array<Record<string, unknown>>) {
+          if (ex.warmup_sets === undefined) {
+            ex.warmup_sets = []
+          }
+        }
       }
     }
   }

@@ -34,6 +34,7 @@ const baseSession: PlannedSession = {
   ordinal: 1,
   focus: ['glutes'],
   title: 'Lower A',
+  subtitle: '',
   estimated_minutes: 55,
   day_of_week: 0,
   rationale: 'Lower A Monday; fresh week start.',
@@ -47,6 +48,7 @@ const baseSession: PlannedSession = {
       rir: 2,
       rest_seconds: 120,
       role: 'main lift',
+      warmup_sets: [],
     },
   ],
 }

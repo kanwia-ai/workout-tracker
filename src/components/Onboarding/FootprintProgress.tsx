@@ -130,11 +130,7 @@ function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
           y1="10"
           x2="17"
           y2="10"
-          stroke={
-            kind === 'outlined'
-              ? stroke
-              : 'color-mix(in srgb, var(--lumo-bg, #fff3ec) 80%, transparent)'
-          }
+          stroke="color-mix(in srgb, var(--lumo-bg, #fff3ec) 80%, transparent)"
           strokeWidth="0.8"
           strokeLinecap="round"
         />

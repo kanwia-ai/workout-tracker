@@ -27,6 +27,7 @@ import {
   clearOverrideForDate,
 } from '../lib/dayOverrides'
 import { pickCopy, DEFAULT_CHEEK } from '../lib/copy'
+import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { PlannedSession, MuscleGroup } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 
@@ -655,10 +656,15 @@ function TodayCard({
   const isInteractive = isToday && !!onGo
   const Wrapper = isInteractive ? 'button' : 'div'
 
+  // Display-side remap: legacy Dexie plans may have generic titles like
+  // "Lower A"/"Upper B". Derive a body-part title from the exercise list
+  // when that happens. The stored plan is never mutated.
+  const displayTitle = remapTitleIfGeneric(session.title, session.exercises)
+
   return (
     <Wrapper
       onClick={isInteractive ? onGo : undefined}
-      aria-label={isInteractive ? `Start ${session.title}` : undefined}
+      aria-label={isInteractive ? `Start ${displayTitle}` : undefined}
       style={{
         width: '100%',
         textAlign: 'left',
@@ -770,7 +776,7 @@ function TodayCard({
           color: 'var(--lumo-text)',
         }}
       >
-        {session.title}
+        {displayTitle}
       </div>
       <div
         style={{

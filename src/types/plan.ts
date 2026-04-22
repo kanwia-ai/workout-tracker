@@ -28,14 +28,16 @@ export const PlannedExerciseSchema = z.object({
   reps: z.string(),             // "8-12" or "10"
   rir: z.number().int().min(0).max(5),
   rest_seconds: z.number().int().min(0).max(600),
-  role: z.string(),             // "main lift" | "accessory" | "core" | "rehab"
+  role: z.string(),             // "main lift" | "accessory" | "isolation" | "core" | "rehab"
   notes: z.string().optional(),
   /**
-   * Ramp-set prescription. Compound main lifts get 3 sets
-   * (50%/10, 70%/5, 85%/3); accessories get 1 set (60%/8); rehab/mobility
-   * omit or pass []. Optional so legacy plans deserialize cleanly.
+   * Ramp-set prescription. REQUIRED on every exercise (may be empty for
+   * rehab/mobility/core/cardio). Compound main lifts get 3 sets
+   * (50%/10, 70%/5, 85%/3); accessories get 1 set (60%/8); rehab/mobility/
+   * core/cardio emit []. Legacy Dexie plans lacking this field are
+   * back-filled to [] in loadMesocycle, same pattern as day_of_week.
    */
-  warmup_sets: z.array(WarmupSetSchema).max(6).optional(),
+  warmup_sets: z.array(WarmupSetSchema).max(6),
 })
 
 export const PlannedSessionSchema = z.object({
@@ -46,10 +48,11 @@ export const PlannedSessionSchema = z.object({
   title: z.string(),
   /**
    * Short UPPERCASE descriptor shown beside the title in the UI,
-   * e.g. "LOWER · PULL-DOMINANT" or "UPPER · PUSH". Optional so legacy
-   * plans load cleanly.
+   * e.g. "LOWER · PULL-DOMINANT" or "UPPER · PUSH". REQUIRED going
+   * forward; legacy plans lacking this field are back-filled to an
+   * empty string in loadMesocycle.
    */
-  subtitle: z.string().max(60).optional(),
+  subtitle: z.string().max(60),
   estimated_minutes: z.number().int().min(10).max(180),
   exercises: z.array(PlannedExerciseSchema).min(1),
   day_of_week: z.number().int().min(0).max(6),   // 0=Mon .. 6=Sun

@@ -101,6 +101,7 @@ function makeSession(overrides: Partial<PlannedSession> = {}): PlannedSession {
     ordinal: 1,
     focus: ['glutes'],
     title: 'glutes & hammies',
+    subtitle: '',
     estimated_minutes: 48,
     exercises: [
       {
@@ -111,6 +112,7 @@ function makeSession(overrides: Partial<PlannedSession> = {}): PlannedSession {
         rir: 2,
         rest_seconds: 90,
         role: 'main lift',
+        warmup_sets: [],
       },
       {
         library_id: 'ex:hip-thrust',
@@ -120,6 +122,7 @@ function makeSession(overrides: Partial<PlannedSession> = {}): PlannedSession {
         rir: 1,
         rest_seconds: 60,
         role: 'main lift',
+        warmup_sets: [],
       },
     ],
     day_of_week: 0,

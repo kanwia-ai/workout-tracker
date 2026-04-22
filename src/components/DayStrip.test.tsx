@@ -15,6 +15,7 @@ function makeSession(
     ordinal,
     focus: ['glutes'],
     title: `Session ${ordinal}`,
+    subtitle: '',
     estimated_minutes: 60,
     exercises: [
       {
@@ -25,6 +26,7 @@ function makeSession(
         rir: 2,
         rest_seconds: 120,
         role: 'main lift',
+        warmup_sets: [],
       },
     ],
     day_of_week: 0,
