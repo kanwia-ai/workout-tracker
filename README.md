@@ -39,7 +39,13 @@ Copy `.env.example` to `.env` and fill in:
 
 - `VITE_SUPABASE_URL` -- your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` -- your Supabase anon/public key
-- `VITE_GEMINI_API_KEY` -- (optional, for Phase 5 video extraction)
+- `VITE_GEMINI_API_KEY` -- (optional, for Phase 5 video/image exercise extraction — still on Gemini because of native YouTube support)
+
+### Server-side secrets (set in Supabase Dashboard -> Project Settings -> Functions)
+
+- `ANTHROPIC_API_KEY` -- used by the `generate` edge function for plan
+  generation, exercise swap, and warmup/cooldown/cardio routines (Claude
+  Opus 4.7). Replaced `GEMINI_API_KEY` on 2026-04-20.
 
 ## Install on iPhone
 

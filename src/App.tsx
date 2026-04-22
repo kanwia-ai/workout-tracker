@@ -24,7 +24,7 @@ import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
 import { SettingsScreen } from './components/Settings'
 import { Loader2, AlertTriangle } from 'lucide-react'
-import { saveProfileLocal, syncProfileUp } from './lib/profileRepo'
+import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profileRepo'
 import { generatePlan } from './lib/planGen'
 import type { TimerState } from './types'
 import type { ExtractedExercise } from './lib/gemini'
@@ -148,8 +148,11 @@ function App() {
     if (/network|fetch failed|timed out/i.test(raw)) {
       return 'Network hiccup. Check your connection and try again.'
     }
-    if (/GEMINI_API_KEY missing/i.test(raw)) {
+    if (/ANTHROPIC_API_KEY missing/i.test(raw)) {
       return 'The plan generator isn\'t configured on the server yet. Try again in a moment.'
+    }
+    if (/Claude is busy|rate[_ -]?limit|429|529/i.test(raw)) {
+      return 'The plan generator is busy right now. Give it a moment and try again.'
     }
     if (/hallucinated|invalid shape|returned invalid/i.test(raw)) {
       return 'The plan came back malformed. A retry usually fixes this.'
@@ -203,6 +206,14 @@ function App() {
     return <LoginScreen onSignIn={signInWithMagicLink} />
   }
 
+  // Plan generation in progress — short-circuit regardless of `hasProfile`
+  // so the HomeScreen "Rebuild my plan" retry also shows the loader. Without
+  // this, a retry from the plan-less empty state would silently keep
+  // HomeScreen mounted while the generator churned in the background.
+  if (isGenerating) {
+    return <GeneratingPlan onCancel={handleCancelGeneration} />
+  }
+
   if (!hasProfile) {
     // Generation-failed screen: user finished onboarding, profile is
     // persisted locally, but generatePlan errored. Keep them out of
@@ -233,10 +244,9 @@ function App() {
       )
     }
 
-    if (isGenerating) {
-      return <GeneratingPlan onCancel={handleCancelGeneration} />
-    }
-
+    // `isGenerating` is handled by the top-level guard above — if we reach
+    // here, no generation is in flight and no error is pending, so fall
+    // through to onboarding.
     return (
       <OnboardingFlow
         onComplete={async (p: UserProgramProfile) => {
@@ -288,6 +298,15 @@ function App() {
           profile={profile}
           onOpenSettings={() => setSettingsOpen(true)}
           onStartSession={() => setSessionStarted(true)}
+          onRetryGeneration={async () => {
+            // Retry from the plan-less empty state. Load the profile
+            // captured during onboarding out of Dexie and re-run the
+            // generator — runGeneration flips isGenerating=true so the
+            // GeneratingPlan loader takes over until Dexie has a plan
+            // again and HomeScreen re-renders with content.
+            const stored = await loadProfileLocal(user.id)
+            if (stored) await runGeneration(stored, user.id)
+          }}
         />
       )}
 

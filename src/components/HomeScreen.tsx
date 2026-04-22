@@ -63,6 +63,9 @@ interface HomeScreenProps {
   profile: DisplayProfile | null
   onOpenSettings: () => void
   onStartSession: () => void
+  /** Triggered from the plan-less empty state ("Rebuild my plan"). Calls
+   *  back into App to re-run generation with the stored UserProgramProfile. */
+  onRetryGeneration?: () => void
 }
 
 const DAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -111,11 +114,20 @@ function timeOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
 }
 
 // ─── HomeScreen ─────────────────────────────────────────────────────────────
+// `display_name` from Supabase auth often looks like an email local part
+// ("kyra.atekwana") — never good to show as a human first name. Anything with
+// a `.` or `@` is treated as email-y and dropped in favor of a neutral
+// greeting.
+function looksLikeEmailPrefix(s: string): boolean {
+  return /[.@]/.test(s)
+}
+
 export function HomeScreen({
   userId,
   profile,
   onOpenSettings,
   onStartSession,
+  onRetryGeneration,
 }: HomeScreenProps) {
   const { plan, loading } = usePlan(userId)
   const [prCount, setPrCount] = useState(0)
@@ -164,10 +176,15 @@ export function HomeScreen({
   const selectedHasOverride = overrides.some((o) => o.date === selectedDateISO)
 
   const cheek = DEFAULT_CHEEK
+  // Prefer the onboarding-captured first_name (clean). Fall back to the auth
+  // display_name ONLY if it doesn't look like an email local part — otherwise
+  // we'd render "evening, kyra.atekwana" on first paint before
+  // programProfile loads. If both are unusable, leave it empty and the
+  // greeting below picks its neutral variant.
+  const displayName = programProfile?.first_name?.trim() || ''
+  const fallbackName = profile?.display_name?.trim() ?? ''
   const firstName =
-    programProfile?.first_name?.trim() ||
-    profile?.display_name?.trim() ||
-    ''
+    displayName || (looksLikeEmailPrefix(fallbackName) ? '' : fallbackName)
 
   // Greeting line — short + cheeky, varies by time of day. If we don't have
   // a name yet, skip the "hi Kyra" form and use the neutral version so we
@@ -227,6 +244,12 @@ export function HomeScreen({
   for (const s of weekSessions) {
     if (s.status === 'completed') doneByDow.set(s.day_of_week, true)
   }
+
+  // Plan-less empty state: plan is null or has zero sessions (generator
+  // failed, out of quota, or user wiped data). We render a single card in
+  // place of the DayStrip/TodayCard/stats row so the user can rebuild
+  // without seeing 7 rest moon-icons and a ghost-town dashboard.
+  const planIsEmpty = !loading && (!plan || weekSessions.length === 0)
 
   return (
     <div
@@ -289,86 +312,93 @@ export function HomeScreen({
           firstName={firstName}
         />
 
-        {/* This week label + DayStrip */}
-        <SectionLabel>this week</SectionLabel>
-        <HomeDayStrip
-          weekSessions={weekSessions}
-          todayDow={todayDow}
-          selectedDow={selectedDow}
-          onSelect={setSelectedDow}
-          doneByDow={doneByDow}
-          weekStart={weekStart}
-        />
-
-        {/* Today / selected-day card */}
-        <SectionLabel>{isViewingToday ? 'today' : DAY_LABELS[selectedDow].toLowerCase()}</SectionLabel>
-        {loading ? (
-          <LoadingCard />
-        ) : selectedSession ? (
-          <TodayCard
-            session={selectedSession}
-            onGo={isViewingToday ? onStartSession : undefined}
-            isToday={isViewingToday}
-            isOverride={selectedHasOverride}
-            onRevertOverride={
-              selectedHasOverride && isViewingToday
-                ? async () => {
-                    try {
-                      await clearOverrideForDate(userId, todayISO)
-                    } catch (err) {
-                      console.error('clearOverrideForDate failed', err)
-                    }
-                  }
-                : undefined
-            }
-          />
+        {planIsEmpty ? (
+          <PlanMissingCard onRetry={onRetryGeneration} />
         ) : (
-          <RestCard
-            cheekLevel={cheek}
-            isToday={isViewingToday}
-            onBuildWorkout={async () => {
-              // Pick the next upcoming session from the plan and stamp it as
-              // an override for today. This persists to Dexie so navigating
-              // away and back (or reloading) still shows the chosen workout.
-              // If nothing's upcoming, bail — the plan is complete.
-              const pick = getNextUpcomingSession(plan)
-              if (!pick) {
-                onStartSession()
-                return
-              }
-              try {
-                await setOverrideForDate(userId, todayISO, pick.id)
-              } catch (err) {
-                console.error('setOverrideForDate failed', err)
-                // Fall through — still try to start, but the next render
-                // will re-show the rest card.
-              }
-              setSelectedDow(todayDow)
-              onStartSession()
-            }}
-          />
-        )}
+          <>
+            {/* This week label + DayStrip */}
+            <SectionLabel>this week</SectionLabel>
+            <HomeDayStrip
+              weekSessions={weekSessions}
+              todayDow={todayDow}
+              selectedDow={selectedDow}
+              onSelect={setSelectedDow}
+              doneByDow={doneByDow}
+              weekStart={weekStart}
+            />
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2 mt-5">
-          <StatChip
-            label="sessions"
-            value={`${sessionsCompleted} / ${weekSessions.length}`}
-            accent="var(--accent-mint)"
-          />
-          <StatChip
-            label="volume"
-            value={weekVolumeLb > 0 ? weekVolumeLb.toLocaleString() : '0'}
-            unit="lb"
-            accent="var(--accent-sun)"
-          />
-          <StatChip
-            label="PRs"
-            value={String(prCount)}
-            accent="var(--accent-plum)"
-            trailing={prCount > 0 ? <Sparkles size={12} aria-hidden="true" /> : null}
-          />
-        </div>
+            {/* Today / selected-day card */}
+            <SectionLabel>{isViewingToday ? 'today' : DAY_LABELS[selectedDow].toLowerCase()}</SectionLabel>
+            {loading ? (
+              <LoadingCard />
+            ) : selectedSession ? (
+              <TodayCard
+                session={selectedSession}
+                onGo={isViewingToday ? onStartSession : undefined}
+                isToday={isViewingToday}
+                isOverride={selectedHasOverride}
+                onRevertOverride={
+                  selectedHasOverride && isViewingToday
+                    ? async () => {
+                        try {
+                          await clearOverrideForDate(userId, todayISO)
+                        } catch (err) {
+                          console.error('clearOverrideForDate failed', err)
+                        }
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <RestCard
+                cheekLevel={cheek}
+                isToday={isViewingToday}
+                firstName={firstName}
+                onBuildWorkout={async () => {
+                  // Pick the next upcoming session from the plan and stamp it as
+                  // an override for today. This persists to Dexie so navigating
+                  // away and back (or reloading) still shows the chosen workout.
+                  // If nothing's upcoming, bail — the plan is complete.
+                  const pick = getNextUpcomingSession(plan)
+                  if (!pick) {
+                    onStartSession()
+                    return
+                  }
+                  try {
+                    await setOverrideForDate(userId, todayISO, pick.id)
+                  } catch (err) {
+                    console.error('setOverrideForDate failed', err)
+                    // Fall through — still try to start, but the next render
+                    // will re-show the rest card.
+                  }
+                  setSelectedDow(todayDow)
+                  onStartSession()
+                }}
+              />
+            )}
+
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-2 mt-5">
+              <StatChip
+                label="sessions"
+                value={`${sessionsCompleted} / ${weekSessions.length}`}
+                accent="var(--accent-mint)"
+              />
+              <StatChip
+                label="volume"
+                value={weekVolumeLb > 0 ? weekVolumeLb.toLocaleString() : '0'}
+                unit="lb"
+                accent="var(--accent-sun)"
+              />
+              <StatChip
+                label="PRs"
+                value={String(prCount)}
+                accent="var(--accent-plum)"
+                trailing={prCount > 0 ? <Sparkles size={12} aria-hidden="true" /> : null}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -860,20 +890,103 @@ function TodayCard({
   )
 }
 
+// ─── PlanMissingCard ────────────────────────────────────────────────────────
+// Shown when the plan failed to generate or Dexie is empty. Replaces the
+// DayStrip + TodayCard + stats row so the user isn't staring at 7 rest-day
+// moons trying to figure out what happened. The `Rebuild my plan` button
+// fires back into App's runGeneration, which flips the full-screen
+// GeneratingPlan loader until the retry resolves.
+function PlanMissingCard({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <div
+      style={{
+        marginTop: 22,
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        padding: 20,
+        borderRadius: 22,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+      }}
+    >
+      <div className="flex items-center gap-3.5">
+        <Lumo state="sleepy" size={64} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: 'var(--lumo-text)',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            your plan didn't load
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: 'var(--lumo-text-sec)',
+              marginTop: 6,
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+              lineHeight: 1.4,
+            }}
+          >
+            that can happen if the generator was busy or out of quota. let's try again.
+          </div>
+        </div>
+      </div>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          aria-label="Rebuild my plan"
+          className="active:scale-[0.98] transition"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '12px 14px',
+            borderRadius: 14,
+            background: 'var(--brand)',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 14,
+            letterSpacing: '-0.01em',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          Rebuild my plan
+          <ArrowRight size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── RestCard ───────────────────────────────────────────────────────────────
 function RestCard({
   cheekLevel,
   isToday,
+  firstName,
   onBuildWorkout,
 }: {
   cheekLevel: 0 | 1 | 2
   /** When false, this is a preview of a rest day, not today's rest. */
   isToday: boolean
+  /** Used to interpolate `{name}` tokens in the copy pool. Pass '' to fall
+   *  back to the neutral 'friend'. */
+  firstName: string
   /** Fires when user taps "build one anyway". Only rendered when isToday. */
   onBuildWorkout?: () => void
 }) {
   const [line] = useState(() =>
-    pickCopy('preamble_morning', cheekLevel, { current: null }),
+    pickCopy('preamble_morning', cheekLevel, { current: null }, {
+      name: firstName || 'friend',
+    }),
   )
   return (
     <div

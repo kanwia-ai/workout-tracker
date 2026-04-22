@@ -1,4 +1,12 @@
 // ─── Gemini 2.5 Flash — Exercise Extraction from Video/Image ────────────────
+//
+// TODO(phase-2): This file still calls Gemini directly from the browser
+// because it's the only provider with native YouTube video understanding.
+// When we migrate exercise-capture to Claude (or a multimodal alternative),
+// we MUST route it through a Supabase edge function to keep the API key
+// server-side — exposing ANTHROPIC_API_KEY in the browser bundle is not
+// acceptable. The main LLM surface (plan / swap / routine generation) was
+// moved to Claude Opus on 2026-04-20; exercise capture remains on Gemini.
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
 

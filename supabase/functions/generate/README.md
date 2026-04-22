@@ -12,7 +12,7 @@ supabase functions serve generate --env-file supabase/functions/.env --no-verify
 supabase functions deploy generate
 ```
 
-Required secret: `GEMINI_API_KEY` (set in Supabase Dashboard -> Project Settings -> Functions).
+Required secret: `ANTHROPIC_API_KEY` (set in Supabase Dashboard -> Project Settings -> Functions). The function calls Claude Opus 4.7 via the Messages API with tool_use-forced structured output.
 
 ## Smoke test after deploy
 
@@ -28,7 +28,7 @@ Expected: JSON object with `message` and `now` fields.
 
 Minimal body — the `exercisePool` must be a real array of library entries for
 the plan to be useful; this 3-entry example is only enough to exercise the
-transport. Expect ~5-10s latency for Gemini 2.5 Flash.
+transport. Expect 30-90s latency for Claude Opus 4.7 on a full 6-week plan.
 
 ```bash
 curl -X POST https://<project-ref>.supabase.co/functions/v1/generate \
@@ -63,7 +63,7 @@ and `profile_snapshot`, which the client fills in).
 Error responses:
 - `400` if `profile` / `exercisePool` are missing or malformed, or if the pool
   JSON exceeds the server-side size cap.
-- `502` if Gemini returns an empty/blocked response or the call throws.
+- `502` if Claude returns no tool_use block (e.g., max_tokens hit) or the call throws (including 429/529 rate-limits, surfaced with a friendly "Claude is busy" message).
 
 ## Smoke test `swap_exercise`
 
@@ -118,7 +118,7 @@ Error responses:
 - `400` if any of `profile`, `currentExercise`, `sessionFocus`,
   `completedExercisesInSession`, `exercisePool`, or `reason` are missing /
   wrong shape, or if the pool JSON exceeds the server-side size cap.
-- `502` if Gemini returns empty, hallucinates a `library_id` not in the pool,
+- `502` if Claude returns no tool_use block, hallucinates a `library_id` not in the pool,
   or returns an exercise already completed in this session.
 
 ## Smoke test `generate_routine`
@@ -162,4 +162,4 @@ Error responses:
 - `400` if `profile`, `sessionFocus`, `kind`, or `minutes` are missing / wrong
   shape, if `kind` is not one of `warmup|cooldown|cardio`, or if `minutes` is
   outside `[3, 60]`.
-- `502` if Gemini returns an empty response or the call throws.
+- `502` if Claude returns no tool_use block or the call throws.

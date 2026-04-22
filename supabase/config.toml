@@ -3,7 +3,7 @@
 project_id = "workout-tracker"
 
 [functions.generate]
-# Gemini-backed ops are live (see index.ts). Require a valid Supabase JWT so
-# anon callers can't burn quota against our GEMINI_API_KEY. The client helper
-# in src/lib/generate.ts already attaches the user's access token.
+# Claude-backed ops are live (see index.ts). Require a valid Supabase JWT so
+# anon callers can't burn quota against our ANTHROPIC_API_KEY. The client
+# helper in src/lib/generate.ts already attaches the user's access token.
 verify_jwt = true

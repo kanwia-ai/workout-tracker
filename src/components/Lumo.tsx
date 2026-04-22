@@ -95,29 +95,17 @@ function renderEyes(state: LumoState): ReactNode {
     return (
       <>
         <path
-          d="M32 56 Q40 60 48 56"
+          d="M32 56 Q40 52 48 56"
           stroke={eyeDark}
-          strokeWidth="2.8"
+          strokeWidth="2.2"
           fill="none"
           strokeLinecap="round"
         />
         <path
-          d="M52 56 Q60 60 68 56"
+          d="M52 56 Q60 52 68 56"
           stroke={eyeDark}
-          strokeWidth="2.8"
+          strokeWidth="2.2"
           fill="none"
-          strokeLinecap="round"
-        />
-        <path
-          d="M33 56 L31 58"
-          stroke={eyeDark}
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-        <path
-          d="M67 56 L69 58"
-          stroke={eyeDark}
-          strokeWidth="1.6"
           strokeLinecap="round"
         />
       </>
@@ -390,7 +378,7 @@ export function Lumo({
   const bowOutline = shade('#C9A0FF', -30)
 
   const cheeks: ReactNode =
-    state === 'sleepy' || state === 'sad' ? (
+    state === 'sad' ? (
       <>
         <ellipse cx="30" cy="64" rx="7" ry="4" fill={blush} opacity="0.4" />
         <ellipse cx="70" cy="64" rx="7" ry="4" fill={blush} opacity="0.4" />
@@ -508,26 +496,20 @@ export function Lumo({
 
   const zzz: ReactNode =
     state === 'sleepy' ? (
-      <g>
-        {[0, 1, 2].map((i) => (
-          <text
-            key={i}
-            x={68 + i * 5}
-            y={28 - i * 9}
-            fill="#C9A0FF"
-            fontSize={9 + i * 2}
-            fontWeight="800"
-            fontFamily="Fraunces, serif"
-            fontStyle="italic"
-            style={{
-              animation: 'lumo-zzz 1.8s ease-out infinite',
-              animationDelay: `${i * 0.55}s`,
-            }}
-          >
-            z
-          </text>
-        ))}
-      </g>
+      <text
+        x={80}
+        y={26}
+        fill="color-mix(in srgb, var(--accent-plum, #C9A0FF) 60%, transparent)"
+        fontSize={14}
+        fontWeight="700"
+        fontFamily="Fraunces, serif"
+        fontStyle="italic"
+        style={{
+          animation: 'lumo-zzz 2.4s ease-out infinite',
+        }}
+      >
+        z
+      </text>
     ) : null
 
   const sparkleData: Array<[number, number, number, string]> = [
