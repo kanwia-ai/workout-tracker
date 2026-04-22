@@ -53,6 +53,8 @@ interface FootprintIconProps {
   kind: 'filled' | 'outlined' | 'current'
   glow: boolean
   size?: number
+  /** When true, the SVG fills its container width (for flex layouts). */
+  fluid?: boolean
 }
 
 // A proper dumbbell with stacked plates: outer endcap, big plate, handle bar
@@ -60,7 +62,7 @@ interface FootprintIconProps {
 // at 22px — not an "H". Kyra reference: classic line-art barbell w/ two
 // plate tiers per side.
 //   outlined = pending, filled = completed, filled + glow = current.
-function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
+function FootprintIcon({ kind, glow, size = 24, fluid = false }: FootprintIconProps) {
   const isFilled = kind === 'filled' || kind === 'current'
   const fill = isFilled ? 'var(--brand, #FF7A45)' : 'transparent'
   const stroke = isFilled
@@ -75,15 +77,19 @@ function FootprintIcon({ kind, glow, size = 24 }: FootprintIconProps) {
         }
       : undefined
   const sw = kind === 'outlined' ? 1.4 : 1.1
+  // When fluid, stretch to container width; height auto-scales via viewBox
+  // preserveAspectRatio. When fixed, render at `size` px square.
+  const svgSizeProps = fluid
+    ? ({ width: '100%', height: 'auto' } as const)
+    : ({ width: size, height: size } as const)
   return (
     <svg
-      width={size}
-      height={size}
+      {...svgSizeProps}
       viewBox="0 0 28 20"
       preserveAspectRatio="xMidYMid meet"
       fill="none"
       aria-hidden="true"
-      style={glowStyle}
+      style={{ display: 'block', ...glowStyle }}
     >
       {/* Left endcap */}
       <rect
@@ -188,7 +194,8 @@ export function FootprintProgress({
       aria-valuemax={totalSteps}
       aria-valuenow={currentStep + 1}
       aria-label={label}
-      className="flex items-center gap-1.5 py-2"
+      className="flex items-center py-2 w-full"
+      style={{ gap: 4 }}
       data-testid="footprint-progress"
     >
       <style>{CSS}</style>
@@ -210,28 +217,37 @@ export function FootprintProgress({
           'data-testid': `footprint-${i}`,
           'data-kind': kind,
         }
+        // Flex each item so 14 steps fit a 360-390px viewport without
+        // overflowing. Icon scales to container via width:100%.
+        const itemStyle = {
+          flex: '1 1 0',
+          minWidth: 0,
+          maxWidth: 40,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }
         if (tappable) {
           return (
             <button
               key={i}
               type="button"
               onClick={() => onFootprintTap?.(i)}
-              className="p-0.5 bg-transparent border-0 cursor-pointer"
-              style={{ minWidth: 28, minHeight: 28 }}
+              className="bg-transparent border-0 cursor-pointer"
+              style={{ ...itemStyle, padding: 2 }}
               {...commonProps}
             >
-              <FootprintIcon kind={kind} glow={!reduceMotion} />
+              <FootprintIcon kind={kind} glow={!reduceMotion} fluid />
             </button>
           )
         }
         return (
           <div
             key={i}
-            className="p-0.5"
-            style={{ minWidth: 28, minHeight: 28 }}
+            style={{ ...itemStyle, padding: 2 }}
             {...commonProps}
           >
-            <FootprintIcon kind={kind} glow={!reduceMotion} />
+            <FootprintIcon kind={kind} glow={!reduceMotion} fluid />
           </div>
         )
       })}
