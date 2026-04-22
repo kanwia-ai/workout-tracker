@@ -74,7 +74,21 @@ function getAnthropic(): Anthropic | null {
   const key = Deno.env.get('ANTHROPIC_API_KEY')
   if (!key) return null
   if (cachedClient && cachedKey === key) return cachedClient
-  cachedClient = new Anthropic({ apiKey: key })
+  // Explicit `timeout` at the CLIENT level is what disables the SDK's
+  // "Streaming is required for operations that may take longer than 10 minutes"
+  // guardrail (see anthropic-sdk-typescript/src/resources/messages/messages.ts
+  // line ~88: `if (!body.stream && timeout == null)` — the check is skipped
+  // when the client was constructed with a timeout). A per-request timeout
+  // option does NOT bypass this — it's merged later, after the guardrail runs.
+  //
+  // 9 min is comfortably above the longest realistic generate_plan call (~150s
+  // for a 6-week plan with 200-exercise pool) and under the Supabase edge
+  // function idle timeout of 150s — which will end the request first anyway
+  // if Claude hangs. Why set it at all then? Because the SDK's guardrail
+  // estimates expected duration from max_tokens alone (~100-150 tok/s assumed)
+  // and rejects even 24k max_tokens as "might take >10 min", blocking us from
+  // raising the cap high enough to fit real 6-week plans without truncation.
+  cachedClient = new Anthropic({ apiKey: key, timeout: 9 * 60 * 1000 })
   cachedKey = key
   return cachedClient
 }
@@ -142,6 +156,16 @@ async function callClaudeAsTool(params: {
       : { type: 'text', text: systemPrompt },
   ]
 
+  // Non-streaming call. Note: the Anthropic SDK blocks non-streaming requests
+  // whose expected duration (max_tokens / typical_throughput) exceeds ~10 min.
+  // generate_plan uses max_tokens=24000 which scores under that threshold for
+  // Opus 4.7's expected throughput. If we ever need to raise above that, switch
+  // to `client.messages.stream().finalMessage()` — that bypasses the guardrail.
+  //
+  // We intentionally avoid streaming here because Supabase Edge Functions on
+  // the free tier have a 2s CPU-time limit per request; accumulating many SSE
+  // chunks in JS pushes CPU over budget and trips WORKER_RESOURCE_LIMIT even
+  // though the wall-clock time is within the 150s idle timeout.
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: maxTokens,
@@ -173,6 +197,26 @@ async function callClaudeAsTool(params: {
         'This usually means max_tokens was too low for the requested JSON.',
     )
   }
+
+  // CRITICAL: Claude may emit a PARTIAL tool_use block when it hits max_tokens
+  // mid-generation. The `input` object is truthy but contains only the fields
+  // that were serialized before cutoff — e.g. `{"id":"...","length_weeks":6}`
+  // with no `sessions` array. If we return that as success, the client's Zod
+  // validation rejects it with a cryptic "invalid shape" error — the original
+  // symptom that blocked Kyra for multiple sessions after the Gemini→Claude
+  // migration. Swapping providers didn't help because both backends truncate
+  // the same way when the output exceeds the per-request token budget.
+  //
+  // Fail loudly here so `friendlyAnthropicError` surfaces an actionable error
+  // instead of the edge function pretending the truncated response is a
+  // successful plan.
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error(
+      `Claude hit max_tokens=${maxTokens} mid-response and returned a partial ` +
+        `tool_use block (tool=${toolName}). Raise max_tokens or reduce input size.`,
+    )
+  }
+
   // `input` is already parsed JSON. Re-stringify so the downstream code path
   // (which passes `r.text` as a raw body) stays uniform with the Gemini flow.
   return JSON.stringify(toolUse.input)
@@ -321,7 +365,25 @@ Deno.serve(async (req) => {
             'Emit the generated training block in the required mesocycle structure.',
           inputSchema: mesocycleSchema,
           cacheSystem: true,
-          maxTokens: 16384,
+          // A realistic plan (6wk × 4-6 sessions/wk × 5-7 exercises/session
+          // with 280-char rationales, subtitles, and warmup_sets arrays per
+          // exercise) serializes to ~18-24k output tokens. The previous 16384
+          // cap was hitting max_tokens on realistic onboarding payloads and
+          // silently returning partial JSON (a truncated tool_use block with
+          // only `id` + `length_weeks` and no `sessions` array), which the
+          // client then rejected via Zod as "invalid shape" — the blocking bug
+          // Kyra hit repeatedly.
+          //
+          // 24000 gives us ~1.1x headroom over worst-case plans while staying
+          // under the Anthropic SDK's non-streaming expected-duration threshold
+          // (~32k tokens for Opus 4.7, above which the SDK forces streaming).
+          // Streaming is undesirable on Supabase's free tier because
+          // accumulating SSE chunks in JS exceeds the 2s CPU-time limit.
+          //
+          // If a plan still hits max_tokens at 24000, the new guard in
+          // callClaudeAsTool (throws on stop_reason=max_tokens) ensures the
+          // user sees an actionable error instead of silently-corrupt JSON.
+          maxTokens: 24000,
         })
 
         // Server-side id-pool check — the model occasionally hallucinates

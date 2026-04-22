@@ -154,6 +154,14 @@ function App() {
     if (/Claude is busy|rate[_ -]?limit|429|529/i.test(raw)) {
       return 'The plan generator is busy right now. Give it a moment and try again.'
     }
+    // Server-side truncation (Claude hit max_tokens mid-response). Distinct from
+    // "malformed" because the server detected it explicitly — retrying won't fix
+    // it, the cap needs to go up. Surface this loudly so a future recurrence
+    // (e.g. even longer plans) is obvious in the UI, not hidden behind a
+    // generic "malformed" message.
+    if (/max[_ -]?tokens|partial tool_use|truncated/i.test(raw)) {
+      return 'The plan was too large to fit in one response. This is a server-side limit — please report it.'
+    }
     if (/hallucinated|invalid shape|returned invalid/i.test(raw)) {
       return 'The plan came back malformed. A retry usually fixes this.'
     }
