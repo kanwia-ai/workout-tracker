@@ -1,16 +1,65 @@
 import { useState, useRef, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, TrendingUp, Heart, CalendarDays, Clock, Dumbbell } from 'lucide-react'
+import { Lumo } from './Lumo'
 
 // ─── Empty state ────────────────────────────────────────────────────────
 
-function EmptyChart({ icon, title, message }: { icon: React.ReactNode; title: string; message: string }) {
+function EmptyChart({
+  icon,
+  title,
+  message,
+}: {
+  icon: React.ReactNode
+  title: string
+  message: string
+}) {
   return (
-    <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 min-h-[320px] flex flex-col items-center justify-center text-center">
-      <div className="w-12 h-12 rounded-xl bg-surface-overlay flex items-center justify-center mb-3">
-        {icon}
+    <div
+      className="min-h-[320px] flex flex-col items-center justify-center text-center"
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 22,
+        padding: 20,
+      }}
+    >
+      <div className="mb-3">
+        <Lumo state="curious" size={72} />
       </div>
-      <h3 className="text-sm font-bold text-zinc-300 mb-1">{title}</h3>
-      <p className="text-xs text-zinc-600 max-w-[240px]">{message}</p>
+      <div
+        className="flex items-center gap-2 mb-2"
+        style={{
+          padding: '6px 10px',
+          borderRadius: 10,
+          background: 'var(--lumo-overlay)',
+          border: '1px solid var(--lumo-border)',
+        }}
+      >
+        {icon}
+        <span
+          style={{
+            fontSize: 11,
+            color: 'var(--lumo-text-sec)',
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {title}
+        </span>
+      </div>
+      <p
+        style={{
+          fontSize: 14,
+          color: 'var(--lumo-text)',
+          maxWidth: 260,
+          fontFamily: "'Fraunces', Georgia, serif",
+          fontStyle: 'italic',
+          lineHeight: 1.4,
+        }}
+      >
+        {message}
+      </p>
     </div>
   )
 }
@@ -20,9 +69,9 @@ function EmptyChart({ icon, title, message }: { icon: React.ReactNode; title: st
 function WeightProgressionChart() {
   return (
     <EmptyChart
-      icon={<TrendingUp size={20} className="text-brand" />}
+      icon={<TrendingUp size={14} style={{ color: 'var(--brand)' }} />}
       title="Weight Progression"
-      message="Log a few workouts with weights to see your strength gains over time."
+      message="no lifts logged yet — start something good and your strength curve shows up here."
     />
   )
 }
@@ -32,9 +81,9 @@ function WeightProgressionChart() {
 function CardioDurationChart() {
   return (
     <EmptyChart
-      icon={<Heart size={20} className="text-rose-400" />}
+      icon={<Heart size={14} style={{ color: 'var(--accent-blush)' }} />}
       title="Cardio Duration"
-      message="Log cardio sessions to track your progress toward your goals."
+      message="no sessions yet — log some cardio and we'll track the climb."
     />
   )
 }
@@ -44,9 +93,9 @@ function CardioDurationChart() {
 function ConsistencyCalendar() {
   return (
     <EmptyChart
-      icon={<CalendarDays size={20} className="text-green-400" />}
+      icon={<CalendarDays size={14} style={{ color: 'var(--accent-mint)' }} />}
       title="Consistency"
-      message="Complete a few workouts and your gym days will light up here."
+      message="no sessions yet — show up a few times and your gym days light up here."
     />
   )
 }
@@ -56,9 +105,9 @@ function ConsistencyCalendar() {
 function SessionDurationChart() {
   return (
     <EmptyChart
-      icon={<Clock size={20} className="text-purple-400" />}
+      icon={<Clock size={14} style={{ color: 'var(--accent-plum)' }} />}
       title="Session Duration"
-      message="Start and end workouts with the session timer to track how long you train."
+      message="no sessions yet — start the timer and we'll track how long you train."
     />
   )
 }
@@ -68,9 +117,9 @@ function SessionDurationChart() {
 function VolumeChart() {
   return (
     <EmptyChart
-      icon={<Dumbbell size={20} className="text-blue-400" />}
+      icon={<Dumbbell size={14} style={{ color: 'var(--accent-sun)' }} />}
       title="Weekly Volume"
-      message="Complete workouts to see which muscle groups you're hitting most."
+      message="no sessions yet — complete a few and we'll show which muscles you're hitting most."
     />
   )
 }
@@ -78,11 +127,11 @@ function VolumeChart() {
 // ─── Chart carousel ────────────────────────────────────────────────────
 
 const CHARTS = [
-  { id: 'weight', label: 'Weight', component: WeightProgressionChart },
-  { id: 'cardio', label: 'Cardio', component: CardioDurationChart },
-  { id: 'consistency', label: 'Consistency', component: ConsistencyCalendar },
-  { id: 'duration', label: 'Duration', component: SessionDurationChart },
-  { id: 'volume', label: 'Volume', component: VolumeChart },
+  { id: 'weight', label: 'weight', component: WeightProgressionChart },
+  { id: 'cardio', label: 'cardio', component: CardioDurationChart },
+  { id: 'consistency', label: 'consistency', component: ConsistencyCalendar },
+  { id: 'duration', label: 'duration', component: SessionDurationChart },
+  { id: 'volume', label: 'volume', component: VolumeChart },
 ]
 
 export function ProgressCharts() {
@@ -112,20 +161,29 @@ export function ProgressCharts() {
     <div>
       {/* Tab pills */}
       <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 scrollbar-none">
-        {CHARTS.map((chart, i) => (
-          <button
-            key={chart.id}
-            onClick={() => setActiveIdx(i)}
-            className="shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-colors active:scale-95"
-            style={{
-              background: i === activeIdx ? '#f97316' : '#1a1a1e',
-              color: i === activeIdx ? '#fff' : '#666',
-              border: i === activeIdx ? 'none' : '1px solid #2a2a2e',
-            }}
-          >
-            {chart.label}
-          </button>
-        ))}
+        {CHARTS.map((chart, i) => {
+          const isActive = i === activeIdx
+          return (
+            <button
+              key={chart.id}
+              onClick={() => setActiveIdx(i)}
+              aria-pressed={isActive}
+              className="shrink-0 active:scale-95 transition-colors"
+              style={{
+                padding: '7px 12px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: '0.02em',
+                background: isActive ? 'var(--brand)' : 'var(--lumo-raised)',
+                color: isActive ? '#fff' : 'var(--lumo-text-sec)',
+                border: isActive ? 'none' : '1px solid var(--lumo-border)',
+              }}
+            >
+              {chart.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Chart area with swipe */}
@@ -141,31 +199,51 @@ export function ProgressCharts() {
         <button
           onClick={() => setActiveIdx(prev => Math.max(0, prev - 1))}
           disabled={activeIdx === 0}
-          className="p-2 rounded-lg active:scale-90 transition-all disabled:opacity-20"
+          aria-label="Previous chart"
+          className="p-2 rounded-xl active:scale-90 transition-all disabled:opacity-20"
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            color: 'var(--lumo-text-sec)',
+          }}
         >
-          <ChevronLeft size={20} className="text-zinc-400" />
+          <ChevronLeft size={18} />
         </button>
 
         <div className="flex gap-1.5">
-          {CHARTS.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveIdx(i)}
-              className="w-2 h-2 rounded-full transition-all active:scale-90"
-              style={{
-                background: i === activeIdx ? '#f97316' : '#3a3a3e',
-                transform: i === activeIdx ? 'scale(1.3)' : 'scale(1)',
-              }}
-            />
-          ))}
+          {CHARTS.map((_, i) => {
+            const isActive = i === activeIdx
+            return (
+              <button
+                key={i}
+                onClick={() => setActiveIdx(i)}
+                aria-label={`Go to chart ${i + 1}`}
+                className="rounded-full transition-all active:scale-90"
+                style={{
+                  width: 8,
+                  height: 8,
+                  background: isActive ? 'var(--brand)' : 'var(--lumo-border-strong)',
+                  transform: isActive ? 'scale(1.3)' : 'scale(1)',
+                  border: 'none',
+                  padding: 0,
+                }}
+              />
+            )
+          })}
         </div>
 
         <button
           onClick={() => setActiveIdx(prev => Math.min(CHARTS.length - 1, prev + 1))}
           disabled={activeIdx === CHARTS.length - 1}
-          className="p-2 rounded-lg active:scale-90 transition-all disabled:opacity-20"
+          aria-label="Next chart"
+          className="p-2 rounded-xl active:scale-90 transition-all disabled:opacity-20"
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            color: 'var(--lumo-text-sec)',
+          }}
         >
-          <ChevronRight size={20} className="text-zinc-400" />
+          <ChevronRight size={18} />
         </button>
       </div>
     </div>

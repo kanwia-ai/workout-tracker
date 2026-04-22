@@ -3,6 +3,7 @@ import {
   ArrowLeft, Link2, Camera, Loader2, X, Plus,
   ChevronDown, Sparkles, AlertCircle, Check, ImagePlus, Trash2,
 } from 'lucide-react'
+import { Lumo } from './Lumo'
 import {
   extractFromUrl,
   extractFromScreenshots,
@@ -18,6 +19,28 @@ type FlowStep = 'input' | 'loading' | 'review' | 'done'
 interface ExerciseCaptureProps {
   onBack: () => void
   onSaveToLibrary: (exercises: ExtractedExercise[]) => void
+}
+
+// ─── Shared styles ───────────────────────────────────────────────────────────
+
+const KICKER_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: 'var(--lumo-text-ter)',
+  marginBottom: 6,
+}
+
+const INPUT_STYLE: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: 14,
+  background: 'var(--lumo-overlay)',
+  border: '1px solid var(--lumo-border)',
+  color: 'var(--lumo-text)',
+  fontSize: 14,
+  outline: 'none',
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -180,40 +203,104 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
+    <div
+      style={{
+        minHeight: '100dvh',
+        background: 'var(--lumo-bg)',
+        color: 'var(--lumo-text)',
+      }}
+      className="font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
+    >
       <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
 
         {/* Header */}
         <div className="flex items-center gap-3 pt-3 pb-4">
           <button
             onClick={step === 'done' ? handleReset : mode === 'choose' ? onBack : () => { setMode('choose'); setStep('input'); setResult(null) }}
-            className="p-2 -ml-2 rounded-lg text-zinc-400 active:scale-95 transition-transform"
+            aria-label="Back"
+            className="p-2 -ml-2 rounded-xl active:scale-95 transition-transform"
+            style={{ color: 'var(--lumo-text-sec)' }}
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-lg font-extrabold tracking-tight">
-              {step === 'done' ? 'Saved!' : step === 'review' ? 'Review Exercises' : 'Add Exercise'}
+            <h1
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: '-0.01em',
+                color: 'var(--lumo-text)',
+              }}
+            >
+              {step === 'done' ? 'saved' : step === 'review' ? 'Review Exercises' : 'Add Exercise'}
             </h1>
-            <p className="text-xs text-zinc-500">
-              {step === 'done' ? savedMessage : step === 'review' ? 'Edit fields, then save' : 'From social media or screenshots'}
+            <p style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 2 }}>
+              {step === 'done' ? savedMessage : step === 'review' ? 'edit fields, then save' : 'from social media or screenshots'}
             </p>
           </div>
         </div>
+
+        {/* Lumo greeting on the input screens — mirrors the onboarding pattern. */}
+        {step === 'input' && (
+          <div className="flex items-end gap-2.5 mb-3">
+            <Lumo state="curious" size={64} />
+            <div
+              style={{
+                position: 'relative',
+                flex: 1,
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                padding: '12px 14px',
+                borderRadius: 18,
+                borderBottomLeftRadius: 4,
+                fontSize: 14,
+                lineHeight: 1.4,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                marginBottom: 2,
+              }}
+            >
+              {mode === 'url'
+                ? "paste a link — I'll read what's in the video."
+                : mode === 'screenshot'
+                  ? "point your camera at the board. I'll read it."
+                  : "show me what you want to try. I'll do the rest."}
+            </div>
+          </div>
+        )}
 
         {/* ─── Mode Chooser ─────────────────────────────────────────────── */}
         {mode === 'choose' && step === 'input' && (
           <div className="space-y-3 mt-2">
             <button
               onClick={() => setMode('url')}
-              className="w-full flex items-center gap-4 bg-surface-raised border border-border-subtle rounded-2xl px-4 py-5 active:scale-[0.98] transition-transform"
+              className="w-full flex items-center gap-4 active:scale-[0.98] transition-transform"
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: '18px 16px',
+                cursor: 'pointer',
+              }}
             >
-              <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
-                <Link2 size={22} className="text-brand" />
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  background: 'color-mix(in srgb, var(--brand) 14%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+                }}
+              >
+                <Link2 size={22} style={{ color: 'var(--brand)' }} />
               </div>
               <div className="text-left">
-                <div className="font-bold text-sm">From YouTube URL</div>
-                <div className="text-xs text-zinc-500 mt-0.5">
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}>
+                  From YouTube URL
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 2 }}>
                   Paste a YouTube link — AI extracts the exercises
                 </div>
               </div>
@@ -221,34 +308,67 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
 
             <button
               onClick={() => setMode('screenshot')}
-              className="w-full flex items-center gap-4 bg-surface-raised border border-border-subtle rounded-2xl px-4 py-5 active:scale-[0.98] transition-transform"
+              className="w-full flex items-center gap-4 active:scale-[0.98] transition-transform"
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: '18px 16px',
+                cursor: 'pointer',
+              }}
             >
-              <div className="w-12 h-12 rounded-xl bg-purple-soft border border-purple-900/30 flex items-center justify-center shrink-0">
-                <Camera size={22} className="text-purple-400" />
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  background: 'color-mix(in srgb, var(--accent-plum) 14%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent-plum) 30%, transparent)',
+                }}
+              >
+                <Camera size={22} style={{ color: 'var(--accent-plum)' }} />
               </div>
               <div className="text-left">
-                <div className="font-bold text-sm">From Screenshots</div>
-                <div className="text-xs text-zinc-500 mt-0.5">
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}>
+                  From Screenshots
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 2 }}>
                   Upload 1-3 screenshots from TikTok, IG, or any source
                 </div>
               </div>
             </button>
 
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3 mt-4">
+            <div
+              className="mt-4"
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: '12px 16px',
+              }}
+            >
               <div className="flex items-start gap-2.5">
-                <Sparkles size={16} className="text-brand mt-0.5 shrink-0" />
-                <div className="text-xs text-zinc-400">
-                  <strong className="text-zinc-300">How it works:</strong> AI analyzes the video or images to identify exercises,
+                <Sparkles size={16} style={{ color: 'var(--brand)', marginTop: 2, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: 'var(--lumo-text-sec)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--lumo-text)' }}>How it works:</strong> AI analyzes the video or images to identify exercises,
                   muscle groups, equipment, sets/reps, and form cues. You review and edit before saving.
                 </div>
               </div>
             </div>
 
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3">
+            <div
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: '12px 16px',
+              }}
+            >
               <div className="flex items-start gap-2.5">
-                <AlertCircle size={16} className="text-zinc-500 mt-0.5 shrink-0" />
-                <div className="text-xs text-zinc-500">
-                  <strong className="text-zinc-400">TikTok & Instagram:</strong> These platforms block direct video access.
+                <AlertCircle size={16} style={{ color: 'var(--lumo-text-ter)', marginTop: 2, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: 'var(--lumo-text-ter)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--lumo-text-sec)' }}>TikTok & Instagram:</strong> These platforms block direct video access.
                   Use the screenshot option instead — just screenshot the exercises from the video.
                 </div>
               </div>
@@ -259,8 +379,15 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
         {/* ─── URL Input ────────────────────────────────────────────────── */}
         {mode === 'url' && step === 'input' && (
           <div className="space-y-3 mt-2">
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4">
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">
+            <div
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: 16,
+              }}
+            >
+              <label className="block" style={{ ...KICKER_STYLE, display: 'block' }}>
                 YouTube URL
               </label>
               <input
@@ -269,26 +396,47 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                 onChange={e => setUrl(e.target.value)}
                 placeholder="https://youtube.com/watch?v=..."
                 autoFocus
-                className="w-full px-4 py-3 rounded-xl bg-surface-overlay border border-border-medium text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand transition-colors"
+                style={INPUT_STYLE}
               />
               {result?.error && result.error !== 'SCREENSHOT_NEEDED' && (
-                <div className="flex items-start gap-2 mt-3 text-xs text-danger">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <div
+                  className="flex items-start gap-2 mt-3"
+                  style={{ fontSize: 12, color: '#ef4444' }}
+                >
+                  <AlertCircle size={14} style={{ marginTop: 2, flexShrink: 0 }} />
                   <span>{result.error}</span>
                 </div>
               )}
               <button
                 onClick={handleUrlSubmit}
                 disabled={!url.trim()}
-                className="w-full mt-4 py-3 rounded-xl font-bold text-sm bg-brand text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                className="w-full active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2 mt-4"
+                style={{
+                  padding: '14px',
+                  borderRadius: 14,
+                  fontSize: 14,
+                  fontWeight: 800,
+                  background: 'var(--brand)',
+                  color: 'var(--lumo-bg)',
+                  border: 'none',
+                  cursor: url.trim() ? 'pointer' : 'not-allowed',
+                }}
               >
                 <Sparkles size={16} />
                 Extract Exercises
               </button>
             </div>
 
-            <div className="text-xs text-zinc-500 text-center px-4">
-              Works with YouTube videos and Shorts. For TikTok or Instagram, use the screenshot option.
+            <div
+              className="text-center px-4"
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              works with YouTube videos and shorts. for TikTok or Instagram, use the screenshot option.
             </div>
           </div>
         )}
@@ -298,36 +446,77 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
           <div className="space-y-3 mt-2">
             {/* Info banner if redirected from URL */}
             {result?.error && result.error !== 'SCREENSHOT_NEEDED' && (
-              <div className="flex items-start gap-2.5 bg-brand-soft border border-brand/20 rounded-2xl px-4 py-3">
-                <AlertCircle size={16} className="text-brand mt-0.5 shrink-0" />
-                <div className="text-xs text-zinc-300">{result.error}</div>
+              <div
+                className="flex items-start gap-2.5"
+                style={{
+                  background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--brand) 28%, transparent)',
+                  borderRadius: 22,
+                  padding: '12px 16px',
+                }}
+              >
+                <AlertCircle size={16} style={{ color: 'var(--brand)', marginTop: 2, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: 'var(--lumo-text)' }}>{result.error}</div>
               </div>
             )}
             {result?.error === 'SCREENSHOT_NEEDED' && (
-              <div className="flex items-start gap-2.5 bg-brand-soft border border-brand/20 rounded-2xl px-4 py-3">
-                <AlertCircle size={16} className="text-brand mt-0.5 shrink-0" />
-                <div className="text-xs text-zinc-300">
+              <div
+                className="flex items-start gap-2.5"
+                style={{
+                  background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--brand) 28%, transparent)',
+                  borderRadius: 22,
+                  padding: '12px 16px',
+                }}
+              >
+                <AlertCircle size={16} style={{ color: 'var(--brand)', marginTop: 2, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: 'var(--lumo-text)' }}>
                   This platform requires screenshots. Take 1-3 screenshots of the exercise from the video, then upload them below.
                 </div>
               </div>
             )}
 
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4">
-              <label className="block text-sm font-semibold text-zinc-300 mb-3">
-                Upload Screenshots ({images.length}/3)
+            <div
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: 16,
+              }}
+            >
+              <label className="block" style={{ ...KICKER_STYLE, display: 'block', marginBottom: 10 }}>
+                Upload screenshots ({images.length}/3)
               </label>
 
               {/* Image previews */}
               {images.length > 0 && (
                 <div className="flex gap-2 mb-3">
                   {images.map((img, i) => (
-                    <div key={i} className="relative w-24 h-24 rounded-xl overflow-hidden border border-border-medium">
+                    <div
+                      key={i}
+                      className="relative overflow-hidden"
+                      style={{
+                        width: 96,
+                        height: 96,
+                        borderRadius: 14,
+                        border: '1px solid var(--lumo-border-strong)',
+                      }}
+                    >
                       <img src={img.preview} alt={`Screenshot ${i + 1}`} className="w-full h-full object-cover" />
                       <button
                         onClick={() => removeImage(i)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 flex items-center justify-center active:scale-90 transition-transform"
+                        aria-label="Remove screenshot"
+                        className="absolute top-1 right-1 flex items-center justify-center active:scale-90 transition-transform"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.7)',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
                       >
-                        <X size={12} className="text-white" />
+                        <X size={12} style={{ color: '#fff' }} />
                       </button>
                     </div>
                   ))}
@@ -338,10 +527,18 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
               {images.length < 3 && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-8 rounded-xl border-2 border-dashed border-border-medium text-zinc-500 flex flex-col items-center gap-2 active:scale-[0.98] transition-transform hover:border-zinc-500"
+                  className="w-full flex flex-col items-center gap-2 active:scale-[0.98] transition-transform"
+                  style={{
+                    padding: '28px 0',
+                    borderRadius: 14,
+                    border: '2px dashed var(--lumo-border-strong)',
+                    background: 'transparent',
+                    color: 'var(--lumo-text-ter)',
+                    cursor: 'pointer',
+                  }}
                 >
                   <ImagePlus size={24} />
-                  <span className="text-xs font-semibold">Tap to add screenshot</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>Tap to add screenshot</span>
                 </button>
               )}
 
@@ -357,15 +554,33 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
               <button
                 onClick={handleScreenshotSubmit}
                 disabled={images.length === 0}
-                className="w-full mt-4 py-3 rounded-xl font-bold text-sm bg-brand text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                className="w-full mt-4 active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                style={{
+                  padding: '14px',
+                  borderRadius: 14,
+                  fontSize: 14,
+                  fontWeight: 800,
+                  background: 'var(--brand)',
+                  color: 'var(--lumo-bg)',
+                  border: 'none',
+                  cursor: images.length === 0 ? 'not-allowed' : 'pointer',
+                }}
               >
                 <Sparkles size={16} />
                 Extract Exercises
               </button>
             </div>
 
-            <div className="text-xs text-zinc-500 text-center px-4">
-              Tip: Screenshot the exercise being performed, plus any text showing sets/reps.
+            <div
+              className="text-center px-4"
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              tip: screenshot the exercise being performed, plus any text showing sets/reps.
             </div>
           </div>
         )}
@@ -373,21 +588,64 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
         {/* ─── Loading ──────────────────────────────────────────────────── */}
         {step === 'loading' && (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-16 h-16 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center mb-4">
-              <Loader2 size={28} className="text-brand animate-spin" />
+            <div
+              className="flex items-center justify-center mb-4"
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                background: 'color-mix(in srgb, var(--brand) 14%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+              }}
+            >
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--brand)' }} />
             </div>
-            <div className="text-sm font-bold text-zinc-300">Analyzing with AI...</div>
-            <div className="text-xs text-zinc-500 mt-1">This may take 10-30 seconds</div>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              analyzing with AI...
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 4 }}>
+              this may take 10–30 seconds
+            </div>
           </div>
         )}
 
         {/* ─── Review & Edit ────────────────────────────────────────────── */}
         {step === 'review' && (
           <div className="space-y-3 mt-1">
+            {/* Lumo celebrating the extraction */}
+            {editingExercises.length > 0 && (
+              <div className="flex items-center gap-3 mb-1">
+                <Lumo state="celebrate" size={64} />
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: 'var(--lumo-text)',
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontStyle: 'italic',
+                    lineHeight: 1.35,
+                    flex: 1,
+                  }}
+                >
+                  found {editingExercises.length} exercise{editingExercises.length > 1 ? 's' : ''} — pick the keepers.
+                </div>
+              </div>
+            )}
+
             {/* Source info */}
             {result?.source_url && (
-              <div className="text-xs text-zinc-500 truncate px-1">
-                Source: {result.source_url}
+              <div
+                className="truncate px-1"
+                style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}
+              >
+                source: {result.source_url}
               </div>
             )}
 
@@ -399,37 +657,75 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
               return (
                 <div
                   key={idx}
-                  className="bg-surface-raised border rounded-2xl overflow-hidden transition-colors"
+                  className="overflow-hidden transition-colors"
                   style={{
-                    borderColor: isSelected ? '#f97316' : '#2a2a2e',
+                    background: 'var(--lumo-raised)',
+                    border: isSelected
+                      ? '1px solid var(--brand)'
+                      : '1px solid var(--lumo-border)',
+                    borderRadius: 22,
+                    boxShadow: isSelected
+                      ? '0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent)'
+                      : 'none',
                   }}
                 >
                   {/* Card header */}
                   <div className="flex items-center gap-3 px-4 py-3">
                     <button
                       onClick={() => toggleExerciseSelected(idx)}
-                      className="w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-colors active:scale-90"
+                      aria-label={isSelected ? 'Deselect' : 'Select'}
+                      className="flex items-center justify-center shrink-0 transition-colors active:scale-90"
                       style={{
-                        borderColor: isSelected ? '#f97316' : '#3a3a3e',
-                        background: isSelected ? '#f97316' : 'transparent',
+                        width: 24,
+                        height: 24,
+                        borderRadius: 8,
+                        border: isSelected
+                          ? '2px solid var(--brand)'
+                          : '2px solid var(--lumo-border-strong)',
+                        background: isSelected ? 'var(--brand)' : 'transparent',
+                        cursor: 'pointer',
                       }}
                     >
-                      {isSelected && <Check size={14} className="text-white" />}
+                      {isSelected && <Check size={14} style={{ color: 'var(--lumo-bg)' }} />}
                     </button>
 
                     <button
                       onClick={() => setEditingIdx(isExpanded ? null : idx)}
                       className="flex-1 text-left"
+                      style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
                     >
-                      <div className="font-bold text-sm">{exercise.name}</div>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}>
+                        {exercise.name}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {exercise.muscle_groups.map(mg => (
-                          <span key={mg} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/10 text-brand">
+                          <span
+                            key={mg}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 8,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              background: 'color-mix(in srgb, var(--brand) 14%, transparent)',
+                              color: 'var(--brand)',
+                              border: '1px solid color-mix(in srgb, var(--brand) 28%, transparent)',
+                            }}
+                          >
                             {mg}
                           </span>
                         ))}
                         {exercise.sets && exercise.reps && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-soft text-purple-400">
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 8,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              background: 'color-mix(in srgb, var(--accent-plum) 14%, transparent)',
+                              color: 'var(--accent-plum)',
+                              border: '1px solid color-mix(in srgb, var(--accent-plum) 28%, transparent)',
+                            }}
+                          >
                             {exercise.sets}x{exercise.reps}
                           </span>
                         )}
@@ -439,29 +735,53 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => removeExercise(idx)}
-                        className="p-1.5 rounded-lg text-zinc-600 active:scale-90 transition-transform"
+                        aria-label="Remove"
+                        className="active:scale-90 transition-transform"
+                        style={{
+                          padding: 6,
+                          borderRadius: 10,
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--lumo-text-ter)',
+                          cursor: 'pointer',
+                        }}
                       >
                         <Trash2 size={14} />
                       </button>
                       <button
                         onClick={() => setEditingIdx(isExpanded ? null : idx)}
-                        className="p-1.5 rounded-lg text-zinc-400 active:scale-90 transition-transform"
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                        className="active:scale-90 transition-transform"
+                        style={{
+                          padding: 6,
+                          borderRadius: 10,
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--lumo-text-sec)',
+                          cursor: 'pointer',
+                        }}
                       >
-                        <ChevronDown size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        <ChevronDown
+                          size={16}
+                          className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        />
                       </button>
                     </div>
                   </div>
 
                   {/* Expanded edit form */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 space-y-3 border-t border-border-subtle pt-3">
+                    <div
+                      className="px-4 pb-4 pt-3 space-y-3"
+                      style={{ borderTop: '1px solid var(--lumo-border)' }}
+                    >
                       {/* Name */}
                       <Field label="Exercise Name">
                         <input
                           type="text"
                           value={exercise.name}
                           onChange={e => updateExercise(idx, 'name', e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                          style={INPUT_STYLE}
                         />
                       </Field>
 
@@ -471,7 +791,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                           type="text"
                           value={exercise.muscle_groups.join(', ')}
                           onChange={e => updateExercise(idx, 'muscle_groups', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                          className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                          style={INPUT_STYLE}
                         />
                       </Field>
 
@@ -481,7 +801,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                           type="text"
                           value={exercise.equipment.join(', ')}
                           onChange={e => updateExercise(idx, 'equipment', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                          className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                          style={INPUT_STYLE}
                         />
                       </Field>
 
@@ -493,7 +813,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                             value={exercise.sets ?? ''}
                             onChange={e => updateExercise(idx, 'sets', e.target.value ? Number(e.target.value) : undefined)}
                             placeholder="3"
-                            className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                            style={INPUT_STYLE}
                           />
                         </Field>
                         <Field label="Reps" className="flex-1">
@@ -502,7 +822,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                             value={exercise.reps ?? ''}
                             onChange={e => updateExercise(idx, 'reps', e.target.value || undefined)}
                             placeholder="12"
-                            className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                            style={INPUT_STYLE}
                           />
                         </Field>
                       </div>
@@ -519,14 +839,23 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                                 newCues[ci] = e.target.value
                                 updateExercise(idx, 'form_cues', newCues)
                               }}
-                              className="flex-1 px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                              style={{ ...INPUT_STYLE, flex: 1 }}
                             />
                             <button
                               onClick={() => {
                                 const newCues = exercise.form_cues.filter((_, i) => i !== ci)
                                 updateExercise(idx, 'form_cues', newCues)
                               }}
-                              className="p-2 rounded-lg text-zinc-600 active:scale-90 transition-transform"
+                              aria-label="Remove cue"
+                              className="active:scale-90 transition-transform"
+                              style={{
+                                padding: 8,
+                                borderRadius: 10,
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--lumo-text-ter)',
+                                cursor: 'pointer',
+                              }}
                             >
                               <X size={14} />
                             </button>
@@ -534,7 +863,17 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                         ))}
                         <button
                           onClick={() => updateExercise(idx, 'form_cues', [...exercise.form_cues, ''])}
-                          className="flex items-center gap-1 text-xs text-brand font-semibold mt-1 active:scale-95 transition-transform"
+                          className="flex items-center gap-1 active:scale-95 transition-transform"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: 'var(--brand)',
+                            marginTop: 4,
+                            background: 'transparent',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                          }}
                         >
                           <Plus size={12} /> Add cue
                         </button>
@@ -547,7 +886,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                           value={exercise.notes ?? ''}
                           onChange={e => updateExercise(idx, 'notes', e.target.value || undefined)}
                           placeholder="Optional notes..."
-                          className="w-full px-3 py-2 rounded-lg bg-surface-overlay border border-border-medium text-white text-sm outline-none focus:border-brand transition-colors"
+                          style={INPUT_STYLE}
                         />
                       </Field>
                     </div>
@@ -558,24 +897,55 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
 
             {/* No exercises found */}
             {editingExercises.length === 0 && (
-              <div className="text-center py-12 bg-surface-raised rounded-2xl border border-border-subtle">
-                <AlertCircle size={32} className="text-zinc-600 mx-auto mb-3" />
-                <div className="text-sm font-bold text-zinc-400">No exercises found</div>
-                <div className="text-xs text-zinc-500 mt-1">Try a different URL or clearer screenshots</div>
+              <div
+                className="text-center"
+                style={{
+                  background: 'var(--lumo-raised)',
+                  border: '1px solid var(--lumo-border)',
+                  borderRadius: 22,
+                  padding: '32px 20px',
+                }}
+              >
+                <div className="flex justify-center mb-2">
+                  <Lumo state="sad" size={72} />
+                </div>
+                <div
+                  style={{
+                    fontSize: 16,
+                    color: 'var(--lumo-text)',
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontStyle: 'italic',
+                  }}
+                >
+                  no exercises found — try a different URL or clearer screenshots.
+                </div>
               </div>
             )}
 
             {/* Save actions */}
             {editingExercises.length > 0 && (
               <div className="space-y-2 pt-2">
-                <div className="text-xs text-zinc-500 text-center">
+                <div
+                  className="text-center"
+                  style={{ fontSize: 12, color: 'var(--lumo-text-ter)' }}
+                >
                   {selectedExercises.size} of {editingExercises.length} selected
                 </div>
 
                 <button
                   onClick={handleSaveToLibrary}
                   disabled={selectedExercises.size === 0}
-                  className="w-full py-3.5 rounded-2xl font-bold text-sm bg-brand text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                  className="w-full active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                  style={{
+                    padding: 14,
+                    borderRadius: 22,
+                    fontSize: 15,
+                    fontWeight: 800,
+                    background: 'var(--brand)',
+                    color: 'var(--lumo-bg)',
+                    border: 'none',
+                    cursor: selectedExercises.size === 0 ? 'not-allowed' : 'pointer',
+                  }}
                 >
                   <Plus size={16} />
                   Add to Library
@@ -587,23 +957,54 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
 
         {/* ─── Done ─────────────────────────────────────────────────────── */}
         {step === 'done' && (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-full bg-success-soft border border-success/20 flex items-center justify-center mx-auto mb-4">
-              <Check size={28} className="text-success" />
+          <div className="text-center py-12">
+            <div className="flex justify-center mb-3">
+              <Lumo state="celebrate" size={96} />
             </div>
-            <div className="text-lg font-bold text-success mb-1">Saved!</div>
-            <div className="text-sm text-zinc-400">{savedMessage}</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                marginBottom: 6,
+              }}
+            >
+              saved!
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--lumo-text-sec)' }}>
+              {savedMessage}
+            </div>
             <button
               onClick={handleReset}
-              className="mt-6 px-6 py-3 rounded-xl font-bold text-sm bg-brand text-white active:scale-[0.98] transition-transform"
+              className="mt-6 active:scale-[0.98] transition-transform"
+              style={{
+                padding: '12px 22px',
+                borderRadius: 14,
+                fontSize: 14,
+                fontWeight: 800,
+                background: 'var(--brand)',
+                color: 'var(--lumo-bg)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
             >
               Add More Exercises
             </button>
             <button
               onClick={onBack}
-              className="block mx-auto mt-3 text-sm text-zinc-500 font-semibold active:scale-95 transition-transform"
+              className="block mx-auto mt-3 active:scale-95 transition-transform"
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--lumo-text-ter)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+              }}
             >
-              Back to Workouts
+              Back to workouts
             </button>
           </div>
         )}
@@ -618,7 +1019,10 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
 function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <label className="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-1">
+      <label
+        className="block"
+        style={{ ...KICKER_STYLE, display: 'block' }}
+      >
         {label}
       </label>
       {children}

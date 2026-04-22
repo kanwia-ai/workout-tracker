@@ -36,6 +36,7 @@ export function SwapSheet({
 }: SwapSheetProps) {
   const [state, setState] = useState<SheetState>('reason-picker')
   const [lastReason, setLastReason] = useState<SwapReason | null>(null)
+  const [activeReason, setActiveReason] = useState<SwapReason | null>(null)
   const [proposal, setProposal] = useState<{ replacement: PlannedExercise; reason: string } | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
 
@@ -47,6 +48,7 @@ export function SwapSheet({
     if (open) {
       setState('reason-picker')
       setLastReason(null)
+      setActiveReason(null)
       setProposal(null)
       setErrorMsg('')
     }
@@ -54,6 +56,7 @@ export function SwapSheet({
 
   const fireRequest = async (reason: SwapReason) => {
     setLastReason(reason)
+    setActiveReason(reason)
     setState('loading')
     setErrorMsg('')
     try {
@@ -74,40 +77,117 @@ export function SwapSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{
+        background: 'rgba(0, 0, 0, 0.55)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+      }}
       // Intentionally no tap-outside-to-dismiss — MVP requires explicit Cancel to
       // avoid accidentally losing a proposed swap mid-review.
       aria-modal="true"
       role="dialog"
     >
       <div
-        className="w-full max-w-lg bg-surface-raised border-t border-x border-border-subtle rounded-t-3xl p-5 pb-8"
-        style={{ animation: 'swap-sheet-slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+        className="w-full max-w-lg"
+        style={{
+          background: 'var(--lumo-raised)',
+          borderTop: '1px solid var(--lumo-border)',
+          borderLeft: '1px solid var(--lumo-border)',
+          borderRight: '1px solid var(--lumo-border)',
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          padding: '20px 20px 32px',
+          animation: 'swap-sheet-slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
       >
         <style>{`@keyframes swap-sheet-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
         {/* Grip handle */}
-        <div className="mx-auto w-10 h-1 rounded-full bg-zinc-700 mb-4" aria-hidden="true" />
+        <div
+          className="mx-auto mb-4"
+          aria-hidden="true"
+          style={{
+            width: 40,
+            height: 4,
+            borderRadius: 999,
+            background: 'var(--lumo-border-strong)',
+          }}
+        />
 
         {state === 'reason-picker' && (
           <div>
-            <h2 className="text-lg font-extrabold mb-1">Swap this exercise?</h2>
-            <p className="text-sm text-zinc-500 mb-4">
-              Replacing <span className="text-zinc-300 font-semibold">{currentExercise.name}</span>. Why?
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                letterSpacing: '-0.01em',
+                marginBottom: 4,
+              }}
+            >
+              swap this exercise?
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: 'var(--lumo-text-sec)',
+                marginBottom: 16,
+              }}
+            >
+              Replacing{' '}
+              <span style={{ color: 'var(--lumo-text)', fontWeight: 600 }}>
+                {currentExercise.name}
+              </span>
+              . Why?
             </p>
-            <div className="grid gap-2">
-              {REASON_ORDER.map(r => (
-                <button
-                  key={r}
-                  onClick={() => fireRequest(r)}
-                  className="p-3 rounded-2xl text-left border border-border-subtle bg-surface hover:border-brand/60 active:scale-[0.99] transition-all font-semibold text-sm"
-                >
-                  {SWAP_REASON_LABELS[r]}
-                </button>
-              ))}
+            {/* Horizontal scroll reason chips */}
+            <div
+              className="flex gap-2 overflow-x-auto pb-2"
+              style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
+            >
+              <style>{`.swap-reasons::-webkit-scrollbar { display: none; }`}</style>
+              <div className="swap-reasons flex gap-2 flex-wrap">
+                {REASON_ORDER.map(r => {
+                  const isActive = activeReason === r
+                  return (
+                    <button
+                      key={r}
+                      onClick={() => fireRequest(r)}
+                      className="active:scale-[0.97] transition-all shrink-0"
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 999,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        background: isActive ? 'var(--brand)' : 'var(--lumo-overlay)',
+                        color: isActive ? '#fff' : 'var(--lumo-text)',
+                        border: isActive
+                          ? '1px solid var(--brand)'
+                          : '1px solid var(--lumo-border)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {SWAP_REASON_LABELS[r]}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
             <button
               onClick={onDismiss}
-              className="w-full mt-4 p-3 rounded-2xl text-sm text-zinc-400 font-semibold border border-border-subtle"
+              className="w-full active:scale-[0.99] transition-all"
+              style={{
+                marginTop: 14,
+                padding: 12,
+                borderRadius: 14,
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'var(--lumo-text-sec)',
+                background: 'transparent',
+                border: '1px solid var(--lumo-border)',
+              }}
             >
               Cancel
             </button>
@@ -116,71 +196,221 @@ export function SwapSheet({
 
         {state === 'loading' && (
           <div className="py-10 flex flex-col items-center justify-center text-center">
-            <Loader2 size={28} className="text-brand animate-spin mb-3" />
-            <div className="text-sm font-semibold text-zinc-300">Finding a substitution…</div>
-            <div className="text-xs text-zinc-500 mt-1">Hang tight — matching your equipment and injuries.</div>
+            <Loader2
+              size={28}
+              className="animate-spin"
+              style={{ color: 'var(--brand)', marginBottom: 12 }}
+            />
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: 'var(--lumo-text)',
+              }}
+            >
+              Finding a substitution…
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                marginTop: 4,
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              hang tight — matching your equipment and injuries.
+            </div>
           </div>
         )}
 
         {state === 'review' && proposal && (
           <div>
-            <h2 className="text-lg font-extrabold mb-1">Try this instead</h2>
-            <p className="text-sm text-zinc-500 mb-4">
-              Replacing <span className="line-through">{currentExercise.name}</span>
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                letterSpacing: '-0.01em',
+                marginBottom: 4,
+              }}
+            >
+              try this instead
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: 'var(--lumo-text-sec)',
+                marginBottom: 16,
+              }}
+            >
+              Replacing{' '}
+              <span style={{ textDecoration: 'line-through', color: 'var(--lumo-text-ter)' }}>
+                {currentExercise.name}
+              </span>
             </p>
-            <div className="p-4 rounded-2xl border border-brand/40 bg-brand/5 mb-4">
-              <div className="text-base font-bold text-zinc-100">{proposal.replacement.name}</div>
-              <div className="text-xs text-zinc-500 mt-1">
-                {proposal.replacement.sets}×{proposal.replacement.reps} @RIR {proposal.replacement.rir} ·{' '}
+            <div
+              style={{
+                padding: 16,
+                borderRadius: 18,
+                border: '1px solid color-mix(in srgb, var(--brand) 45%, transparent)',
+                background: 'color-mix(in srgb, var(--brand) 8%, var(--lumo-raised))',
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: 'var(--lumo-text)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {proposal.replacement.name}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--lumo-text-ter)',
+                  marginTop: 6,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}
+                className="tabular-nums"
+              >
+                {proposal.replacement.sets}×{proposal.replacement.reps} · RIR {proposal.replacement.rir} ·{' '}
                 {proposal.replacement.rest_seconds}s rest · {proposal.replacement.role}
               </div>
               {proposal.replacement.notes && (
-                <div className="text-xs text-zinc-400 mt-2 italic">{proposal.replacement.notes}</div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--lumo-text-sec)',
+                    marginTop: 8,
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontStyle: 'italic',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {proposal.replacement.notes}
+                </div>
               )}
-              <div className="mt-3 pt-3 border-t border-brand/20 text-xs text-zinc-400">
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '1px solid color-mix(in srgb, var(--brand) 22%, transparent)',
+                  fontSize: 12,
+                  color: 'var(--lumo-text-sec)',
+                  lineHeight: 1.4,
+                }}
+              >
                 {proposal.reason}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onAccept(proposal.replacement)}
-                className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-brand text-black font-bold active:scale-95 transition-all"
-              >
-                <Check size={16} /> Accept
-              </button>
+            <button
+              onClick={() => onAccept(proposal.replacement)}
+              className="w-full inline-flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                background: 'var(--brand)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 15,
+                border: 'none',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              <Check size={16} /> Accept
+            </button>
+            <div className="grid grid-cols-2 gap-2" style={{ marginTop: 8 }}>
               <button
                 onClick={() => lastReason && fireRequest(lastReason)}
-                className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-surface border border-border-subtle text-zinc-200 font-semibold active:scale-95 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'var(--lumo-overlay)',
+                  border: '1px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
               >
                 <RefreshCw size={14} /> Try another
               </button>
+              <button
+                onClick={onDismiss}
+                className="inline-flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'transparent',
+                  border: '1px solid var(--lumo-border)',
+                  color: 'var(--lumo-text-sec)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                <X size={14} /> Cancel
+              </button>
             </div>
-            <button
-              onClick={onDismiss}
-              className="w-full mt-2 p-3 rounded-2xl text-sm text-zinc-400 font-semibold border border-border-subtle inline-flex items-center justify-center gap-1.5"
-            >
-              <X size={14} /> Cancel
-            </button>
           </div>
         )}
 
         {state === 'error' && (
           <div className="py-4">
-            <div className="flex items-start gap-3 p-3 rounded-2xl border border-red-900/40 bg-red-500/5 mb-4">
-              <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
-              <div className="text-sm text-red-300">{errorMsg}</div>
+            <div
+              className="flex items-start gap-3"
+              style={{
+                padding: 12,
+                borderRadius: 14,
+                border: '1px solid color-mix(in srgb, #ef4444 40%, transparent)',
+                background: 'color-mix(in srgb, #ef4444 8%, var(--lumo-raised))',
+                marginBottom: 16,
+              }}
+            >
+              <AlertTriangle
+                size={18}
+                className="shrink-0"
+                style={{ color: '#f87171', marginTop: 2 }}
+              />
+              <div style={{ fontSize: 13, color: '#fca5a5' }}>{errorMsg}</div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => lastReason && fireRequest(lastReason)}
-                className="inline-flex items-center justify-center gap-1.5 p-3 rounded-2xl bg-brand text-black font-bold active:scale-95 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'var(--brand)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  border: 'none',
+                  opacity: lastReason ? 1 : 0.5,
+                }}
                 disabled={!lastReason}
               >
                 <RefreshCw size={14} /> Retry
               </button>
               <button
                 onClick={onDismiss}
-                className="p-3 rounded-2xl bg-surface border border-border-subtle text-zinc-200 font-semibold active:scale-95 transition-all"
+                className="active:scale-95 transition-all"
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  background: 'var(--lumo-overlay)',
+                  border: '1px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
               >
                 Cancel
               </button>

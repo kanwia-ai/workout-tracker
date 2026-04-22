@@ -8,6 +8,14 @@ interface CardioGoalsProps {
   onBack: () => void
 }
 
+const kickerStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: 'var(--lumo-text-ter)',
+}
+
 export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
   const [goals, setGoals] = useState<UserGoal[]>(() => loadGoals())
   const [showCreate, setShowCreate] = useState(false)
@@ -86,82 +94,141 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
     <div className="space-y-3">
       <button
         onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-zinc-400 font-semibold active:scale-95 transition-transform mb-1"
+        className="flex items-center gap-1.5 font-semibold active:scale-95 transition"
+        style={{ fontSize: 13, color: 'var(--lumo-text-sec)', marginBottom: 2 }}
       >
         <ArrowLeft size={16} />
         Back
       </button>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-extrabold flex items-center gap-2">
-          <Target size={20} className="text-brand" />
-          Cardio Goals
+        <h2
+          className="flex items-center gap-2"
+          style={{
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: '-0.02em',
+            color: 'var(--lumo-text)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+          }}
+        >
+          <Target size={20} style={{ color: 'var(--accent-sun)' }} />
+          cardio goals
         </h2>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-brand text-white active:scale-95 transition-transform"
+          className="flex items-center gap-1.5 active:scale-95 transition"
+          style={{
+            padding: '8px 12px',
+            borderRadius: 12,
+            fontSize: 12,
+            fontWeight: 700,
+            background: 'var(--brand)',
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+          }}
         >
           <Plus size={14} />
-          New Goal
+          new goal
         </button>
       </div>
 
       {/* Create goal form */}
       {showCreate && (
-        <div className="bg-surface-raised border border-brand/30 rounded-2xl p-4 space-y-3">
-          <div className="text-sm font-bold text-brand">Set a New Goal</div>
+        <div
+          style={{
+            background: 'var(--lumo-raised)',
+            border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+            borderRadius: 20,
+            padding: 16,
+          }}
+          className="space-y-3"
+        >
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand)' }}>set a new goal</div>
 
           <div>
-            <label className="text-[11px] text-zinc-500 block mb-1">Cardio Type</label>
+            <label style={{ ...kickerStyle, display: 'block', marginBottom: 6 }}>cardio type</label>
             <div className="flex flex-wrap gap-1.5">
-              {CARDIO_TYPES.map(ct => (
-                <button
-                  key={ct.value}
-                  onClick={() => setGoalType(ct.value)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition-all"
-                  style={{
-                    background: goalType === ct.value ? '#f97316' : '#2a2a2e',
-                    color: goalType === ct.value ? '#fff' : '#aaa',
-                    border: goalType === ct.value ? '1.5px solid #f9731666' : '1.5px solid transparent',
-                  }}
-                >
-                  {ct.emoji} {ct.label}
-                </button>
-              ))}
+              {CARDIO_TYPES.map(ct => {
+                const active = goalType === ct.value
+                return (
+                  <button
+                    key={ct.value}
+                    onClick={() => setGoalType(ct.value)}
+                    className="active:scale-95 transition"
+                    style={{
+                      padding: '7px 12px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: active ? 'var(--brand)' : 'var(--lumo-overlay)',
+                      color: active ? '#fff' : 'var(--lumo-text-sec)',
+                      border: active
+                        ? '1.5px solid color-mix(in srgb, var(--brand) 40%, transparent)'
+                        : '1.5px solid transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {ct.emoji} {ct.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-[11px] text-zinc-500 block mb-1">Target</label>
+              <label style={{ ...kickerStyle, display: 'block', marginBottom: 6 }}>target</label>
               <input
                 type="number"
                 inputMode="numeric"
                 value={targetValue}
                 onChange={e => setTargetValue(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-sm bg-surface-overlay border border-border-medium text-white outline-none focus:border-brand transition-colors font-semibold"
+                className="w-full outline-none font-semibold"
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 14,
+                  fontSize: 14,
+                  background: 'var(--lumo-overlay)',
+                  border: '1px solid var(--lumo-border-strong)',
+                  color: 'var(--lumo-text)',
+                }}
                 placeholder="e.g. 60"
               />
             </div>
             <div className="flex-1">
-              <label className="text-[11px] text-zinc-500 block mb-1">Unit</label>
+              <label style={{ ...kickerStyle, display: 'block', marginBottom: 6 }}>unit</label>
               <div className="flex gap-1.5">
                 <button
                   onClick={() => setUnit('minutes')}
-                  className="flex-1 px-3 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition-all"
+                  className="flex-1 active:scale-95 transition"
                   style={{
-                    background: unit === 'minutes' ? '#f97316' : '#2a2a2e',
-                    color: unit === 'minutes' ? '#fff' : '#aaa',
+                    padding: '10px 12px',
+                    borderRadius: 14,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: unit === 'minutes' ? 'var(--brand)' : 'var(--lumo-overlay)',
+                    color: unit === 'minutes' ? '#fff' : 'var(--lumo-text-sec)',
+                    border: 'none',
+                    cursor: 'pointer',
                   }}
                 >
                   Minutes
                 </button>
                 <button
                   onClick={() => setUnit('sessions')}
-                  className="flex-1 px-3 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition-all"
+                  className="flex-1 active:scale-95 transition"
                   style={{
-                    background: unit === 'sessions' ? '#f97316' : '#2a2a2e',
-                    color: unit === 'sessions' ? '#fff' : '#aaa',
+                    padding: '10px 12px',
+                    borderRadius: 14,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: unit === 'sessions' ? 'var(--brand)' : 'var(--lumo-overlay)',
+                    color: unit === 'sessions' ? '#fff' : 'var(--lumo-text-sec)',
+                    border: 'none',
+                    cursor: 'pointer',
                   }}
                 >
                   Sessions
@@ -170,17 +237,27 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
             </div>
           </div>
 
-          <div className="text-xs text-zinc-500">
+          <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
             e.g. "60 minutes on Stair Master" or "10 sessions of Treadmill"
           </div>
 
           <button
             onClick={handleCreateGoal}
             disabled={!targetValue || parseInt(targetValue, 10) < 1}
-            className="w-full py-3 rounded-xl font-bold text-sm active:scale-[0.98] transition-transform disabled:opacity-40"
+            className="w-full active:scale-[0.98] transition disabled:opacity-40"
             style={{
-              background: targetValue && parseInt(targetValue, 10) >= 1 ? '#4ade80' : '#2a2a2e',
-              color: targetValue && parseInt(targetValue, 10) >= 1 ? '#111' : '#666',
+              padding: 12,
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 700,
+              background: targetValue && parseInt(targetValue, 10) >= 1
+                ? 'var(--accent-mint)'
+                : 'var(--lumo-overlay)',
+              color: targetValue && parseInt(targetValue, 10) >= 1
+                ? 'var(--lumo-bg)'
+                : 'var(--lumo-text-ter)',
+              border: 'none',
+              cursor: 'pointer',
             }}
           >
             Create Goal
@@ -190,10 +267,28 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
 
       {/* Goals list */}
       {goals.length === 0 && !showCreate && (
-        <div className="text-center py-12 bg-surface-raised rounded-2xl border border-border-subtle">
-          <Target size={36} className="mx-auto text-zinc-600 mb-3" />
-          <div className="text-sm font-bold text-zinc-400">No goals yet</div>
-          <div className="text-xs text-zinc-600 mt-1">Set a cardio goal to track your progress</div>
+        <div
+          className="text-center"
+          style={{
+            padding: '48px 20px',
+            background: 'var(--lumo-raised)',
+            border: '1px solid var(--lumo-border)',
+            borderRadius: 20,
+          }}
+        >
+          <Target size={36} className="mx-auto mb-3" style={{ color: 'var(--lumo-text-ter)' }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text-sec)' }}>no goals yet</div>
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--lumo-text-ter)',
+              marginTop: 4,
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+            }}
+          >
+            set a cardio goal to track your progress
+          </div>
         </div>
       )}
 
@@ -205,23 +300,29 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
         const milestones = getMilestones(goal.current_value, goal.target_value)
         const label = getCardioLabel(goal.goal_type as CardioType)
         const typeInfo = CARDIO_TYPES.find(t => t.value === goal.goal_type)
+        const progressColor = complete ? 'var(--accent-mint)' : 'var(--accent-sun)'
 
         return (
           <div
             key={goal.id}
-            className="bg-surface-raised border rounded-2xl p-4 space-y-3"
+            className="space-y-3"
             style={{
-              borderColor: complete ? '#4ade8044' : '#2a2a2e',
+              background: 'var(--lumo-raised)',
+              border: complete
+                ? '1px solid color-mix(in srgb, var(--accent-mint) 40%, transparent)'
+                : '1px solid var(--lumo-border)',
+              borderRadius: 20,
+              padding: 16,
             }}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xl">{typeInfo?.emoji || '💪'}</span>
                 <div>
-                  <div className="text-sm font-bold">
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}>
                     {goal.target_value} {goal.unit} of {label}
                   </div>
-                  <div className="text-[11px] text-zinc-500">
+                  <div className="tabular-nums" style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
                     {goal.current_value} / {goal.target_value} {goal.unit}
                   </div>
                 </div>
@@ -229,7 +330,17 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => handleRefreshProgress(goal)}
-                  className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-zinc-400 bg-surface-overlay active:scale-95 transition-transform"
+                  className="active:scale-95 transition"
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: 'var(--lumo-text-sec)',
+                    background: 'var(--lumo-overlay)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
                 >
                   Refresh
                 </button>
@@ -237,13 +348,33 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
                   <div className="flex gap-1">
                     <button
                       onClick={() => handleDelete(goal.id)}
-                      className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-danger bg-danger/10 active:scale-95 transition-transform"
+                      className="active:scale-95 transition"
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 10,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'var(--accent-blush)',
+                        background: 'color-mix(in srgb, var(--accent-blush) 15%, transparent)',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
                     >
                       Delete
                     </button>
                     <button
                       onClick={() => setConfirmDeleteId(null)}
-                      className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-zinc-400 bg-surface-overlay active:scale-95 transition-transform"
+                      className="active:scale-95 transition"
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 10,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: 'var(--lumo-text-sec)',
+                        background: 'var(--lumo-overlay)',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
                     >
                       No
                     </button>
@@ -251,7 +382,8 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
                 ) : (
                   <button
                     onClick={() => setConfirmDeleteId(goal.id)}
-                    className="p-1.5 rounded-lg text-zinc-600 active:scale-95 transition-transform"
+                    className="p-1.5 rounded-lg active:scale-95 transition"
+                    style={{ color: 'var(--lumo-text-ter)', background: 'transparent', border: 'none', cursor: 'pointer' }}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -260,19 +392,32 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
             </div>
 
             {/* Progress bar */}
-            <div className="h-2.5 bg-surface-overlay rounded-full overflow-hidden">
+            <div
+              style={{
+                height: 10,
+                background: 'var(--lumo-overlay)',
+                borderRadius: 999,
+                overflow: 'hidden',
+                border: '1px solid var(--lumo-border)',
+              }}
+            >
               <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
+                className="transition-all duration-700 ease-out"
                 style={{
+                  height: '100%',
                   width: `${pct}%`,
-                  background: complete ? '#4ade80' : '#f97316',
+                  background: progressColor,
+                  borderRadius: 999,
                 }}
               />
             </div>
 
             {/* Percentage label */}
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold" style={{ color: complete ? '#4ade80' : '#f97316' }}>
+              <span
+                className="tabular-nums"
+                style={{ fontSize: 12, fontWeight: 700, color: progressColor }}
+              >
                 {Math.round(pct)}%
               </span>
 
@@ -284,8 +429,12 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
                   return (
                     <div
                       key={m}
-                      className="flex items-center gap-0.5 text-[10px] font-bold"
-                      style={{ color: hit ? '#4ade80' : '#555' }}
+                      className="flex items-center gap-0.5"
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: hit ? 'var(--accent-mint)' : 'var(--lumo-text-ter)',
+                      }}
                     >
                       {hit && <Trophy size={10} />}
                       {m}%
@@ -297,8 +446,18 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
 
             {/* Celebration */}
             {complete && (
-              <div className="text-center py-2 rounded-xl bg-success/10 border border-success/20">
-                <div className="text-sm font-bold text-success">Goal Complete!</div>
+              <div
+                className="text-center"
+                style={{
+                  padding: '8px 0',
+                  borderRadius: 12,
+                  background: 'color-mix(in srgb, var(--accent-mint) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent-mint) 30%, transparent)',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-mint)' }}>
+                  Goal Complete!
+                </div>
               </div>
             )}
           </div>

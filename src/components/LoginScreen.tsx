@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Mail, Loader2, CheckCircle } from 'lucide-react'
+import { Mail, Loader2 } from 'lucide-react'
+import { Lumo } from './Lumo'
 
 interface LoginScreenProps {
   onSignIn: (email: string) => Promise<{ error: string | null }>
@@ -29,44 +30,120 @@ export function LoginScreen({ onSignIn }: LoginScreenProps) {
   }
 
   return (
-    <div className="min-h-screen bg-surface flex items-center justify-center px-6">
+    <div
+      className="min-h-screen flex items-center justify-center px-6"
+      style={{
+        background: 'var(--lumo-bg)',
+        color: 'var(--lumo-text)',
+      }}
+    >
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-10">
-          <div className="text-5xl mb-4">🏋️</div>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
-            Workout Tracker
+        <div className="text-center mb-10 flex flex-col items-center">
+          <div className="mb-3">
+            <Lumo state="wave" size={96} />
+          </div>
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              color: 'var(--brand)',
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+              lineHeight: 1.1,
+            }}
+          >
+            workout tracker
           </h1>
-          <p className="text-sm text-zinc-500 mt-2">Your personal gym companion</p>
+          <p
+            style={{
+              fontSize: 13,
+              color: 'var(--lumo-text-sec)',
+              marginTop: 8,
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+            }}
+          >
+            your lifting coach in an app.
+          </p>
         </div>
 
         {sent ? (
           /* Success state */
-          <div className="bg-success-soft border border-success/20 rounded-2xl p-6 text-center">
-            <CheckCircle size={40} className="text-success mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-success mb-2">Check your email</h2>
-            <p className="text-sm text-zinc-400">
-              We sent a magic link to <span className="text-zinc-200 font-medium">{email}</span>
+          <div
+            className="text-center"
+            style={{
+              background: 'color-mix(in srgb, var(--accent-mint) 18%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-mint) 40%, transparent)',
+              borderRadius: 22,
+              padding: 24,
+            }}
+          >
+            <div className="flex justify-center mb-3">
+              <Lumo state="celebrate" size={64} />
+            </div>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: 'var(--accent-mint)',
+                marginBottom: 8,
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              check your email
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--lumo-text-sec)' }}>
+              we sent a magic link to{' '}
+              <span style={{ color: 'var(--lumo-text)', fontWeight: 600 }}>{email}</span>
             </p>
-            <p className="text-xs text-zinc-500 mt-3">
-              Tap the link in the email to sign in. Check spam if you don't see it.
+            <p style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 12 }}>
+              tap the link in the email to sign in. check spam if you don't see it.
             </p>
             <button
               onClick={() => { setSent(false); setEmail('') }}
-              className="mt-4 text-xs text-brand font-semibold"
+              style={{
+                marginTop: 16,
+                fontSize: 12,
+                color: 'var(--brand)',
+                fontWeight: 600,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+              }}
             >
-              Try a different email
+              try a different email
             </button>
           </div>
         ) : (
           /* Email input */
           <form onSubmit={handleSubmit}>
-            <div className="bg-surface-raised border border-border-subtle rounded-2xl p-5">
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                Email address
+            <div
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 22,
+                padding: 20,
+              }}
+            >
+              <label
+                className="block mb-2"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--lumo-text)',
+                }}
+              >
+                email address
               </label>
               <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <Mail
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--lumo-text-ter)' }}
+                />
                 <input
                   type="email"
                   value={email}
@@ -74,32 +151,57 @@ export function LoginScreen({ onSignIn }: LoginScreenProps) {
                   placeholder="you@example.com"
                   autoComplete="email"
                   autoFocus
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-surface-overlay border border-border-medium text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand transition-colors"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl text-sm outline-none transition-colors"
+                  style={{
+                    background: 'var(--lumo-overlay)',
+                    border: '1px solid var(--lumo-border-strong)',
+                    color: 'var(--lumo-text)',
+                  }}
                 />
               </div>
 
               {error && (
-                <p className="text-xs text-danger mt-2">{error}</p>
+                <p style={{ fontSize: 12, color: '#ef4444', marginTop: 8 }}>{error}</p>
               )}
 
               <button
                 type="submit"
                 disabled={sending || !email.trim()}
-                className="w-full mt-4 py-3 rounded-xl font-bold text-sm bg-brand text-white active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+                className="w-full mt-4 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+                style={{
+                  padding: 14,
+                  borderRadius: 22,
+                  background: 'var(--brand)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  letterSpacing: '-0.01em',
+                  border: 'none',
+                  cursor: sending || !email.trim() ? 'default' : 'pointer',
+                }}
               >
                 {sending ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    Sending...
+                    sending...
                   </>
                 ) : (
-                  'Send Magic Link'
+                  'send magic link'
                 )}
               </button>
             </div>
 
-            <p className="text-xs text-zinc-600 text-center mt-4">
-              No password needed. We'll email you a sign-in link.
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                textAlign: 'center',
+                marginTop: 16,
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
+              no password needed. we'll email you a sign-in link.
             </p>
           </form>
         )}

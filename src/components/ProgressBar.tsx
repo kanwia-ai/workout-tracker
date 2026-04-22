@@ -11,29 +11,70 @@ export function ProgressBar({ current, total, emoji, title, estMinutes }: Progre
   const complete = pct === 100
 
   return (
-    <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5">
+    <div
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 22,
+        padding: 14,
+      }}
+    >
       <div className="flex items-center gap-2.5 mb-2.5">
         <span className="text-xl">{emoji}</span>
         <div className="flex-1">
-          <div className="font-bold text-[15px]">{title}</div>
-          <div className="text-[11px] text-zinc-500">~{estMinutes} min</div>
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: 'var(--lumo-text)',
+            }}
+          >
+            {title}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
+            ~{estMinutes} min
+          </div>
         </div>
-        <span className="text-sm text-zinc-400 font-semibold">{current}/{total}</span>
+        <span
+          className="tabular-nums"
+          style={{ fontSize: 14, color: 'var(--lumo-text-sec)', fontWeight: 600 }}
+        >
+          {current}/{total}
+        </span>
       </div>
 
-      <div className="h-1.5 bg-surface-overlay rounded-full overflow-hidden">
+      <div
+        style={{
+          height: 6,
+          background: 'var(--lumo-overlay)',
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}
+      >
         <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
+          className="transition-all duration-500 ease-out"
           style={{
             width: `${pct}%`,
-            background: complete ? '#4ade80' : '#f97316',
+            height: '100%',
+            borderRadius: 8,
+            background: complete ? 'var(--accent-mint)' : 'var(--brand)',
           }}
         />
       </div>
 
       {complete && (
-        <div className="text-success text-[13px] font-bold mt-2 text-center">
-          Workout complete! 🔥
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            marginTop: 8,
+            textAlign: 'center',
+            color: 'var(--accent-mint)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+          }}
+        >
+          workout complete!
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Search, Filter, ChevronLeft, X, Plus, Trash2 } from 'lucide-react'
 import { EXERCISE_LIBRARY } from '../data/exercises'
 import { ExerciseDetail } from './ExerciseDetail'
+import { Lumo } from './Lumo'
 import { supabase } from '../lib/supabase'
 import {
   loadCustomExercises,
@@ -49,9 +50,11 @@ const KNEE_SAFETY_LABELS: Record<KneeSafety, string> = {
   knee_safe: 'Knee Safe', knee_caution: 'Caution', knee_avoid: 'Avoid',
 }
 
+// Knee safety colors — Lumo accents (mint/sun) + a soft red for the real
+// warning case. Mirrors the palette in ExerciseDetail.
 const KNEE_SAFETY_COLORS: Record<KneeSafety, string> = {
-  knee_safe: '#4ade80',
-  knee_caution: '#f59e0b',
+  knee_safe: 'var(--accent-mint)',
+  knee_caution: 'var(--accent-sun)',
   knee_avoid: '#ef4444',
 }
 
@@ -102,6 +105,35 @@ const CUSTOM_EQUIPMENT_LABELS: Record<CustomExerciseEquipment, string> = {
   kettlebell: 'Kettlebell',
   bands: 'Bands',
   other: 'Other',
+}
+
+// ─── Shared style helpers ───────────────────────────────────────────────────
+
+const KICKER_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: 'var(--lumo-text-ter)',
+  marginBottom: 6,
+}
+
+function chipStyle(on: boolean, onColor?: string): React.CSSProperties {
+  return {
+    padding: '7px 12px',
+    borderRadius: 12,
+    fontSize: 11,
+    fontWeight: 700,
+    background: on
+      ? onColor ?? 'var(--brand)'
+      : 'var(--lumo-overlay)',
+    color: on ? 'var(--lumo-bg)' : 'var(--lumo-text-sec)',
+    border: on
+      ? '1px solid transparent'
+      : '1px solid var(--lumo-border)',
+    cursor: 'pointer',
+    transition: 'background 160ms ease, color 160ms ease',
+  }
 }
 
 interface ExerciseBrowserProps {
@@ -260,22 +292,44 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
   }
 
   return (
-    <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
+    <div
+      style={{
+        minHeight: '100dvh',
+        background: 'var(--lumo-bg)',
+        color: 'var(--lumo-text)',
+      }}
+      className="font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
+    >
       <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
 
         {/* Header */}
         <div className="flex items-center gap-3 pt-3 pb-3">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 rounded-lg text-zinc-400 active:scale-95 transition-transform"
+            aria-label="Back"
+            className="p-2 -ml-2 rounded-xl active:scale-95 transition-transform"
+            style={{ color: 'var(--lumo-text-sec)' }}
           >
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[20px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                letterSpacing: '-0.01em',
+                color: 'var(--lumo-text)',
+              }}
+            >
               Exercise Library
             </h1>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
+            <p
+              style={{
+                fontSize: 11,
+                color: 'var(--lumo-text-ter)',
+                marginTop: 2,
+              }}
+            >
               {filtered.length + visibleCustom.length} exercise{(filtered.length + visibleCustom.length) !== 1 ? 's' : ''}
             </p>
           </div>
@@ -283,7 +337,17 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
             onClick={() => setShowAddModal(true)}
             disabled={!userId}
             aria-label="Add your own exercise"
-            className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold bg-brand text-white active:scale-95 transition-transform disabled:opacity-40"
+            className="active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 14,
+              fontSize: 12,
+              fontWeight: 800,
+              background: 'var(--brand)',
+              color: 'var(--lumo-bg)',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             <Plus size={14} />
             Add
@@ -292,18 +356,35 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
         {/* Search bar */}
         <div className="relative mb-3">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--lumo-text-ter)' }}
+          />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search exercises..."
-            className="w-full pl-10 pr-12 py-3 rounded-xl bg-surface-raised border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand transition-colors"
+            className="w-full outline-none transition-colors"
+            style={{
+              paddingLeft: 36,
+              paddingRight: 40,
+              paddingTop: 12,
+              paddingBottom: 12,
+              borderRadius: 16,
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              color: 'var(--lumo-text)',
+              fontSize: 14,
+            }}
           />
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 p-1"
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+              style={{ color: 'var(--lumo-text-ter)' }}
             >
               <X size={14} />
             </button>
@@ -314,11 +395,22 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
         <div className="flex items-center gap-2 mb-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            className="active:scale-95 transition-all flex items-center gap-2"
             style={{
-              background: showFilters || activeFilterCount > 0 ? '#f9731622' : '#1a1a1e',
-              color: showFilters || activeFilterCount > 0 ? '#f97316' : '#888',
-              border: activeFilterCount > 0 ? '1px solid #f9731644' : '1px solid #2a2a2e',
+              padding: '8px 12px',
+              borderRadius: 14,
+              fontSize: 12,
+              fontWeight: 700,
+              background: showFilters || activeFilterCount > 0
+                ? 'color-mix(in srgb, var(--brand) 14%, transparent)'
+                : 'var(--lumo-raised)',
+              color: showFilters || activeFilterCount > 0
+                ? 'var(--brand)'
+                : 'var(--lumo-text-sec)',
+              border: activeFilterCount > 0
+                ? '1px solid color-mix(in srgb, var(--brand) 35%, transparent)'
+                : '1px solid var(--lumo-border)',
+              cursor: 'pointer',
             }}
           >
             <Filter size={14} />
@@ -326,11 +418,20 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
           </button>
           <button
             onClick={() => setMineOnly(v => !v)}
-            className="px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+            className="active:scale-95 transition-all"
             style={{
-              background: mineOnly ? 'var(--accent-plum, #a78bfa)' : '#1a1a1e',
-              color: mineOnly ? '#fff' : '#888',
-              border: mineOnly ? '1px solid transparent' : '1px solid #2a2a2e',
+              padding: '8px 12px',
+              borderRadius: 14,
+              fontSize: 12,
+              fontWeight: 800,
+              background: mineOnly
+                ? 'var(--accent-plum)'
+                : 'var(--lumo-raised)',
+              color: mineOnly ? 'var(--lumo-bg)' : 'var(--lumo-text-sec)',
+              border: mineOnly
+                ? '1px solid transparent'
+                : '1px solid var(--lumo-border)',
+              cursor: 'pointer',
             }}
           >
             Mine{customExercises.length > 0 ? ` (${customExercises.length})` : ''}
@@ -339,13 +440,30 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
         {/* Filter panels */}
         {showFilters && (
-          <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3.5 mb-3 space-y-3">
+          <div
+            className="mb-3 space-y-3"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              borderRadius: 22,
+              padding: 14,
+            }}
+          >
 
             {/* Clear all button */}
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-brand font-semibold active:opacity-60"
+                className="active:opacity-60"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: 'var(--brand)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
               >
                 Clear all filters
               </button>
@@ -353,17 +471,14 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
             {/* Muscle Group */}
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Muscle Group</div>
-              <div className="flex flex-wrap gap-1">
+              <div style={KICKER_STYLE}>Muscle group</div>
+              <div className="flex flex-wrap gap-1.5">
                 {MUSCLE_FILTER_OPTIONS.map(m => (
                   <button
                     key={m}
                     onClick={() => setMuscleFilter(muscleFilter === m ? null : m)}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                    style={{
-                      background: muscleFilter === m ? '#f97316' : '#2a2a2e',
-                      color: muscleFilter === m ? '#fff' : '#888',
-                    }}
+                    className="active:scale-95"
+                    style={chipStyle(muscleFilter === m)}
                   >
                     {MUSCLE_LABELS[m]}
                   </button>
@@ -373,17 +488,14 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
             {/* Equipment */}
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Equipment</div>
-              <div className="flex flex-wrap gap-1">
+              <div style={KICKER_STYLE}>Equipment</div>
+              <div className="flex flex-wrap gap-1.5">
                 {EQUIPMENT_FILTER_OPTIONS.map(e => (
                   <button
                     key={e}
                     onClick={() => setEquipmentFilter(equipmentFilter === e ? null : e)}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                    style={{
-                      background: equipmentFilter === e ? '#f97316' : '#2a2a2e',
-                      color: equipmentFilter === e ? '#fff' : '#888',
-                    }}
+                    className="active:scale-95"
+                    style={chipStyle(equipmentFilter === e)}
                   >
                     {EQUIPMENT_LABELS[e]}
                   </button>
@@ -393,17 +505,14 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
             {/* Body Region */}
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Body Region</div>
-              <div className="flex flex-wrap gap-1">
+              <div style={KICKER_STYLE}>Body region</div>
+              <div className="flex flex-wrap gap-1.5">
                 {BODY_REGION_OPTIONS.map(b => (
                   <button
                     key={b}
                     onClick={() => setBodyRegionFilter(bodyRegionFilter === b ? null : b)}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                    style={{
-                      background: bodyRegionFilter === b ? '#f97316' : '#2a2a2e',
-                      color: bodyRegionFilter === b ? '#fff' : '#888',
-                    }}
+                    className="active:scale-95"
+                    style={chipStyle(bodyRegionFilter === b)}
                   >
                     {BODY_REGION_LABELS[b]}
                   </button>
@@ -413,17 +522,14 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
             {/* Difficulty */}
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Difficulty</div>
-              <div className="flex flex-wrap gap-1">
+              <div style={KICKER_STYLE}>Difficulty</div>
+              <div className="flex flex-wrap gap-1.5">
                 {DIFFICULTY_OPTIONS.map(d => (
                   <button
                     key={d}
                     onClick={() => setDifficultyFilter(difficultyFilter === d ? null : d)}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                    style={{
-                      background: difficultyFilter === d ? '#f97316' : '#2a2a2e',
-                      color: difficultyFilter === d ? '#fff' : '#888',
-                    }}
+                    className="active:scale-95"
+                    style={chipStyle(difficultyFilter === d)}
                   >
                     {DIFFICULTY_LABELS[d]}
                   </button>
@@ -433,17 +539,14 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
             {/* Knee Safety */}
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Knee Safety</div>
-              <div className="flex flex-wrap gap-1">
+              <div style={KICKER_STYLE}>Knee safety</div>
+              <div className="flex flex-wrap gap-1.5">
                 {KNEE_SAFETY_OPTIONS.map(k => (
                   <button
                     key={k}
                     onClick={() => setKneeSafetyFilter(kneeSafetyFilter === k ? null : k)}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                    style={{
-                      background: kneeSafetyFilter === k ? KNEE_SAFETY_COLORS[k] : '#2a2a2e',
-                      color: kneeSafetyFilter === k ? (k === 'knee_safe' ? '#111' : '#fff') : '#888',
-                    }}
+                    className="active:scale-95"
+                    style={chipStyle(kneeSafetyFilter === k, KNEE_SAFETY_COLORS[k])}
                   >
                     {KNEE_SAFETY_LABELS[k]}
                   </button>
@@ -454,37 +557,81 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
         )}
 
         {/* Exercise list */}
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {visibleCustom.map(c => (
             <div
               key={c.id}
-              className="relative bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3.5"
+              style={{
+                position: 'relative',
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 20,
+                padding: '14px 16px',
+              }}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-bold text-zinc-200 truncate">{c.name}</div>
+                    <div
+                      className="truncate"
+                      style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}
+                    >
+                      {c.name}
+                    </div>
                     <span
-                      className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                      style={{ color: 'var(--accent-plum, #a78bfa)', background: 'rgba(167, 139, 250, 0.14)' }}
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: 8,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-plum)',
+                        background: 'color-mix(in srgb, var(--accent-plum) 14%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--accent-plum) 30%, transparent)',
+                      }}
                     >
                       Custom
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     {c.primary_muscles.slice(0, 3).map(m => (
-                      <span key={m} className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded">
+                      <span
+                        key={m}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: 'var(--lumo-text-sec)',
+                          background: 'var(--lumo-overlay)',
+                          border: '1px solid var(--lumo-border)',
+                          padding: '2px 8px',
+                          borderRadius: 8,
+                        }}
+                      >
                         {CUSTOM_MUSCLE_LABELS[m as CustomMuscle] || m}
                       </span>
                     ))}
                     {c.equipment && (
-                      <span className="text-[10px] font-semibold text-zinc-500 bg-surface-overlay px-1.5 py-0.5 rounded">
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: 'var(--lumo-text-ter)',
+                          background: 'var(--lumo-overlay)',
+                          border: '1px solid var(--lumo-border)',
+                          padding: '2px 8px',
+                          borderRadius: 8,
+                        }}
+                      >
                         {CUSTOM_EQUIPMENT_LABELS[c.equipment as CustomExerciseEquipment] || c.equipment}
                       </span>
                     )}
                   </div>
                   {c.notes && (
-                    <div className="text-[11px] text-zinc-500 mt-1 line-clamp-1">
+                    <div
+                      className="line-clamp-1"
+                      style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginTop: 6 }}
+                    >
                       {c.notes}
                     </div>
                   )}
@@ -492,7 +639,13 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
                 <button
                   onClick={() => handleDeleteCustom(c.id)}
                   aria-label={`Delete ${c.name}`}
-                  className="text-zinc-600 hover:text-red-400 p-1 shrink-0 active:scale-95 transition-transform"
+                  className="p-1 shrink-0 active:scale-95 transition-transform"
+                  style={{
+                    color: 'var(--accent-plum)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -504,34 +657,73 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
             <button
               key={exercise.id}
               onClick={() => setSelectedExercise(exercise)}
-              className="w-full text-left bg-surface-raised border border-border-subtle rounded-2xl px-4 py-3.5 active:scale-[0.98] transition-transform"
+              className="w-full text-left active:scale-[0.98] transition-transform"
+              style={{
+                background: 'var(--lumo-raised)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 20,
+                padding: '14px 16px',
+                cursor: 'pointer',
+              }}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-zinc-200 truncate">{exercise.name}</div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <div
+                    className="truncate"
+                    style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}
+                  >
+                    {exercise.name}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     {exercise.primary_muscles.slice(0, 2).map(m => (
-                      <span key={m} className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded">
+                      <span
+                        key={m}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: 'var(--lumo-text-sec)',
+                          background: 'var(--lumo-overlay)',
+                          border: '1px solid var(--lumo-border)',
+                          padding: '2px 8px',
+                          borderRadius: 8,
+                        }}
+                      >
                         {MUSCLE_LABELS[m] || m}
                       </span>
                     ))}
                     <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded"
                       style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: 8,
                         color: KNEE_SAFETY_COLORS[exercise.knee_safety],
-                        background: KNEE_SAFETY_COLORS[exercise.knee_safety] + '18',
+                        background: `color-mix(in srgb, ${KNEE_SAFETY_COLORS[exercise.knee_safety]} 14%, transparent)`,
+                        border: `1px solid color-mix(in srgb, ${KNEE_SAFETY_COLORS[exercise.knee_safety]} 30%, transparent)`,
                       }}
                     >
                       {exercise.knee_safety === 'knee_safe' ? 'Safe' : exercise.knee_safety === 'knee_caution' ? 'Caution' : 'Avoid'}
                     </span>
                   </div>
                   {exercise.description && (
-                    <div className="text-[11px] text-zinc-500 mt-1 line-clamp-1">
+                    <div
+                      className="line-clamp-1"
+                      style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginTop: 6 }}
+                    >
                       {exercise.description}
                     </div>
                   )}
                 </div>
-                <div className="text-[10px] text-zinc-600 font-semibold mt-0.5 shrink-0">
+                <div
+                  className="shrink-0 mt-0.5"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: 'var(--lumo-text-ter)',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                  }}
+                >
                   {DIFFICULTY_LABELS[exercise.difficulty]}
                 </div>
               </div>
@@ -541,20 +733,43 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
 
         {/* Empty state */}
         {filtered.length === 0 && visibleCustom.length === 0 && (
-          <div className="text-center py-16 bg-surface-raised rounded-2xl mt-2 border border-border-subtle">
-            <div className="text-4xl mb-3">{mineOnly ? '✨' : '🔍'}</div>
-            <div className="text-lg font-bold text-zinc-400">
-              {mineOnly ? 'No custom exercises yet' : 'No exercises found'}
+          <div
+            className="text-center mt-2"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              borderRadius: 22,
+              padding: '32px 20px',
+            }}
+          >
+            <div className="flex justify-center mb-2">
+              <Lumo state="curious" size={72} />
             </div>
-            <div className="text-zinc-500 text-sm mt-1.5">
+            <div
+              style={{
+                fontSize: 18,
+                lineHeight: 1.3,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
               {mineOnly
-                ? 'Tap "Add" to save your own variations.'
-                : 'Try adjusting your search or filters'}
+                ? 'no custom exercises yet — tap "add" to save your own.'
+                : 'no matches — try loosening the filters.'}
             </div>
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="mt-3 text-brand text-sm font-semibold active:opacity-60"
+                className="mt-4 active:opacity-60"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--brand)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
               >
                 Clear filters
               </button>
@@ -639,21 +854,60 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: 'var(--lumo-overlay)',
+    border: '1px solid var(--lumo-border)',
+    color: 'var(--lumo-text)',
+    fontSize: 14,
+    outline: 'none',
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center px-3 pb-3 pt-6 safe-top"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-3 pb-3 pt-6 safe-top"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-lg bg-surface-raised border border-border-subtle rounded-2xl p-4 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          borderRadius: 22,
+          padding: 18,
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-base font-extrabold text-zinc-100">Add your own exercise</div>
+        <div className="flex items-center justify-between mb-4">
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: 'var(--lumo-text)',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Add your own exercise
+          </div>
           <button
             onClick={onCancel}
             aria-label="Close"
-            className="p-1.5 rounded-lg text-zinc-500 active:scale-95"
+            className="active:scale-95"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              background: 'var(--lumo-overlay)',
+              border: '1px solid var(--lumo-border)',
+              color: 'var(--lumo-text-sec)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
           >
             <X size={16} />
           </button>
@@ -661,20 +915,22 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
 
         {/* Name */}
         <label className="block mb-3">
-          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Name</span>
+          <span style={{ ...KICKER_STYLE, display: 'block' }}>Name</span>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. Incline Push-ups"
             autoFocus
-            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand"
+            style={inputStyle}
           />
         </label>
 
         {/* Primary muscles */}
         <div className="mb-3">
-          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Primary muscles <span className="text-zinc-600">(required)</span></div>
-          <div className="flex flex-wrap gap-1">
+          <div style={KICKER_STYLE}>
+            Primary muscles <span style={{ color: 'var(--lumo-text-ter)', textTransform: 'none', letterSpacing: 0 }}>(required)</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             {CUSTOM_MUSCLE_OPTIONS.map(m => {
               const on = primary.includes(m)
               return (
@@ -682,11 +938,8 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
                   key={m}
                   type="button"
                   onClick={() => toggleMuscle(m, 'primary')}
-                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                  style={{
-                    background: on ? '#f97316' : '#2a2a2e',
-                    color: on ? '#fff' : '#888',
-                  }}
+                  className="active:scale-95"
+                  style={chipStyle(on)}
                 >
                   {CUSTOM_MUSCLE_LABELS[m]}
                 </button>
@@ -694,14 +947,16 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
             })}
           </div>
           {muscleError && (
-            <div className="text-[11px] text-red-400 mt-1.5">{muscleError}</div>
+            <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{muscleError}</div>
           )}
         </div>
 
         {/* Secondary muscles */}
         <div className="mb-3">
-          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Secondary muscles <span className="text-zinc-600">(optional)</span></div>
-          <div className="flex flex-wrap gap-1">
+          <div style={KICKER_STYLE}>
+            Secondary muscles <span style={{ color: 'var(--lumo-text-ter)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             {CUSTOM_MUSCLE_OPTIONS.map(m => {
               const on = secondary.includes(m)
               return (
@@ -709,11 +964,8 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
                   key={m}
                   type="button"
                   onClick={() => toggleMuscle(m, 'secondary')}
-                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                  style={{
-                    background: on ? '#7c3aed' : '#2a2a2e',
-                    color: on ? '#fff' : '#888',
-                  }}
+                  className="active:scale-95"
+                  style={chipStyle(on, 'var(--accent-plum)')}
                 >
                   {CUSTOM_MUSCLE_LABELS[m]}
                 </button>
@@ -724,8 +976,8 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
 
         {/* Equipment */}
         <div className="mb-3">
-          <div className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1.5">Equipment</div>
-          <div className="flex flex-wrap gap-1">
+          <div style={KICKER_STYLE}>Equipment</div>
+          <div className="flex flex-wrap gap-1.5">
             {CUSTOM_EQUIPMENT_OPTIONS.map(eq => {
               const on = equipment === eq
               return (
@@ -733,11 +985,8 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
                   key={eq}
                   type="button"
                   onClick={() => setEquipment(eq)}
-                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all active:scale-95"
-                  style={{
-                    background: on ? '#f97316' : '#2a2a2e',
-                    color: on ? '#fff' : '#888',
-                  }}
+                  className="active:scale-95"
+                  style={chipStyle(on)}
                 >
                   {CUSTOM_EQUIPMENT_LABELS[eq]}
                 </button>
@@ -748,42 +997,68 @@ function AddCustomExerciseModal({ onCancel, onSave }: AddCustomModalProps) {
 
         {/* Video URL */}
         <label className="block mb-3">
-          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Video URL <span className="text-zinc-600">(optional)</span></span>
+          <span style={{ ...KICKER_STYLE, display: 'block' }}>
+            Video URL <span style={{ color: 'var(--lumo-text-ter)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+          </span>
           <input
             value={videoUrl}
             onChange={e => setVideoUrl(e.target.value)}
             placeholder="https://youtu.be/..."
             inputMode="url"
-            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand"
+            style={inputStyle}
           />
           {videoWarning && (
-            <div className="text-[11px] text-amber-400 mt-1.5">{videoWarning}</div>
+            <div style={{ fontSize: 11, color: 'var(--accent-sun)', marginTop: 6 }}>
+              {videoWarning}
+            </div>
           )}
         </label>
 
         {/* Notes */}
         <label className="block mb-4">
-          <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wide mb-1 block">Notes <span className="text-zinc-600">(optional)</span></span>
+          <span style={{ ...KICKER_STYLE, display: 'block' }}>
+            Notes <span style={{ color: 'var(--lumo-text-ter)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+          </span>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Form cues, weight range, rest time..."
             rows={2}
-            className="w-full px-3 py-2.5 rounded-xl bg-surface-overlay border border-border-subtle text-white text-sm placeholder:text-zinc-600 outline-none focus:border-brand resize-none"
+            style={{ ...inputStyle, resize: 'none' }}
           />
         </label>
 
         <div className="flex items-center gap-2">
           <button
             onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-surface-overlay text-zinc-400 border border-border-subtle active:scale-95 transition-transform"
+            className="flex-1 active:scale-95 transition-transform"
+            style={{
+              padding: '12px 14px',
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 700,
+              background: 'var(--lumo-overlay)',
+              color: 'var(--lumo-text-sec)',
+              border: '1px solid var(--lumo-border)',
+              cursor: 'pointer',
+            }}
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-brand text-white active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
+            className="flex-1 active:scale-95 transition-transform disabled:opacity-40 disabled:active:scale-100"
+            style={{
+              padding: '12px 14px',
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 800,
+              background: 'var(--brand)',
+              color: 'var(--lumo-bg)',
+              border: 'none',
+              cursor: canSave ? 'pointer' : 'not-allowed',
+            }}
           >
             {saving ? 'Saving...' : 'Save'}
           </button>

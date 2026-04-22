@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronDown, Timer, Clock } from 'lucide-react'
+import { Lumo } from './Lumo'
 
 // ─── Routine definitions ────────────────────────────────────────────────────
 
@@ -90,6 +91,14 @@ interface MobilityRoutinesProps {
   onStartTimer?: (seconds: number, label: string, type: 'rest' | 'work') => void
 }
 
+const kickerStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase',
+  color: 'var(--lumo-text-ter)',
+}
+
 export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps) {
   const [expandedRoutine, setExpandedRoutine] = useState<string | null>(null)
   const [checkedExercises, setCheckedExercises] = useState<Record<string, boolean>>({})
@@ -111,25 +120,71 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
     return done
   }
 
+  const hasAnyProgress = ROUTINES.some(r => getRoutineProgress(r) > 0)
+
   return (
-    <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
-      <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
+    <div
+      className="font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
+      style={{
+        minHeight: '100dvh',
+        background: 'var(--lumo-bg)',
+        color: 'var(--lumo-text)',
+      }}
+    >
+      <div className="max-w-lg mx-auto px-4 pb-20 safe-top safe-bottom">
 
         {/* Header */}
-        <div className="flex items-center gap-3 pt-3 pb-4">
+        <div className="flex items-center gap-3 pt-3 pb-3">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 rounded-lg text-zinc-400 active:scale-95 transition-transform"
+            aria-label="Back"
+            className="w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              color: 'var(--lumo-text-sec)',
+            }}
           >
-            <ChevronLeft size={20} />
+            <ChevronLeft size={18} />
           </button>
-          <div>
-            <h1 className="text-[20px] font-extrabold tracking-tight bg-gradient-to-r from-brand to-orange-300 bg-clip-text text-transparent">
-              Mobility Routines
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={kickerStyle}>mobility</div>
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                color: 'var(--accent-plum)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                marginTop: 1,
+                lineHeight: 1.1,
+              }}
+            >
+              mobility routines
             </h1>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Pre-built routines for flexibility and recovery
-            </p>
+          </div>
+        </div>
+
+        {/* Lumo intro */}
+        <div className="flex items-end gap-2.5 mb-4">
+          <Lumo state="curious" size={64} color="var(--accent-plum)" />
+          <div
+            className="flex-1 relative"
+            style={{
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              padding: '12px 14px',
+              borderRadius: 16,
+              borderBottomLeftRadius: 4,
+              fontSize: 13,
+              lineHeight: 1.4,
+              color: 'var(--lumo-text)',
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+            }}
+          >
+            pick a routine, roll out the kinks.
           </div>
         </div>
 
@@ -141,27 +196,44 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
             const total = routine.exercises.length
 
             return (
-              <div key={routine.id} className="bg-surface-raised border border-border-subtle rounded-2xl overflow-hidden">
+              <div
+                key={routine.id}
+                style={{
+                  background: 'var(--lumo-raised)',
+                  border: '1px solid var(--lumo-border)',
+                  borderRadius: 20,
+                  overflow: 'hidden',
+                }}
+              >
                 {/* Routine header */}
                 <button
                   onClick={() => toggleRoutine(routine.id)}
-                  className="w-full text-left px-4 py-4 active:scale-[0.99] transition-transform"
+                  className="w-full text-left active:scale-[0.99] transition"
+                  style={{ padding: 16, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="text-2xl">{routine.emoji}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[15px] font-bold text-zinc-200">{routine.title}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--lumo-text)' }}>
+                          {routine.title}
+                        </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+                          <div
+                            className="flex items-center gap-1"
+                            style={{ fontSize: 11, color: 'var(--lumo-text-sec)' }}
+                          >
                             <Clock size={10} />
                             {routine.duration}
                           </div>
-                          <span className="text-[11px] text-zinc-600">
+                          <span style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
                             {total} exercises
                           </span>
                           {progress > 0 && (
-                            <span className="text-[11px] font-bold text-brand">
+                            <span
+                              className="tabular-nums"
+                              style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-plum)' }}
+                            >
                               {progress}/{total}
                             </span>
                           )}
@@ -170,11 +242,24 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                     </div>
                     <ChevronDown
                       size={16}
-                      className={`text-zinc-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      style={{
+                        color: 'var(--lumo-text-sec)',
+                        transition: 'transform 200ms',
+                        transform: isExpanded ? 'rotate(180deg)' : 'none',
+                      }}
                     />
                   </div>
                   {!isExpanded && (
-                    <div className="text-[11px] text-zinc-500 mt-1.5 line-clamp-2 ml-11">
+                    <div
+                      className="line-clamp-2"
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--lumo-text-sec)',
+                        marginTop: 6,
+                        marginLeft: 44,
+                        lineHeight: 1.4,
+                      }}
+                    >
                       {routine.description}
                     </div>
                   )}
@@ -182,17 +267,37 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
 
                 {/* Expanded routine */}
                 {isExpanded && (
-                  <div className="px-4 pb-4">
-                    <div className="text-[12px] text-zinc-400 mb-3 leading-relaxed">
+                  <div style={{ padding: '0 16px 16px' }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--lumo-text-sec)',
+                        marginBottom: 12,
+                        lineHeight: 1.5,
+                      }}
+                    >
                       {routine.description}
                     </div>
 
                     {/* Progress bar */}
                     {progress > 0 && (
-                      <div className="h-1 bg-surface-overlay rounded-full overflow-hidden mb-3">
+                      <div
+                        style={{
+                          height: 4,
+                          background: 'var(--lumo-overlay)',
+                          borderRadius: 999,
+                          overflow: 'hidden',
+                          marginBottom: 12,
+                        }}
+                      >
                         <div
-                          className="h-full rounded-full transition-all duration-500 ease-out bg-brand"
-                          style={{ width: `${(progress / total) * 100}%` }}
+                          className="transition-all duration-500 ease-out"
+                          style={{
+                            height: '100%',
+                            width: `${(progress / total) * 100}%`,
+                            background: 'var(--accent-plum)',
+                            borderRadius: 999,
+                          }}
                         />
                       </div>
                     )}
@@ -204,14 +309,20 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                         return (
                           <div
                             key={idx}
-                            className="flex items-center gap-2.5 py-2.5 px-1 rounded-lg transition-opacity"
-                            style={{ opacity: isChecked ? 0.4 : 1 }}
+                            className="flex items-center gap-2.5"
+                            style={{
+                              padding: '10px 4px',
+                              borderRadius: 10,
+                              opacity: isChecked ? 0.4 : 1,
+                              transition: 'opacity 200ms',
+                            }}
                           >
                             <input
                               type="checkbox"
                               checked={!!isChecked}
                               onChange={() => toggleExercise(routine.id, idx)}
-                              className="w-4 h-4 shrink-0 accent-brand rounded"
+                              className="w-4 h-4 shrink-0 rounded"
+                              style={{ accentColor: 'var(--accent-plum)' }}
                             />
 
                             <div
@@ -220,27 +331,53 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                             >
                               <div className="flex items-baseline gap-2">
                                 <span
-                                  className="text-[13px] font-medium"
                                   style={{
+                                    fontSize: 13,
+                                    fontWeight: 500,
                                     textDecoration: isChecked ? 'line-through' : 'none',
-                                    color: isChecked ? '#555' : '#ccc',
+                                    color: isChecked ? 'var(--lumo-text-ter)' : 'var(--lumo-text)',
                                   }}
                                 >
                                   {exercise.name}
                                 </span>
-                                <span className="text-[11px] text-zinc-500 font-semibold whitespace-nowrap">
+                                <span
+                                  className="whitespace-nowrap"
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    color: 'var(--lumo-text-sec)',
+                                  }}
+                                >
                                   {exercise.duration}
                                 </span>
                               </div>
                               {!isChecked && (
-                                <div className="text-[10px] text-zinc-600 mt-0.5">{exercise.cue}</div>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: 'var(--lumo-text-ter)',
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {exercise.cue}
+                                </div>
                               )}
                             </div>
 
                             {exercise.seconds && exercise.seconds > 0 && onStartTimer && (
                               <button
                                 onClick={() => onStartTimer(exercise.seconds!, exercise.name, 'work')}
-                                className="px-2 py-1 rounded-lg text-[11px] font-semibold border border-brand/30 text-brand bg-transparent active:scale-95 transition-transform flex items-center gap-1 shrink-0"
+                                className="flex items-center gap-1 shrink-0 active:scale-95 transition"
+                                style={{
+                                  padding: '5px 10px',
+                                  borderRadius: 10,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  border: '1px solid color-mix(in srgb, var(--accent-plum) 40%, transparent)',
+                                  color: 'var(--accent-plum)',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                }}
                               >
                                 <Timer size={10} />
                                 {exercise.seconds}s
@@ -254,7 +391,17 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                     {/* Completed message */}
                     {progress === total && (
                       <div className="text-center mt-3 py-2">
-                        <div className="text-success text-sm font-bold">Routine complete!</div>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: 'var(--accent-mint)',
+                            fontFamily: "'Fraunces', Georgia, serif",
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          routine complete.
+                        </div>
                       </div>
                     )}
                   </div>
@@ -264,10 +411,61 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
           })}
         </div>
 
+        {/* Empty invitation — no routine has any progress yet */}
+        {!hasAnyProgress && expandedRoutine === null && (
+          <div
+            className="text-center flex flex-col items-center gap-3 mt-4"
+            style={{
+              padding: '32px 20px',
+              background: 'var(--lumo-raised)',
+              border: '1px solid color-mix(in srgb, var(--accent-plum) 25%, transparent)',
+              borderRadius: 20,
+            }}
+          >
+            <Lumo state="sleepy" size={72} color="var(--accent-plum)" />
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              stiff shoulders? open one up.
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-sec)',
+                lineHeight: 1.4,
+                maxWidth: 280,
+              }}
+            >
+              tap a routine above and start wherever feels good.
+            </div>
+          </div>
+        )}
+
         {/* Info banner */}
-        <div className="flex items-center gap-3 bg-purple-soft border border-purple-900/30 rounded-2xl px-3.5 py-3 mt-4">
+        <div
+          className="flex items-center gap-3 mt-4"
+          style={{
+            background: 'color-mix(in srgb, var(--accent-plum) 15%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent-plum) 30%, transparent)',
+            borderRadius: 18,
+            padding: '12px 14px',
+          }}
+        >
           <span className="text-lg shrink-0">{'\u{1F4A1}'}</span>
-          <div className="text-[12px] text-purple-300 leading-relaxed">
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--accent-plum)',
+              lineHeight: 1.5,
+            }}
+          >
             <strong>Tip:</strong> Do these routines on rest days, before bed, or as a standalone session. Consistency beats intensity for flexibility.
           </div>
         </div>

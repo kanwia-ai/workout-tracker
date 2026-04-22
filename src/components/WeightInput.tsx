@@ -1,3 +1,6 @@
+// Legacy — replaced by LiftCard's WeightChipRow. Kept for any external callers
+// (currently: ExerciseCard, itself no longer wired into the app tree). Mark
+// for removal once ExerciseCard is deleted.
 import { useState, useRef, useEffect } from 'react'
 
 interface WeightInputProps {
@@ -22,12 +25,26 @@ export function WeightInput({ value, lastWeight, pr, onChange }: WeightInputProp
       <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setEditing(true)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 bg-surface-overlay border border-border-medium active:scale-95 transition-transform"
+          className="active:scale-95 transition-transform"
+          style={{
+            padding: '6px 12px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--lumo-text-sec)',
+            background: 'var(--lumo-overlay)',
+            border: '1px solid var(--lumo-border)',
+          }}
         >
           + log weight
         </button>
         {lastWeight && (
-          <span className="text-[10px] text-warning">
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--lumo-text-ter)',
+            }}
+          >
             Last: {lastWeight} lbs
           </span>
         )}
@@ -41,14 +58,22 @@ export function WeightInput({ value, lastWeight, pr, onChange }: WeightInputProp
     return (
       <button
         onClick={() => { setVal(value.toString()); setEditing(true) }}
-        className="px-3 py-1.5 rounded-lg text-xs font-semibold border active:scale-95 transition-transform"
+        className="active:scale-95 transition-transform"
         style={{
-          background: '#1e3a2e',
-          borderColor: '#4ade8044',
-          color: '#4ade80',
+          padding: '6px 12px',
+          borderRadius: 10,
+          fontSize: 12,
+          fontWeight: 600,
+          background: isPR
+            ? 'color-mix(in srgb, var(--accent-mint) 18%, transparent)'
+            : 'var(--lumo-overlay)',
+          border: isPR
+            ? '1px solid color-mix(in srgb, var(--accent-mint) 45%, transparent)'
+            : '1px solid var(--lumo-border)',
+          color: isPR ? 'var(--accent-mint)' : 'var(--lumo-text)',
         }}
       >
-        {value} lbs {isPR ? '🏆' : ''}
+        {value} lbs {isPR ? '★' : ''}
       </button>
     )
   }
@@ -64,10 +89,20 @@ export function WeightInput({ value, lastWeight, pr, onChange }: WeightInputProp
         onChange={e => setVal(e.target.value)}
         onBlur={() => { if (val) onChange(parseFloat(val)); setEditing(false) }}
         onKeyDown={e => { if (e.key === 'Enter') { if (val) onChange(parseFloat(val)); setEditing(false) } }}
-        className="w-16 px-2 py-1.5 rounded-lg text-sm text-white bg-surface-overlay border border-brand outline-none font-medium"
+        className="tabular-nums outline-none"
+        style={{
+          width: 64,
+          padding: '6px 10px',
+          borderRadius: 14,
+          fontSize: 14,
+          fontWeight: 500,
+          color: 'var(--lumo-text)',
+          background: 'var(--lumo-input-bg)',
+          border: '1px solid var(--brand)',
+        }}
         placeholder={lastWeight?.toString() || 'lbs'}
       />
-      <span className="text-xs text-zinc-500">lbs</span>
+      <span style={{ fontSize: 12, color: 'var(--lumo-text-ter)' }}>lbs</span>
     </div>
   )
 }

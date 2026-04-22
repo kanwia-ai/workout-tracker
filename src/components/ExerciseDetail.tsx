@@ -39,10 +39,32 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
 }
 
-const KNEE_SAFETY_CONFIG: Record<KneeSafety, { label: string; color: string; bg: string; icon: typeof CheckCircle }> = {
-  knee_safe: { label: 'Knee Safe', color: '#4ade80', bg: '#1e3a2e', icon: CheckCircle },
-  knee_caution: { label: 'Use Caution', color: '#f59e0b', bg: '#3a2e1e', icon: AlertTriangle },
-  knee_avoid: { label: 'Avoid', color: '#ef4444', bg: '#3a1e1e', icon: AlertTriangle },
+// Knee safety uses Lumo accent tokens: mint = safe, sun = caution, soft red = avoid.
+const KNEE_SAFETY_CONFIG: Record<
+  KneeSafety,
+  { label: string; color: string; tintBg: string; tintBorder: string; icon: typeof CheckCircle }
+> = {
+  knee_safe: {
+    label: 'Knee Safe',
+    color: 'var(--accent-mint)',
+    tintBg: 'color-mix(in srgb, var(--accent-mint) 18%, transparent)',
+    tintBorder: 'color-mix(in srgb, var(--accent-mint) 40%, transparent)',
+    icon: CheckCircle,
+  },
+  knee_caution: {
+    label: 'Use Caution',
+    color: 'var(--accent-sun)',
+    tintBg: 'color-mix(in srgb, var(--accent-sun) 18%, transparent)',
+    tintBorder: 'color-mix(in srgb, var(--accent-sun) 40%, transparent)',
+    icon: AlertTriangle,
+  },
+  knee_avoid: {
+    label: 'Avoid',
+    color: '#ef4444',
+    tintBg: 'color-mix(in srgb, #ef4444 16%, transparent)',
+    tintBorder: 'color-mix(in srgb, #ef4444 40%, transparent)',
+    icon: AlertTriangle,
+  },
 }
 
 interface ExerciseDetailProps {
@@ -50,39 +72,108 @@ interface ExerciseDetailProps {
   onBack: () => void
 }
 
+// ─── Shared sub-components ──────────────────────────────────────────────────
+
+function SectionCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 22,
+        padding: 16,
+        marginBottom: 12,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function Kicker({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: 'var(--lumo-text-ter)',
+        marginBottom: 10,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function MetaChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: 'var(--lumo-text-sec)',
+        background: 'var(--lumo-overlay)',
+        border: '1px solid var(--lumo-border)',
+        padding: '3px 8px',
+        borderRadius: 10,
+        textTransform: 'capitalize',
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
 export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
   const kneeConfig = KNEE_SAFETY_CONFIG[exercise.knee_safety]
   const KneeIcon = kneeConfig.icon
 
   return (
-    <div className="min-h-screen bg-surface font-[system-ui,-apple-system,'Segoe_UI',sans-serif]">
+    <div
+      style={{
+        minHeight: '100dvh',
+        background: 'var(--lumo-bg)',
+        color: 'var(--lumo-text)',
+      }}
+      className="font-[system-ui,-apple-system,'Segoe_UI',sans-serif]"
+    >
       <div className="max-w-lg mx-auto px-3 pb-20 safe-top safe-bottom">
 
         {/* Header */}
         <div className="flex items-center gap-3 pt-3 pb-3">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 rounded-lg text-zinc-400 active:scale-95 transition-transform"
+            aria-label="Back"
+            className="p-2 -ml-2 rounded-xl active:scale-95 transition-transform"
+            style={{ color: 'var(--lumo-text-sec)' }}
           >
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-extrabold tracking-tight text-white truncate">
+            <h1
+              className="truncate"
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: '-0.01em',
+                color: 'var(--lumo-text)',
+              }}
+            >
               {exercise.name}
             </h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded">
-                {DIFFICULTY_LABELS[exercise.difficulty]}
-              </span>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <MetaChip>{DIFFICULTY_LABELS[exercise.difficulty]}</MetaChip>
               {exercise.movement_pattern && (
-                <span className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded">
+                <MetaChip>
                   {MOVEMENT_LABELS[exercise.movement_pattern] || exercise.movement_pattern}
-                </span>
+                </MetaChip>
               )}
               {exercise.laterality && (
-                <span className="text-[10px] font-semibold text-zinc-400 bg-surface-overlay px-1.5 py-0.5 rounded capitalize">
-                  {exercise.laterality}
-                </span>
+                <MetaChip>{exercise.laterality}</MetaChip>
               )}
             </div>
           </div>
@@ -90,19 +181,29 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
 
         {/* Knee Safety Banner */}
         <div
-          className="flex items-start gap-3 rounded-2xl px-4 py-3 mb-3"
+          className="flex items-start gap-3"
           style={{
-            background: kneeConfig.bg,
-            border: `1px solid ${kneeConfig.color}30`,
+            background: kneeConfig.tintBg,
+            border: `1px solid ${kneeConfig.tintBorder}`,
+            borderRadius: 22,
+            padding: '14px 16px',
+            marginBottom: 12,
           }}
         >
           <KneeIcon size={18} className="shrink-0 mt-0.5" style={{ color: kneeConfig.color }} />
           <div>
-            <div className="text-sm font-bold" style={{ color: kneeConfig.color }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: kneeConfig.color }}>
               {kneeConfig.label}
             </div>
             {exercise.knee_safety_notes && (
-              <div className="text-[12px] text-zinc-300 mt-0.5 leading-relaxed">
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--lumo-text-sec)',
+                  marginTop: 3,
+                  lineHeight: 1.45,
+                }}
+              >
                 {exercise.knee_safety_notes}
               </div>
             )}
@@ -111,64 +212,101 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
 
         {/* Description */}
         {exercise.description && (
-          <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 mb-3">
-            <div className="text-sm text-zinc-300 leading-relaxed">
+          <SectionCard>
+            <div
+              style={{
+                fontSize: 14,
+                color: 'var(--lumo-text)',
+                lineHeight: 1.55,
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+              }}
+            >
               {exercise.description}
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Instructions */}
         {exercise.instructions && exercise.instructions.length > 0 && (
-          <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 mb-3">
-            <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2.5">
-              How To
-            </div>
+          <SectionCard>
+            <Kicker>How to</Kicker>
             <ol className="space-y-2">
               {exercise.instructions.map((step, i) => (
                 <li key={i} className="flex gap-3">
-                  <span className="text-xs font-extrabold text-brand mt-0.5 shrink-0 w-5 text-right">
+                  <span
+                    className="tabular-nums shrink-0 mt-0.5"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: 'var(--brand)',
+                      width: 20,
+                      textAlign: 'right',
+                    }}
+                  >
                     {i + 1}.
                   </span>
-                  <span className="text-[13px] text-zinc-300 leading-relaxed">{step}</span>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: 'var(--lumo-text)',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {step}
+                  </span>
                 </li>
               ))}
             </ol>
-          </div>
+          </SectionCard>
         )}
 
         {/* Form Cues */}
         {exercise.cues && exercise.cues.length > 0 && (
-          <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 mb-3">
-            <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2.5">
-              Form Cues
-            </div>
+          <SectionCard>
+            <Kicker>Form cues</Kicker>
             <div className="space-y-1.5">
               {exercise.cues.map((cue, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <Info size={12} className="text-brand shrink-0 mt-1" />
-                  <span className="text-[13px] text-zinc-300">{cue}</span>
+                  <Info size={12} className="shrink-0 mt-1" style={{ color: 'var(--brand)' }} />
+                  <span style={{ fontSize: 13, color: 'var(--lumo-text)' }}>{cue}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Muscles Worked */}
-        <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 mb-3">
-          <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2.5">
-            Muscles Worked
-          </div>
+        <SectionCard>
+          <Kicker>Muscles</Kicker>
 
           {/* Primary */}
-          <div className="mb-2">
-            <div className="text-[11px] text-zinc-500 font-semibold mb-1">Primary</div>
+          <div className="mb-3">
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--lumo-text-ter)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginBottom: 6,
+              }}
+            >
+              Primary
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {exercise.primary_muscles.map(m => (
                 <span
                   key={m}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold"
-                  style={{ background: '#f9731622', color: '#f97316' }}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 12,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: 'color-mix(in srgb, var(--brand) 14%, transparent)',
+                    color: 'var(--brand)',
+                    border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+                  }}
                 >
                   {MUSCLE_LABELS[m] || m}
                 </span>
@@ -179,12 +317,31 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
           {/* Secondary */}
           {exercise.secondary_muscles && exercise.secondary_muscles.length > 0 && (
             <div>
-              <div className="text-[11px] text-zinc-500 font-semibold mb-1">Secondary</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--lumo-text-ter)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  marginBottom: 6,
+                }}
+              >
+                Secondary
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {exercise.secondary_muscles.map(m => (
                   <span
                     key={m}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-surface-overlay text-zinc-400"
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: 12,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: 'var(--lumo-overlay)',
+                      color: 'var(--lumo-text-sec)',
+                      border: '1px solid var(--lumo-border)',
+                    }}
                   >
                     {MUSCLE_LABELS[m] || m}
                   </span>
@@ -192,29 +349,43 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
               </div>
             </div>
           )}
-        </div>
+        </SectionCard>
 
         {/* Equipment */}
-        <div className="bg-surface-raised border border-border-subtle rounded-2xl p-4 mb-3">
-          <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2.5">
-            Equipment
-          </div>
+        <SectionCard>
+          <Kicker>Equipment</Kicker>
           <div className="flex flex-wrap gap-1.5">
             {exercise.equipment.map(e => (
               <span
                 key={e}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-surface-overlay text-zinc-300"
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: 12,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: 'var(--lumo-overlay)',
+                  color: 'var(--lumo-text)',
+                  border: '1px solid var(--lumo-border)',
+                }}
               >
                 {EQUIPMENT_LABELS[e] || e}
               </span>
             ))}
           </div>
-        </div>
+        </SectionCard>
 
         {/* Source */}
         {exercise.source && (
-          <div className="text-center text-[11px] text-zinc-600 mt-4">
-            Source: {exercise.source}
+          <div
+            className="text-center mt-4"
+            style={{
+              fontSize: 11,
+              color: 'var(--lumo-text-ter)',
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontStyle: 'italic',
+            }}
+          >
+            source: {exercise.source}
           </div>
         )}
       </div>

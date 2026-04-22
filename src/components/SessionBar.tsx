@@ -23,11 +23,16 @@ const PHASE_LABELS: Record<SessionPhase['name'], string> = {
   'cardio': 'Cardio',
   'cool-down': 'Cool-Down',
 }
+// Semantic colors sourced from Lumo tokens:
+//   warm-up  → sun  (ramping up)
+//   lifts    → brand (the work)
+//   cardio   → mint (movement / heart)
+//   cool-down → plum (wind-down / rest)
 const PHASE_COLORS: Record<SessionPhase['name'], string> = {
-  'warm-up': '#f97316',
-  'lifts': '#a78bfa',
-  'cardio': '#4ade80',
-  'cool-down': '#60a5fa',
+  'warm-up': 'var(--accent-sun)',
+  'lifts': 'var(--brand)',
+  'cardio': 'var(--accent-mint)',
+  'cool-down': 'var(--accent-plum)',
 }
 const MIN_PHASE_SECONDS: Record<SessionPhase['name'], number> = {
   'warm-up': 180,
@@ -109,34 +114,81 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
     return (
       <button
         onClick={onStart}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-base bg-brand text-white active:scale-[0.98] transition-transform"
+        className="w-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+        style={{
+          padding: '16px 18px',
+          borderRadius: 20,
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          color: 'var(--brand)',
+          fontWeight: 700,
+          fontSize: 16,
+          letterSpacing: '-0.01em',
+        }}
       >
-        <Play size={18} fill="white" />
-        Start Workout
+        <Play size={18} fill="currentColor" />
+        let's go — start workout
       </button>
     )
   }
 
   return (
-    <div className="bg-surface-raised border border-border-subtle rounded-2xl p-3">
+    <div
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 20,
+        padding: 14,
+      }}
+    >
       {/* Total timer + End button */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-          <span className="text-xl font-extrabold tabular-nums">{formatTime(totalElapsed)}</span>
+          <div
+            className="w-2 h-2 rounded-full animate-pulse"
+            style={{ background: 'var(--accent-mint)' }}
+          />
+          <span
+            className="tabular-nums"
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              color: 'var(--lumo-text)',
+            }}
+          >
+            {formatTime(totalElapsed)}
+          </span>
         </div>
         {confirmEnd ? (
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-zinc-400">End workout?</span>
+            <span style={{ fontSize: 11, color: 'var(--lumo-text-sec)' }}>End workout?</span>
             <button
               onClick={confirmEndSession}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-danger active:scale-95 transition-transform"
+              className="active:scale-95 transition-transform"
+              style={{
+                padding: '6px 12px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#fff',
+                background: 'var(--danger, #ef4444)',
+                border: 'none',
+              }}
             >
               Yes, end
             </button>
             <button
               onClick={() => setConfirmEnd(false)}
-              className="px-2 py-1.5 rounded-lg text-xs font-bold text-zinc-400 bg-surface-overlay active:scale-95 transition-transform"
+              className="active:scale-95 transition-transform"
+              style={{
+                padding: '6px 10px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--lumo-text-sec)',
+                background: 'var(--lumo-overlay)',
+                border: 'none',
+              }}
             >
               No
             </button>
@@ -144,10 +196,19 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
         ) : (
           <button
             onClick={handleEndClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-danger bg-danger/10 border border-danger/20 active:scale-95 transition-transform"
+            className="flex items-center gap-1 active:scale-95 transition-transform"
+            style={{
+              padding: '4px 8px',
+              fontSize: 11,
+              fontWeight: 500,
+              color: 'var(--lumo-text-ter)',
+              background: 'transparent',
+              border: 'none',
+            }}
+            aria-label="End session"
           >
-            <Square size={12} />
-            End
+            <Square size={10} />
+            end
           </button>
         )}
       </div>
@@ -156,15 +217,20 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
       {completedLaps.length > 0 && (
         <div className="flex flex-wrap gap-x-3 gap-y-1 mb-2 px-0.5">
           {completedLaps.map((lap, i) => (
-            <div key={i} className="flex items-center gap-1.5 text-[11px]">
+            <div key={i} className="flex items-center gap-1.5" style={{ fontSize: 11 }}>
               <div
                 className="w-1.5 h-1.5 rounded-full"
                 style={{ background: PHASE_COLORS[lap.name] }}
               />
-              <span style={{ color: PHASE_COLORS[lap.name] }} className="font-semibold">
+              <span style={{ color: PHASE_COLORS[lap.name], fontWeight: 600 }}>
                 {PHASE_LABELS[lap.name]}
               </span>
-              <span className="text-zinc-500 tabular-nums">{formatTime(lap.duration)}</span>
+              <span
+                className="tabular-nums"
+                style={{ color: 'var(--lumo-text-ter)' }}
+              >
+                {formatTime(lap.duration)}
+              </span>
             </div>
           ))}
         </div>
@@ -177,10 +243,13 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
             className="w-1.5 h-1.5 rounded-full animate-pulse"
             style={{ background: PHASE_COLORS[currentPhase] }}
           />
-          <span className="text-xs font-bold" style={{ color: PHASE_COLORS[currentPhase] }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: PHASE_COLORS[currentPhase] }}>
             {PHASE_LABELS[currentPhase]}
           </span>
-          <span className="text-xs text-zinc-400 tabular-nums font-semibold">
+          <span
+            className="tabular-nums"
+            style={{ fontSize: 12, fontWeight: 600, color: 'var(--lumo-text-sec)' }}
+          >
             {formatTime(currentLapElapsed)}
           </span>
         </div>
@@ -188,29 +257,64 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
 
       {/* Phase switch confirmation */}
       {confirmPhase && (
-        <div className="bg-surface-overlay rounded-xl px-3 py-2 mb-2 border border-border-medium">
+        <div
+          style={{
+            background: 'var(--lumo-overlay)',
+            border: '1px solid var(--lumo-border-strong)',
+            borderRadius: 12,
+            padding: '8px 12px',
+            marginBottom: 8,
+          }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-300">
-              Switch to <span className="font-bold" style={{ color: PHASE_COLORS[confirmPhase] }}>{PHASE_LABELS[confirmPhase]}</span>?
+            <span style={{ fontSize: 12, color: 'var(--lumo-text)' }}>
+              Switch to{' '}
+              <span style={{ fontWeight: 700, color: PHASE_COLORS[confirmPhase] }}>
+                {PHASE_LABELS[confirmPhase]}
+              </span>
+              ?
             </span>
             <div className="flex gap-1.5">
               <button
                 onClick={confirmSwitch}
-                className="px-3 py-1 rounded-lg text-xs font-bold text-white active:scale-95 transition-transform"
-                style={{ background: PHASE_COLORS[confirmPhase] }}
+                className="active:scale-95 transition-transform"
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#fff',
+                  background: PHASE_COLORS[confirmPhase],
+                  border: 'none',
+                }}
               >
                 Yes
               </button>
               <button
                 onClick={() => setConfirmPhase(null)}
-                className="px-2 py-1 rounded-lg text-xs font-bold text-zinc-400 bg-border-subtle active:scale-95 transition-transform"
+                className="active:scale-95 transition-transform"
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: 'var(--lumo-text-sec)',
+                  background: 'var(--lumo-raised)',
+                  border: '1px solid var(--lumo-border)',
+                }}
               >
                 No
               </button>
             </div>
           </div>
           {skippingEarly && (
-            <div className="mt-1.5 text-[11px] text-amber-400">
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: 'var(--accent-sun)',
+              }}
+            >
               {PHASE_LABELS[skippingEarly.phase]} only ran for {formatTime(skippingEarly.elapsed)} — skip anyway?
             </div>
           )}
@@ -226,11 +330,25 @@ export function SessionBar({ started_at, currentPhase, phases, onStart, onSwitch
             <button
               key={phase}
               onClick={() => handlePhaseClick(phase)}
-              className="flex-1 py-2 rounded-xl text-[11px] font-bold transition-all active:scale-95"
+              className="flex-1 active:scale-95 transition-all"
               style={{
-                background: active ? PHASE_COLORS[phase] + '22' : done ? '#1a1a1e' : '#2a2a2e',
-                color: active ? PHASE_COLORS[phase] : done ? '#555' : '#666',
-                border: active ? `1.5px solid ${PHASE_COLORS[phase]}44` : '1.5px solid transparent',
+                padding: '8px 6px',
+                borderRadius: 12,
+                fontSize: 11,
+                fontWeight: 700,
+                background: active
+                  ? `color-mix(in srgb, ${PHASE_COLORS[phase]} 18%, transparent)`
+                  : done
+                    ? 'var(--lumo-bg)'
+                    : 'var(--lumo-overlay)',
+                color: active
+                  ? PHASE_COLORS[phase]
+                  : done
+                    ? 'var(--lumo-text-ter)'
+                    : 'var(--lumo-text-sec)',
+                border: active
+                  ? `1.5px solid color-mix(in srgb, ${PHASE_COLORS[phase]} 45%, transparent)`
+                  : '1.5px solid transparent',
                 textDecoration: done && !active ? 'line-through' : 'none',
               }}
             >

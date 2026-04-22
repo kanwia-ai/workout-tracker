@@ -12,11 +12,36 @@ export function WeeklyRecap({ data, onDismiss, onViewProgress }: WeeklyRecapProp
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="relative bg-gradient-to-br from-brand/15 via-surface-raised to-surface-raised border border-brand/25 rounded-2xl overflow-hidden">
+    <div
+      className="relative overflow-hidden"
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+        borderRadius: 22,
+      }}
+    >
+      {/* Soft brand glow — replaces the old gradient */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: -40,
+          right: -40,
+          width: 160,
+          height: 160,
+          borderRadius: '50%',
+          background: 'color-mix(in srgb, var(--brand) 18%, transparent)',
+          filter: 'blur(40px)',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Dismiss button */}
       <button
         onClick={onDismiss}
-        className="absolute top-3 right-3 p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 active:scale-90 transition-all z-10"
+        aria-label="Dismiss weekly recap"
+        className="absolute top-3 right-3 p-1.5 rounded-lg active:scale-90 transition-all z-10"
+        style={{ color: 'var(--lumo-text-ter)' }}
       >
         <X size={16} />
       </button>
@@ -24,28 +49,55 @@ export function WeeklyRecap({ data, onDismiss, onViewProgress }: WeeklyRecapProp
       {/* Collapsed: 1-2 highlights */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full text-left p-4 pr-10"
+        className="relative w-full text-left p-4 pr-10"
       >
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-7 h-7 rounded-lg bg-brand/20 flex items-center justify-center">
-            <Trophy size={14} className="text-brand" />
+          <div
+            className="flex items-center justify-center"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 10,
+              background: 'color-mix(in srgb, var(--brand) 20%, transparent)',
+            }}
+          >
+            <Trophy size={14} style={{ color: 'var(--brand)' }} />
           </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-brand">
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.14em',
+              color: 'var(--brand)',
+            }}
+          >
             {data.weekLabel}
           </span>
         </div>
 
         <div className="space-y-1.5">
           {data.highlights.slice(0, 2).map((h, i) => (
-            <p key={i} className="text-[15px] font-semibold text-zinc-100 leading-snug">
+            <p
+              key={i}
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: 'var(--lumo-text)',
+                lineHeight: 1.35,
+              }}
+            >
               {h}
             </p>
           ))}
         </div>
 
         {!expanded && (
-          <div className="flex items-center gap-1 mt-3 text-xs text-zinc-500">
-            <span>Tap for details</span>
+          <div
+            className="flex items-center gap-1 mt-3"
+            style={{ fontSize: 12, color: 'var(--lumo-text-ter)' }}
+          >
+            <span>tap for details</span>
             <ChevronRight size={12} />
           </div>
         )}
@@ -53,33 +105,106 @@ export function WeeklyRecap({ data, onDismiss, onViewProgress }: WeeklyRecapProp
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border-subtle pt-3">
+        <div
+          className="relative px-4 pb-4 space-y-3 pt-3"
+          style={{ borderTop: '1px solid var(--lumo-border)' }}
+        >
           {/* Stats row */}
           <div className="flex gap-3">
-            <div className="flex-1 bg-surface-overlay rounded-xl p-3">
+            <div
+              className="flex-1"
+              style={{
+                background: 'var(--lumo-overlay)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
               <div className="flex items-center gap-1.5 mb-1">
-                <Flame size={12} className="text-brand" />
-                <span className="text-[11px] text-zinc-500 font-medium">Sessions</span>
+                <Flame size={12} style={{ color: 'var(--brand)' }} />
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--lumo-text-ter)',
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  sessions
+                </span>
               </div>
-              <span className="text-xl font-extrabold">{data.workoutsCompleted}</span>
+              <span
+                className="tabular-nums"
+                style={{ fontSize: 20, fontWeight: 800, color: 'var(--lumo-text)' }}
+              >
+                {data.workoutsCompleted}
+              </span>
             </div>
-            <div className="flex-1 bg-surface-overlay rounded-xl p-3">
+            <div
+              className="flex-1"
+              style={{
+                background: 'var(--lumo-overlay)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
               <div className="flex items-center gap-1.5 mb-1">
-                <Timer size={12} className="text-purple-400" />
-                <span className="text-[11px] text-zinc-500 font-medium">Total Time</span>
+                <Timer size={12} style={{ color: 'var(--accent-plum)' }} />
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--lumo-text-ter)',
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  total time
+                </span>
               </div>
-              <span className="text-xl font-extrabold">{Math.floor(data.totalMinutes / 60)}h {data.totalMinutes % 60}m</span>
+              <span
+                className="tabular-nums"
+                style={{ fontSize: 20, fontWeight: 800, color: 'var(--lumo-text)' }}
+              >
+                {Math.floor(data.totalMinutes / 60)}h {data.totalMinutes % 60}m
+              </span>
             </div>
           </div>
 
           {/* PRs */}
           {data.newPRs.length > 0 && (
-            <div className="bg-surface-overlay rounded-xl p-3">
-              <span className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">New PRs</span>
+            <div
+              style={{
+                background: 'var(--lumo-overlay)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--lumo-text-ter)',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                new PRs
+              </span>
               {data.newPRs.map((pr, i) => (
                 <div key={i} className="flex items-center justify-between mt-1.5">
-                  <span className="text-sm font-semibold text-zinc-200">{pr.exercise}</span>
-                  <span className="text-sm font-bold text-success">{pr.weight} lbs</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--lumo-text)' }}>
+                    {pr.exercise}
+                  </span>
+                  <span
+                    className="tabular-nums"
+                    style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-mint)' }}
+                  >
+                    {pr.weight} lbs
+                  </span>
                 </div>
               ))}
             </div>
@@ -87,18 +212,55 @@ export function WeeklyRecap({ data, onDismiss, onViewProgress }: WeeklyRecapProp
 
           {/* Cardio highlight */}
           {data.cardioHighlight && (
-            <div className="bg-surface-overlay rounded-xl p-3">
-              <span className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">Cardio</span>
-              <p className="text-sm font-semibold text-zinc-200 mt-1">{data.cardioHighlight}</p>
+            <div
+              style={{
+                background: 'var(--lumo-overlay)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--lumo-text-ter)',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                cardio
+              </span>
+              <p
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: 'var(--lumo-text)',
+                  marginTop: 4,
+                }}
+              >
+                {data.cardioHighlight}
+              </p>
             </div>
           )}
 
           {/* View full progress */}
           <button
             onClick={onViewProgress}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand/10 border border-brand/20 text-brand text-sm font-bold active:scale-[0.98] transition-transform"
+            aria-label="View full progress"
+            className="w-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
+              color: 'var(--brand)',
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
           >
-            View Full Progress
+            view full progress
             <ChevronRight size={14} />
           </button>
         </div>

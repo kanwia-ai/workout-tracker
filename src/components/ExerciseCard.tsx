@@ -31,23 +31,53 @@ export function ExerciseCard({
 
   return (
     <div
-      className="rounded-xl p-3.5 mb-2 transition-opacity duration-300"
+      className="transition-opacity duration-300"
       style={{
-        background: '#222226',
-        opacity: allDone ? 0.45 : 1,
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 20,
+        padding: 14,
+        marginBottom: 8,
+        opacity: allDone ? 0.5 : 1,
       }}
     >
       {/* Header row */}
       <div className="flex justify-between items-baseline mb-1">
-        <div className="text-sm font-bold flex-1">{exerciseName}</div>
-        <div className="text-sm text-zinc-400 font-semibold whitespace-nowrap ml-2">
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: 'var(--lumo-text)',
+            flex: 1,
+          }}
+        >
+          {exerciseName}
+        </div>
+        <div
+          className="tabular-nums whitespace-nowrap ml-2"
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--lumo-text-sec)',
+          }}
+        >
           {exercise.sets}x{exercise.reps}
         </div>
       </div>
 
       {/* Note */}
       {exercise.note && (
-        <div className="text-[11px] text-brand italic mb-1.5">{exercise.note}</div>
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--brand)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+            marginBottom: 6,
+          }}
+        >
+          {exercise.note}
+        </div>
       )}
 
       {/* Weight input */}
@@ -76,14 +106,23 @@ export function ExerciseCard({
                   onStartTimer(customRest, exerciseName, 'rest')
                 }
               }}
-              className="min-w-[52px] px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95"
+              className="active:scale-95 transition-transform"
               style={{
-                background: done ? '#4ade80' : '#2a2a2e',
-                color: done ? '#111' : '#aaa',
-                border: done ? '2px solid #4ade80' : '2px solid #3a3a3e',
+                minWidth: 52,
+                padding: '8px 12px',
+                borderRadius: 12,
+                fontSize: 12,
+                fontWeight: 700,
+                background: done
+                  ? 'color-mix(in srgb, var(--accent-mint) 18%, transparent)'
+                  : 'var(--lumo-overlay)',
+                color: done ? 'var(--accent-mint)' : 'var(--lumo-text-sec)',
+                border: done
+                  ? '1.5px solid color-mix(in srgb, var(--accent-mint) 55%, transparent)'
+                  : '1.5px solid var(--lumo-border-strong)',
               }}
             >
-              {done ? '\u2713' : `Set ${k + 1}`}
+              {done ? '✓' : `Set ${k + 1}`}
             </button>
           )
         })}
@@ -92,7 +131,16 @@ export function ExerciseCard({
         {exercise.work_seconds && exercise.work_seconds > 0 && (
           <button
             onClick={() => onStartTimer(exercise.work_seconds!, exerciseName, 'work')}
-            className="px-2 py-1.5 rounded-lg text-[11px] font-semibold border border-purple-500/30 text-purple-400 bg-transparent active:scale-95 transition-transform flex items-center gap-1"
+            className="active:scale-95 transition-transform flex items-center gap-1"
+            style={{
+              padding: '6px 10px',
+              borderRadius: 12,
+              fontSize: 11,
+              fontWeight: 600,
+              background: 'transparent',
+              border: '1px solid color-mix(in srgb, var(--accent-plum) 40%, transparent)',
+              color: 'var(--accent-plum)',
+            }}
           >
             <Timer size={12} />
             {exercise.work_seconds}s
@@ -104,7 +152,16 @@ export function ExerciseCard({
           <div className="relative">
             <button
               onClick={() => setRestExpanded(!restExpanded)}
-              className="px-2 py-1.5 rounded-lg text-[11px] font-semibold border border-brand/30 text-brand bg-transparent active:scale-95 transition-transform flex items-center gap-1"
+              className="active:scale-95 transition-transform flex items-center gap-1"
+              style={{
+                padding: '6px 10px',
+                borderRadius: 12,
+                fontSize: 11,
+                fontWeight: 600,
+                background: 'transparent',
+                border: '1px solid color-mix(in srgb, var(--brand) 40%, transparent)',
+                color: 'var(--brand)',
+              }}
             >
               <Timer size={12} />
               {customRest}s
@@ -112,15 +169,29 @@ export function ExerciseCard({
             </button>
 
             {restExpanded && (
-              <div className="absolute top-full left-0 mt-1 bg-surface-raised border border-border-subtle rounded-xl p-2 z-10 flex gap-1 shadow-xl">
+              <div
+                className="absolute top-full left-0 mt-1 flex gap-1 z-10"
+                style={{
+                  background: 'var(--lumo-raised)',
+                  border: '1px solid var(--lumo-border)',
+                  borderRadius: 14,
+                  padding: 8,
+                  boxShadow: '0 10px 24px rgba(0,0,0,0.25)',
+                }}
+              >
                 {[15, 30, 45, 60, 90, 120].map(s => (
                   <button
                     key={s}
                     onClick={() => { setCustomRest(s); setRestExpanded(false) }}
-                    className="px-2 py-1 rounded-lg text-[11px] font-bold transition-colors active:scale-95"
+                    className="active:scale-95 transition-colors"
                     style={{
-                      background: customRest === s ? '#f97316' : '#2a2a2e',
-                      color: customRest === s ? '#fff' : '#aaa',
+                      padding: '6px 10px',
+                      borderRadius: 10,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: customRest === s ? 'var(--brand)' : 'var(--lumo-overlay)',
+                      color: customRest === s ? 'var(--lumo-bg)' : 'var(--lumo-text-sec)',
+                      border: 'none',
                     }}
                   >
                     {s}s
