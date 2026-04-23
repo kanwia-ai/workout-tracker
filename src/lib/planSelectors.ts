@@ -1,5 +1,11 @@
 import type { Mesocycle, PlannedSession } from '../types/plan'
-import type { LocalDayOverride } from './db'
+import { db, type LocalDayOverride, type LocalSessionLog } from './db'
+import {
+  computeGapFromLogs,
+  computeRecalibration,
+  type RecalibrationResult,
+  type CompletedSessionRef,
+} from './planner/skipRecalibration'
 
 /** Day-of-week helper: Mon=0 through Sun=6, matching PlannedSession.day_of_week. */
 function dowMon0(date: Date): number {
@@ -102,4 +108,67 @@ export function getNextUpcomingSession(meso: Mesocycle | null): PlannedSession |
     sessions.find((s) => s.status === 'upcoming') ??
     null
   )
+}
+
+/**
+ * Optional override so tests can pass in an in-memory log fixture without
+ * needing fake-indexeddb. Production callers leave `logs` undefined and the
+ * selector reads from Dexie directly.
+ */
+export interface RecalibrationOptions {
+  /** Profile-derived — controls the 14+ day branch (<12 → reset, ≥12 → step back 2). */
+  trainingAgeMonths?: number
+  /** Test hook: inject completed-session refs directly instead of hitting Dexie. */
+  logs?: CompletedSessionRef[]
+}
+
+/**
+ * Same resolution as {@link getSessionForDate}, but also returns a
+ * {@link RecalibrationResult} when the user is coming back from ≥4 days
+ * off. UI layers can surface `recalibration.rationale` as a banner.
+ *
+ * Returns `recalibration: null` when:
+ *   - no session resolves for the date (rest day / no plan)
+ *   - the user has no completed sessions yet (first-ever session)
+ *   - the gap is 0-3 days (no adjustment needed)
+ *
+ * Side effect: reads `db.sessionLogs` filtered by `userId`. Pass
+ * `options.logs` to bypass Dexie in tests.
+ */
+export async function getSessionForDateWithRecalibration(
+  meso: Mesocycle | null,
+  overrides: LocalDayOverride[],
+  date: Date,
+  weekNumber: number,
+  userId: string,
+  options: RecalibrationOptions = {},
+): Promise<{ session: PlannedSession | null; recalibration: RecalibrationResult | null }> {
+  const session = getSessionForDate(meso, overrides, date, weekNumber)
+  if (!session) return { session: null, recalibration: null }
+
+  const logs: CompletedSessionRef[] =
+    options.logs ??
+    (await db.sessionLogs
+      .where('user_id')
+      .equals(userId)
+      .toArray()
+      .then((rows: LocalSessionLog[]) =>
+        rows.map((r) => ({
+          user_id: r.user_id,
+          date: r.date,
+          ended_at: r.ended_at,
+          started_at: r.started_at,
+        })),
+      ))
+
+  const gap = computeGapFromLogs(logs, userId, date)
+  if (gap === null) return { session, recalibration: null }
+
+  const age = options.trainingAgeMonths ?? 0
+  const recal = computeRecalibration(gap, session.week_number, age)
+
+  // Don't surface a banner when the rule table says "slide" — UI-wise it's
+  // indistinguishable from a normal session.
+  if (recal.action === 'slide') return { session, recalibration: null }
+  return { session, recalibration: recal }
 }
