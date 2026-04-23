@@ -66,8 +66,17 @@ export interface SettingsScreenProps {
    * this; the Settings screen only renders what it's told.
    */
   replanState?: ReplanState
-  /** Dismiss the reviewing modal (e.g. clicking the close button). */
+  /**
+   * Dismiss the reviewing modal WITHOUT applying. Discards the pending
+   * directives — the current plan stays put. Bound to "Keep current plan".
+   */
   onReplanClose?: () => void
+  /**
+   * Commit the pending directives shown in the reviewing modal. The owner
+   * calls `generatePlanFromDirectives` with the stashed directives and
+   * writes the new Mesocycle to Dexie. Bound to "Apply new plan".
+   */
+  onReplanApply?: () => void
   /** Cheekiness tier — drives the loading-state Lumo copy pool. */
   cheek?: Cheek
 }
@@ -105,6 +114,7 @@ export function SettingsScreen({
   checkinCount = 0,
   replanState,
   onReplanClose,
+  onReplanApply,
   cheek,
 }: SettingsScreenProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -679,11 +689,28 @@ export function SettingsScreen({
                 ))}
               </ul>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button
                 type="button"
                 onClick={() => onReplanClose?.()}
-                data-testid="replan-review-done"
+                data-testid="replan-review-discard"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 12,
+                  background: 'transparent',
+                  color: 'var(--lumo-text-sec)',
+                  border: '1px solid var(--lumo-border)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Keep current plan
+              </button>
+              <button
+                type="button"
+                onClick={() => onReplanApply?.()}
+                data-testid="replan-review-apply"
                 style={{
                   padding: '10px 18px',
                   borderRadius: 12,
@@ -695,7 +722,7 @@ export function SettingsScreen({
                   cursor: 'pointer',
                 }}
               >
-                Got it
+                Apply new plan
               </button>
             </div>
           </div>

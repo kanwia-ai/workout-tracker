@@ -22,7 +22,11 @@ import { CardioPage } from './components/CardioPage'
 import { BottomNav, type AppView } from './components/BottomNav'
 import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
-import { SettingsScreen } from './components/Settings'
+import { SettingsScreen, type ReplanState } from './components/Settings'
+import { replanNextBlock, InsufficientCheckinsError } from './lib/planner/replan'
+import { generatePlanFromDirectives } from './lib/planGen'
+import { listCheckinsForUser } from './lib/checkins'
+import type { ProgrammingDirectives } from './types/directives'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profileRepo'
 import { generatePlan } from './lib/planGen'
@@ -77,6 +81,16 @@ function App() {
   // between dark, light, and system-follows-OS.
   const tweaksApi = useTweaks()
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // ─── Re-plan (end-of-block adaptive) state ────────────────────────────
+  // When the user taps "Re-plan next block" in Settings, we fire the Opus
+  // analyze-and-propose call, stash the returned directives, and show the
+  // review modal. The user then APPLIES (commits via
+  // generatePlanFromDirectives) or DISCARDS (closes, no write).
+  const [replanState, setReplanState] = useState<ReplanState>({ phase: 'idle' })
+  const [pendingDirectives, setPendingDirectives] =
+    useState<ProgrammingDirectives | null>(null)
+  const [checkinCount, setCheckinCount] = useState(0)
 
   const {
     user,
@@ -291,6 +305,89 @@ function App() {
     setGlobalTimer({ seconds, label, type })
   }
 
+  // Keep the check-in count fresh so Settings can gate the re-plan button.
+  // Runs on user change and when Settings opens (cheap Dexie query).
+  useEffect(() => {
+    if (!user?.id) {
+      setCheckinCount(0)
+      return
+    }
+    let cancelled = false
+    void listCheckinsForUser(user.id).then((rows) => {
+      if (!cancelled) setCheckinCount(rows.length)
+    }).catch(() => {
+      // Dexie unavailable (test env etc.) — 0 is a safe default.
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, settingsOpen])
+
+  // Kick off the Opus re-plan. Opens the review modal on success; surfaces
+  // an error in Settings on failure. The current plan stays untouched
+  // until the user hits "Apply new plan" in the modal.
+  async function handleReplanNextBlock() {
+    if (!user?.id) return
+    const meso = await (
+      await import('./lib/planGen')
+    ).loadLatestMesocycleForUser(user.id)
+    if (!meso) {
+      setReplanState({
+        phase: 'error',
+        error: "Couldn't find your current block. Generate a plan first.",
+      })
+      return
+    }
+    setReplanState({ phase: 'loading' })
+    try {
+      const result = await replanNextBlock(user.id, meso.id)
+      setPendingDirectives(result.directives)
+      setReplanState({
+        phase: 'reviewing',
+        rationale: result.rationale_for_user,
+        adjustments: result.adjustments_summary,
+      })
+    } catch (err) {
+      const msg =
+        err instanceof InsufficientCheckinsError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Re-plan hit an error. Try again.'
+      setReplanState({ phase: 'error', error: msg })
+    }
+  }
+
+  // Commit the pending directives: build the new mesocycle and flush Dexie.
+  // Closes the modal on success so the user lands back on Settings.
+  async function handleReplanApply() {
+    if (!user?.id || !pendingDirectives) return
+    const profile = await loadProfileLocal(user.id)
+    if (!profile) {
+      setReplanState({
+        phase: 'error',
+        error: "Couldn't load your profile to apply the new plan.",
+      })
+      return
+    }
+    try {
+      await generatePlanFromDirectives(pendingDirectives, profile, user.id, 6)
+      setPendingDirectives(null)
+      setReplanState({ phase: 'idle' })
+    } catch (err) {
+      setReplanState({
+        phase: 'error',
+        error: err instanceof Error ? err.message : 'Failed to apply the new plan.',
+      })
+    }
+  }
+
+  // Discard the pending directives. Current plan stays put.
+  function handleReplanClose() {
+    setPendingDirectives(null)
+    setReplanState({ phase: 'idle' })
+  }
+
   // Views without bottom nav
   const showBottomNav = !['capture'].includes(view)
 
@@ -303,6 +400,12 @@ function App() {
         setThemeMode={tweaksApi.setThemeMode}
         onClose={() => setSettingsOpen(false)}
         isGenerating={isGenerating}
+        onReplanNextBlock={handleReplanNextBlock}
+        onReplanApply={handleReplanApply}
+        onReplanClose={handleReplanClose}
+        replanState={replanState}
+        checkinCount={checkinCount}
+        cheek={tweaksApi.tweaks.cheek}
         onRegeneratePlan={() => {
           // Reload the saved profile and re-run plan generation against the
           // current prompt + backend. runGeneration flips isGenerating=true,

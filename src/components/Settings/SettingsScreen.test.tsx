@@ -49,6 +49,7 @@ function renderWired(
     checkinCount?: number
     replanState?: ReplanState
     onReplanClose?: () => void
+    onReplanApply?: () => void
   } = {},
 ) {
   installMatchMediaMock()
@@ -69,6 +70,7 @@ function renderWired(
         checkinCount={opts.checkinCount}
         replanState={opts.replanState}
         onReplanClose={opts.onReplanClose}
+        onReplanApply={opts.onReplanApply}
       />
     )
   }
@@ -248,8 +250,9 @@ describe('SettingsScreen', () => {
       expect(screen.getByText(/Looking at your last 6 weeks/i)).toBeInTheDocument()
     })
 
-    it('renders the review modal with rationale + adjustments, and fires onReplanClose on "Got it"', () => {
+    it('renders the review modal with rationale + adjustments; Apply fires onReplanApply, Discard fires onReplanClose', () => {
       const onReplanClose = vi.fn()
+      const onReplanApply = vi.fn()
       renderWired({
         onReplanNextBlock: vi.fn(),
         checkinCount: 24,
@@ -262,6 +265,7 @@ describe('SettingsScreen', () => {
           ],
         },
         onReplanClose,
+        onReplanApply,
       })
       expect(screen.getByTestId('replan-review-modal')).toBeInTheDocument()
       expect(screen.getByTestId('replan-rationale')).toHaveTextContent(
@@ -269,7 +273,11 @@ describe('SettingsScreen', () => {
       )
       const adjustmentsList = screen.getByTestId('replan-adjustments')
       expect(adjustmentsList.querySelectorAll('li')).toHaveLength(2)
-      fireEvent.click(screen.getByTestId('replan-review-done'))
+      // Apply commits the pending directives
+      fireEvent.click(screen.getByTestId('replan-review-apply'))
+      expect(onReplanApply).toHaveBeenCalledTimes(1)
+      // Discard keeps the current plan
+      fireEvent.click(screen.getByTestId('replan-review-discard'))
       expect(onReplanClose).toHaveBeenCalledTimes(1)
     })
 
