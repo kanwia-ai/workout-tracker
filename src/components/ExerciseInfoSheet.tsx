@@ -3,6 +3,8 @@ import { Loader2, X } from 'lucide-react'
 import { db, type LibraryExercise } from '../lib/db'
 import { getDemo } from '../data/exercise-demos'
 import { extractYouTubeVideoId } from '../lib/youtube'
+import { resolveVariant } from '../lib/planner/variants'
+import { EXERCISE_LIBRARY } from '../data/exercises'
 
 // ─── ExerciseInfoSheet ────────────────────────────────────────────────────
 // Full-screen overlay that shows rich library data for a single exercise.
@@ -24,11 +26,56 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
   // Reactive fetch from Dexie. `useLiveQuery` returns `undefined` while the
   // query is pending and `null`/row once resolved. Keyed on libraryId so the
   // effect re-fires when the caller switches exercises without unmounting.
+  //
+  // Lookup order so the sheet doesn't come up empty on local-planner plans:
+  //   1. Dexie `exerciseLibrary` (free-exercise-db seeds + custom inserts)
+  //   2. Curated `EXERCISE_LIBRARY` constant (Kyra-priority lifts w/ cues)
+  //   3. Planner variants pool (fallback: at least show name + muscles)
   const exercise = useLiveQuery<LibraryExercise | null | undefined>(
     async () => {
       if (!libraryId) return null
+      // 1. Try Dexie (free-exercise-db / custom)
       const row = await db.exerciseLibrary.get(libraryId)
-      return row ?? null
+      if (row) return row
+      // 2. Try curated library (ex-*)
+      const curated = EXERCISE_LIBRARY.find((e) => e.id === libraryId)
+      if (curated) {
+        return {
+          id: curated.id,
+          name: curated.name,
+          force: null,
+          level: curated.difficulty ?? null,
+          mechanic: null,
+          equipment: curated.equipment.join(', '),
+          primaryMuscles: curated.primary_muscles,
+          secondaryMuscles: curated.secondary_muscles,
+          instructions: curated.instructions,
+          category: null,
+          imageCount: 0,
+          rawId: curated.id,
+        } as LibraryExercise
+      }
+      // 3. Try planner variants (variant:*)
+      if (libraryId.startsWith('variant:')) {
+        const v = resolveVariant(libraryId.slice('variant:'.length))
+        if (v) {
+          return {
+            id: libraryId,
+            name: v.name,
+            force: null,
+            level: null,
+            mechanic: null,
+            equipment: v.equipment.join(', '),
+            primaryMuscles: v.primary_muscles,
+            secondaryMuscles: v.secondary_muscles,
+            instructions: [],
+            category: v.role,
+            imageCount: 0,
+            rawId: libraryId,
+          } as LibraryExercise
+        }
+      }
+      return null
     },
     [libraryId],
   )

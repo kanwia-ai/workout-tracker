@@ -467,6 +467,11 @@ export function buildSession(args: {
   const finalExercises = weekNumber === 6 ? applyDeload(exercises) : exercises
 
   // Build rationale from context — short, descriptive, under 280 chars.
+  // Use display names (not protocol keys) so "glute_max_bridge_or_hip_thrust"
+  // doesn't leak into the UI.
+  const priorityDisplayNames = context.priority_accessories
+    .slice(0, 2)
+    .map((id) => resolveVariant(id)?.name.toLowerCase() ?? id.replace(/_/g, ' '))
   const rationaleParts: string[] = []
   if (context.preferred_variants.length > 0) {
     rationaleParts.push(
@@ -475,9 +480,9 @@ export function buildSession(args: {
   } else {
     rationaleParts.push(`${defaults.title} focus with ${main.name.toLowerCase()}.`)
   }
-  if (context.priority_accessories.length > 0) {
+  if (priorityDisplayNames.length > 0) {
     rationaleParts.push(
-      `injury-priority accessories first (${context.priority_accessories.slice(0, 2).join(', ')}).`,
+      `injury-priority accessories first (${priorityDisplayNames.join(', ')}).`,
     )
   }
   if (weekNumber === 6) {
@@ -485,13 +490,18 @@ export function buildSession(args: {
   }
   const rationale = rationaleParts.join(' ').slice(0, 280)
 
-  // Estimated minutes: 4 sets × (reps × 3s + rest) per exercise, rough.
+  // Estimated minutes: sum of (sets × (rest + ~0.8 min work)) per lift +
+  // fixed warmup (10 min) + cooldown (5 min) so the session card matches
+  // the wall-clock experience, not just lifting time.
+  const liftingMinutes = finalExercises.reduce(
+    (acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8),
+    0,
+  )
+  const WARMUP_MIN = 10
+  const COOLDOWN_MIN = 5
   const estimatedMinutes = Math.min(
     120,
-    Math.max(
-      25,
-      finalExercises.reduce((acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8), 0),
-    ),
+    Math.max(25, liftingMinutes + WARMUP_MIN + COOLDOWN_MIN),
   )
 
   return {
