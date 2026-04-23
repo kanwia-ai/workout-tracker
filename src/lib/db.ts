@@ -144,6 +144,20 @@ interface LocalCustomExercise {
   synced: boolean
 }
 
+// Post-workout check-in. Captures how each exercise + overall session felt,
+// feeding the adaptive-feedback loop. One row per finished session; PK is the
+// session_id so re-saves overwrite the previous check-in for the same
+// session. `checkin_json` holds the validated SessionCheckin payload so we
+// don't need per-field Dexie migrations when the schema grows.
+interface LocalSessionCheckin {
+  session_id: string                // PK — matches PlannedSession.id
+  user_id: string
+  completed_at: string              // ISO timestamp (also inside checkin_json)
+  week_number: number
+  checkin_json: string              // JSON-stringified SessionCheckin
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -156,6 +170,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   routines: EntityTable<LocalRoutine, 'id'>
   dayOverrides: EntityTable<LocalDayOverride, 'id'>
   customExercises: EntityTable<LocalCustomExercise, 'id'>
+  sessionCheckins: EntityTable<LocalSessionCheckin, 'session_id'>
 }
 
 db.version(1).stores({
@@ -238,5 +253,23 @@ db.version(7).stores({
   customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
 })
 
+// v8 — sessionCheckins (additive). Primary key = session_id so re-saves
+// overwrite. Indexed on user_id + completed_at to power the user-scoped
+// list query (newest-first) without a full scan.
+db.version(8).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+  customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
+  sessionCheckins: 'session_id, user_id, completed_at, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise, LocalSessionCheckin }
