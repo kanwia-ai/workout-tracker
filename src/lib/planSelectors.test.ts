@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { getToday, getWeekView } from './planSelectors'
+import {
+  getToday,
+  getWeekView,
+  getSessionForDateWithRecalibration,
+} from './planSelectors'
 import type { Mesocycle, PlannedSession } from '../types/plan'
+import type { CompletedSessionRef } from './planner/skipRecalibration'
 
 // Minimal local helpers — kept independent from src/types/plan.test.ts on purpose.
 function makePlannedExercise(overrides: Partial<Record<string, unknown>> = {}) {
@@ -135,5 +140,150 @@ describe('getWeekView', () => {
 
   it('returns an empty array when plan is null', () => {
     expect(getWeekView(null, 1)).toEqual([])
+  })
+})
+
+describe('getSessionForDateWithRecalibration', () => {
+  const userId = 'user-int'
+  // 2026-04-22 is a Wednesday. JS getDay()=3 → Mon-0 dow=2.
+  const wednesday = new Date(2026, 3, 22, 10, 0, 0)
+
+  function makeSessionWithDow(
+    week: number,
+    ordinal: number,
+    dow: number,
+  ): PlannedSession {
+    return {
+      id: `int-w${week}-o${ordinal}`,
+      week_number: week,
+      ordinal,
+      focus: ['full_body'],
+      title: `Session ${week}.${ordinal}`,
+      subtitle: '',
+      estimated_minutes: 55,
+      exercises: [makePlannedExercise()],
+      day_of_week: dow,
+      rationale: 'test rationale',
+      status: 'upcoming',
+    } as PlannedSession
+  }
+
+  function makePlanWithDow(): Mesocycle {
+    // 3 sessions/week scheduled Mon/Wed/Fri (dow 0, 2, 4) across 6 weeks.
+    const sessions: PlannedSession[] = []
+    for (let w = 1; w <= 6; w++) {
+      sessions.push(makeSessionWithDow(w, 1, 0))
+      sessions.push(makeSessionWithDow(w, 2, 2))
+      sessions.push(makeSessionWithDow(w, 3, 4))
+    }
+    return {
+      id: 'meso-int',
+      user_id: userId,
+      generated_at: '2026-04-01T00:00:00Z',
+      length_weeks: 6,
+      sessions,
+      profile_snapshot: { sessions_per_week: 3 },
+    }
+  }
+
+  it('returns null session when plan is null', async () => {
+    const result = await getSessionForDateWithRecalibration(
+      null, [], wednesday, 1, userId, { logs: [] },
+    )
+    expect(result.session).toBeNull()
+    expect(result.recalibration).toBeNull()
+  })
+
+  it('returns plain session (no recalibration) when user has no prior logs', async () => {
+    const plan = makePlanWithDow()
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 1, userId, { logs: [] },
+    )
+    expect(result.session).not.toBeNull()
+    expect(result.session?.week_number).toBe(1)
+    expect(result.session?.ordinal).toBe(2)   // Wed is ordinal 2 in Mon/Wed/Fri
+    expect(result.recalibration).toBeNull()
+  })
+
+  it('returns plain session (no banner) when gap is 0-3 days (slide)', async () => {
+    const plan = makePlanWithDow()
+    // Last session 2 days ago — slide range.
+    const logs: CompletedSessionRef[] = [
+      {
+        user_id: userId,
+        ended_at: new Date(2026, 3, 20, 18, 0, 0).toISOString(),
+      },
+    ]
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 1, userId, { logs, trainingAgeMonths: 24 },
+    )
+    expect(result.session).not.toBeNull()
+    expect(result.recalibration).toBeNull()
+  })
+
+  it('returns recalibration banner when gap ≥ 4 days (deload_mild)', async () => {
+    const plan = makePlanWithDow()
+    // Last session 5 days ago — deload range.
+    const logs: CompletedSessionRef[] = [
+      {
+        user_id: userId,
+        ended_at: new Date(2026, 3, 17, 18, 0, 0).toISOString(),
+      },
+    ]
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 1, userId, { logs, trainingAgeMonths: 24 },
+    )
+    expect(result.session).not.toBeNull()
+    expect(result.recalibration).not.toBeNull()
+    expect(result.recalibration?.action).toBe('deload_mild')
+    expect(result.recalibration?.load_multiplier).toBe(0.9)
+    expect(result.recalibration?.rationale).toMatch(/90%/)
+  })
+
+  it('step_back_one_week when gap is 10 days on a non-week-1 session', async () => {
+    const plan = makePlanWithDow()
+    const logs: CompletedSessionRef[] = [
+      {
+        user_id: userId,
+        ended_at: new Date(2026, 3, 12, 18, 0, 0).toISOString(),
+      },
+    ]
+    // Tell selector this is week 4.
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 4, userId, { logs, trainingAgeMonths: 24 },
+    )
+    expect(result.session?.week_number).toBe(4)
+    expect(result.recalibration?.action).toBe('step_back_one_week')
+    expect(result.recalibration?.effective_week_number).toBe(3)
+  })
+
+  it('reset for novice lifter with 20+ day gap', async () => {
+    const plan = makePlanWithDow()
+    const logs: CompletedSessionRef[] = [
+      {
+        user_id: userId,
+        ended_at: new Date(2026, 2, 25, 12, 0, 0).toISOString(),
+      },
+    ]
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 4, userId, { logs, trainingAgeMonths: 6 },
+    )
+    expect(result.recalibration?.action).toBe('reset')
+    expect(result.recalibration?.effective_week_number).toBe(1)
+  })
+
+  it('ignores logs from other users', async () => {
+    const plan = makePlanWithDow()
+    const logs: CompletedSessionRef[] = [
+      {
+        user_id: 'someone-else',
+        ended_at: new Date(2026, 3, 17, 18, 0, 0).toISOString(),
+      },
+    ]
+    const result = await getSessionForDateWithRecalibration(
+      plan, [], wednesday, 1, userId, { logs, trainingAgeMonths: 24 },
+    )
+    expect(result.session).not.toBeNull()
+    expect(result.recalibration).toBeNull()
   })
 })
