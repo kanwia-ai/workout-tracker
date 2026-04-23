@@ -21,6 +21,7 @@ import { Lumo, type LumoState } from './Lumo'
 import { ParticleBurst } from './ParticleBurst'
 import { PRCelebration } from './PRCelebration'
 import { RestBanner } from './RestBanner'
+import { SessionCheckinSheet } from './SessionCheckinSheet'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { useDayOverrides } from '../hooks/useDayOverrides'
@@ -35,7 +36,9 @@ import {
 import { loadProfileLocal } from '../lib/profileRepo'
 import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
+import { saveCheckin } from '../lib/checkins'
 import { SwapSheet } from './SwapSheet'
+import type { SessionCheckin } from '../types/checkin'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
 import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { TimerState, SessionPhase } from '../types'
@@ -314,6 +317,18 @@ export function WorkoutView({
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
   const [infoLibraryId, setInfoLibraryId] = useState<string | null>(null)
 
+  // ─── Post-session check-in sheet ───────────────────────────────────────
+  // Snapshot captured at end-session time. We freeze the exercise list,
+  // session id, week, and completed weights so the sheet can still render
+  // after the underlying PlannedSession state gets cleared below.
+  interface CheckinSnapshot {
+    sessionId: string
+    weekNumber: number
+    exercises: PlannedExercise[]
+    completedWeights: Record<string, number>
+  }
+  const [checkinSnapshot, setCheckinSnapshot] = useState<CheckinSnapshot | null>(null)
+
   useEffect(() => {
     let cancelled = false
     loadProfileLocal(userId)
@@ -536,6 +551,74 @@ export function WorkoutView({
   }
 
 
+  // Finalize the session after the user saves or skips the check-in. Runs
+  // all the cleanup handleEndSession used to do inline.
+  const finalizeSession = useCallback(
+    async (finishedSessionId: string, endedSession: typeof session, sessionTitle: string) => {
+      if (!endedSession) return
+      setCheckedSets({})
+      setCheckedWarmups({})
+      setRestState(null)
+      localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
+      localStorage.removeItem(WARMUP_CHECKED_KEY(finishedSessionId))
+      localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
+      localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
+
+      const now = new Date().toISOString()
+      await saveSession({
+        userId,
+        workoutId: finishedSessionId,
+        workoutTitle: sessionTitle,
+        date: new Date().toISOString().split('T')[0],
+        startedAt: endedSession.started_at,
+        endedAt: now,
+        phases: endedSession.phases.map((p) => (p.ended_at ? p : { ...p, ended_at: now })),
+        completedSets: doneSets,
+        totalSets,
+      })
+
+      const effectiveWeights: Record<string, number> = { ...weights }
+      for (const [exerciseId, arr] of Object.entries(perSetWeights)) {
+        const max = arr.reduce((m, v) => (v > m ? v : m), 0)
+        if (max > 0) effectiveWeights[exerciseId] = max
+      }
+      for (const [exerciseId, weight] of Object.entries(effectiveWeights)) {
+        if (weight > 0) {
+          const ex = exercises.find((e) => e.library_id === exerciseId)
+          await saveLastWeight(userId, exerciseId, weight)
+          await updatePR(userId, exerciseId, ex?.name || exerciseId, weight)
+        }
+      }
+
+      if (doneSets > 0) onWorkoutComplete()
+
+      loadLastWeights(userId).then(setLastWeights)
+      loadPRs(userId).then(setPrs)
+      setWeights({})
+      setPerSetWeights({})
+      setPerSetExpanded({})
+      clearSession()
+    },
+    [
+      userId,
+      weights,
+      perSetWeights,
+      doneSets,
+      totalSets,
+      onWorkoutComplete,
+      exercises,
+      clearSession,
+    ],
+  )
+
+  // Pending finalization tuple — stashed while the check-in sheet is open
+  // so save/skip handlers can run cleanup without racing React state.
+  const pendingFinalizeRef = useRef<{
+    sessionId: string
+    endedSession: typeof session
+    title: string
+  } | null>(null)
+
   const handleEndSession = useCallback(async () => {
     if (!session || !selectedSession) {
       endSession()
@@ -544,62 +627,57 @@ export function WorkoutView({
 
     const endedSession = { ...session }
     const finishedSessionId = selectedSession.id
+    // End the timer-tracked session immediately — the in-session UI won't
+    // show anymore, but the underlying plan state stays rendered behind
+    // the modal check-in sheet.
     endSession()
-    setCheckedSets({})
-    setCheckedWarmups({})
-    setRestState(null)
-    localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
-    localStorage.removeItem(WARMUP_CHECKED_KEY(finishedSessionId))
-    localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
-    localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
 
-    const now = new Date().toISOString()
-    await saveSession({
-      userId,
-      workoutId: finishedSessionId,
-      workoutTitle: selectedSession.title,
-      date: new Date().toISOString().split('T')[0],
-      startedAt: endedSession.started_at,
-      endedAt: now,
-      phases: endedSession.phases.map((p) => (p.ended_at ? p : { ...p, ended_at: now })),
-      completedSets: doneSets,
-      totalSets,
-    })
-
+    // Compute effective weights now (while in-session state is still live)
+    // so the sheet has accurate per-exercise weights to show + persist.
     const effectiveWeights: Record<string, number> = { ...weights }
     for (const [exerciseId, arr] of Object.entries(perSetWeights)) {
       const max = arr.reduce((m, v) => (v > m ? v : m), 0)
       if (max > 0) effectiveWeights[exerciseId] = max
     }
-    for (const [exerciseId, weight] of Object.entries(effectiveWeights)) {
-      if (weight > 0) {
-        const ex = exercises.find((e) => e.library_id === exerciseId)
-        await saveLastWeight(userId, exerciseId, weight)
-        await updatePR(userId, exerciseId, ex?.name || exerciseId, weight)
-      }
+
+    pendingFinalizeRef.current = {
+      sessionId: finishedSessionId,
+      endedSession,
+      title: selectedSession.title,
     }
+    setCheckinSnapshot({
+      sessionId: finishedSessionId,
+      weekNumber: selectedSession.week_number,
+      exercises: selectedSession.exercises,
+      completedWeights: effectiveWeights,
+    })
+  }, [session, selectedSession, weights, perSetWeights, endSession])
 
-    if (doneSets > 0) onWorkoutComplete()
+  const handleCheckinSave = useCallback(
+    async (checkin: SessionCheckin) => {
+      try {
+        await saveCheckin(checkin)
+      } catch (err) {
+        console.error('saveCheckin failed', err)
+      }
+      const pending = pendingFinalizeRef.current
+      pendingFinalizeRef.current = null
+      setCheckinSnapshot(null)
+      if (pending) {
+        await finalizeSession(pending.sessionId, pending.endedSession, pending.title)
+      }
+    },
+    [finalizeSession],
+  )
 
-    loadLastWeights(userId).then(setLastWeights)
-    loadPRs(userId).then(setPrs)
-    setWeights({})
-    setPerSetWeights({})
-    setPerSetExpanded({})
-    clearSession()
-  }, [
-    session,
-    selectedSession,
-    userId,
-    weights,
-    perSetWeights,
-    doneSets,
-    totalSets,
-    endSession,
-    onWorkoutComplete,
-    exercises,
-    clearSession,
-  ])
+  const handleCheckinSkip = useCallback(async () => {
+    const pending = pendingFinalizeRef.current
+    pendingFinalizeRef.current = null
+    setCheckinSnapshot(null)
+    if (pending) {
+      await finalizeSession(pending.sessionId, pending.endedSession, pending.title)
+    }
+  }, [finalizeSession])
 
   // Display-side remap: legacy Dexie plans may have generic titles like
   // "Lower A"/"Upper B". Derive a body-part title from the exercise list
@@ -1001,6 +1079,19 @@ export function WorkoutView({
           oldValue={prPayload.oldValue}
           newValue={prPayload.newValue}
           onClose={() => setPrPayload(null)}
+        />
+      )}
+
+      {checkinSnapshot && (
+        <SessionCheckinSheet
+          open
+          userId={userId}
+          sessionId={checkinSnapshot.sessionId}
+          weekNumber={checkinSnapshot.weekNumber}
+          exercises={checkinSnapshot.exercises}
+          completedWeights={checkinSnapshot.completedWeights}
+          onSave={handleCheckinSave}
+          onSkip={handleCheckinSkip}
         />
       )}
     </div>

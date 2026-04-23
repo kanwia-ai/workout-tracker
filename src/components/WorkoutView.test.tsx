@@ -30,6 +30,20 @@ vi.mock('../lib/persistence', () => ({
   loadPRs: vi.fn().mockResolvedValue({}),
 }))
 
+// Check-in persistence is Dexie-backed; stub so the end-session flow
+// doesn't try to open a real IndexedDB in the test env.
+vi.mock('../lib/checkins', () => ({
+  saveCheckin: vi.fn().mockResolvedValue(undefined),
+}))
+
+// The check-in sheet renders a modal dialog; stub to a trivial hook so
+// WorkoutView tests can observe its presence without dealing with the
+// full widget surface.
+vi.mock('./SessionCheckinSheet', () => ({
+  SessionCheckinSheet: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="checkin-sheet" /> : null,
+}))
+
 vi.mock('../lib/profileRepo', () => ({
   loadProfileLocal: vi.fn().mockResolvedValue(null),
 }))
