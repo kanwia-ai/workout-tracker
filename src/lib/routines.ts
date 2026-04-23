@@ -91,6 +91,23 @@ export async function loadRoutine(
 ): Promise<Routine | null> {
   const row = await db.routines.get(`${sessionId}:${kind}`)
   if (!row) return null
-  const parsed = JSON.parse(row.routine_json)
-  return RoutineSchema.parse(parsed)
+  try {
+    const parsed = JSON.parse(row.routine_json)
+    return RoutineSchema.parse(parsed)
+  } catch (err) {
+    // Persisted shape drift (schema migration, old backend output, truncated
+    // JSON from an aborted generation). Drop the stale row rather than crash
+    // the whole app — the caller will regenerate next time.
+    console.warn('loadRoutine: dropping invalid persisted row', {
+      sessionId,
+      kind,
+      err: err instanceof Error ? err.message : String(err),
+    })
+    try {
+      await db.routines.delete(`${sessionId}:${kind}`)
+    } catch {
+      // ignore delete failure — Dexie might be read-only in test envs
+    }
+    return null
+  }
 }
