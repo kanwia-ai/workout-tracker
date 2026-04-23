@@ -36,6 +36,7 @@ import {
 import { loadProfileLocal } from '../lib/profileRepo'
 import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
+import { swapVariantLocal } from '../lib/swapLocal'
 import { saveCheckin } from '../lib/checkins'
 import { SwapSheet } from './SwapSheet'
 import type { SessionCheckin } from '../types/checkin'
@@ -316,6 +317,13 @@ export function WorkoutView({
   const [cachedProfile, setCachedProfile] = useState<UserProgramProfile | null>(null)
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
   const [infoLibraryId, setInfoLibraryId] = useState<string | null>(null)
+  // Variant ids already proposed for the current swap slot. Accumulates across
+  // "try another" taps so the local swapper walks through unique candidates.
+  // Reset whenever the sheet closes or retargets a different exercise.
+  const attemptedSwapIdsRef = useRef<{ slot: number | null; ids: string[] }>({
+    slot: null,
+    ids: [],
+  })
 
   // ─── Post-session check-in sheet ───────────────────────────────────────
   // Snapshot captured at end-session time. We freeze the exercise list,
@@ -343,12 +351,50 @@ export function WorkoutView({
     }
   }, [userId])
 
+  // Clear the attempted-ids accumulator when the swap sheet closes so the
+  // next swap for this slot starts fresh.
+  useEffect(() => {
+    if (swapIndex == null) {
+      attemptedSwapIdsRef.current = { slot: null, ids: [] }
+    }
+  }, [swapIndex])
+
   const handleSwapRequest = useCallback(
     async (reason: SwapReason) => {
       if (!cachedProfile) throw new Error('Profile not loaded yet — try again in a moment.')
       if (!selectedSession || swapIndex == null) {
         throw new Error('No active session or exercise selected for swap.')
       }
+      const current = selectedSession.exercises[swapIndex]
+
+      // Reset the attempted-ids accumulator whenever the swap target changes.
+      if (attemptedSwapIdsRef.current.slot !== swapIndex) {
+        attemptedSwapIdsRef.current = { slot: swapIndex, ids: [] }
+      }
+
+      // Local variant path — runs entirely client-side when the current
+      // exercise is one the rule-based planner emitted. Falls through to the
+      // edge only when the local pool can't produce a candidate (unresolvable
+      // id, no compatible variant), so at least an error surfaces gracefully.
+      if (current.library_id.startsWith('variant:')) {
+        try {
+          const result = swapVariantLocal({
+            currentExercise: current,
+            session: selectedSession,
+            profile: cachedProfile,
+            reason,
+            attemptedIds: attemptedSwapIdsRef.current.ids,
+          })
+          const chosenId = result.replacement.library_id.startsWith('variant:')
+            ? result.replacement.library_id.slice('variant:'.length)
+            : result.replacement.library_id
+          attemptedSwapIdsRef.current.ids.push(chosenId)
+          return result
+        } catch {
+          // Fall through to the edge path below.
+        }
+      }
+
       return requestSwap({
         profile: cachedProfile,
         session: selectedSession,
