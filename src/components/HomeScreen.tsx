@@ -114,13 +114,6 @@ function timeOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
 }
 
 // ─── HomeScreen ─────────────────────────────────────────────────────────────
-// `display_name` from Supabase auth often looks like an email local part
-// ("kyra.atekwana") — never good to show as a human first name. Anything with
-// a `.` or `@` is treated as email-y and dropped in favor of a neutral
-// greeting.
-function looksLikeEmailPrefix(s: string): boolean {
-  return /[.@]/.test(s)
-}
 
 export function HomeScreen({
   userId,
@@ -176,15 +169,12 @@ export function HomeScreen({
   const selectedHasOverride = overrides.some((o) => o.date === selectedDateISO)
 
   const cheek = DEFAULT_CHEEK
-  // Prefer the onboarding-captured first_name (clean). Fall back to the auth
-  // display_name ONLY if it doesn't look like an email local part — otherwise
-  // we'd render "evening, kyra.atekwana" on first paint before
-  // programProfile loads. If both are unusable, leave it empty and the
-  // greeting below picks its neutral variant.
-  const displayName = programProfile?.first_name?.trim() || ''
-  const fallbackName = profile?.display_name?.trim() ?? ''
-  const firstName =
-    displayName || (looksLikeEmailPrefix(fallbackName) ? '' : fallbackName)
+  // Only trust the name the user typed into onboarding. Supabase's
+  // `profile.display_name` is auto-populated from the email address (e.g.
+  // "kyraatekwana") — not a human name. If first_name is empty (user
+  // skipped the name step, or hasn't onboarded yet), the greeting falls
+  // back to a neutral variant and downstream copy uses "friend".
+  const firstName = programProfile?.first_name?.trim() ?? ''
 
   // Greeting line — short + cheeky, varies by time of day. If we don't have
   // a name yet, skip the "hi Kyra" form and use the neutral version so we

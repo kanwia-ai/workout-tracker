@@ -16,6 +16,10 @@ describe('OnboardingFlow', () => {
     expectStep('welcome')
     fireEvent.click(screen.getByTestId('step-welcome-start'))
 
+    // name — skip
+    expectStep('name')
+    fireEvent.click(screen.getByTestId('step-name-skip'))
+
     // primary goal
     expectStep('primary_goal')
     fireEvent.click(screen.getByRole('checkbox', { name: /build muscle/i }))
@@ -96,6 +100,8 @@ describe('OnboardingFlow', () => {
   it('back button preserves state on a previous step', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     fireEvent.click(screen.getByTestId('step-welcome-start'))
+    // skip the name step to reach primary goal
+    fireEvent.click(screen.getByTestId('step-name-skip'))
     // pick a goal, then go back to welcome
     fireEvent.click(screen.getByRole('checkbox', { name: /get stronger/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
@@ -115,7 +121,7 @@ describe('OnboardingFlow', () => {
   it('footprint progress bar shows total steps and current index', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     const bar = screen.getByRole('progressbar')
-    expect(bar).toHaveAttribute('aria-valuemax', '14')
+    expect(bar).toHaveAttribute('aria-valuemax', '15')
     expect(bar).toHaveAttribute('aria-valuenow', '1')
   })
 
@@ -124,6 +130,11 @@ describe('OnboardingFlow', () => {
     render(<OnboardingFlow onComplete={onComplete} />)
 
     fireEvent.click(screen.getByTestId('step-welcome-start'))
+    // name — type a name so the greeting has something to call us later
+    fireEvent.change(screen.getByTestId('step-name-input'), {
+      target: { value: 'Kyra' },
+    })
+    fireEvent.click(screen.getByTestId('step-name-next'))
     fireEvent.click(screen.getByRole('checkbox', { name: /lean & strong/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
 

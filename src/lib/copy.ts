@@ -99,6 +99,8 @@ type CopyShape = {
   readonly onboardingBodyStats: readonly string[];
   /** Posture / free-text notes step. 3+ per tier. */
   readonly onboardingPosture: readonly string[];
+  /** Name step — ask what to call them. 3+ per tier. Skippable. */
+  readonly onboardingName: readonly string[];
 };
 
 /**
@@ -660,6 +662,11 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'optional context.',
       'skip if none.',
     ],
+    onboardingName: [
+      'name?',
+      'what to call you.',
+      'optional.',
+    ],
   },
   1: {
     greetMorning: 'Good morning, {name} \u273F',
@@ -942,6 +949,12 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'anything else about your lifestyle?',
       'desk-job vibes? chronic tension? any context.',
       'optional free text.',
+    ],
+    onboardingName: [
+      'what should i call you?',
+      'got a name you go by?',
+      'first name or nickname works.',
+      'totally skippable if you prefer.',
     ],
   },
   2: {
@@ -1312,6 +1325,13 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'last free-text box. lifestyle, context, anything.',
       'optional brain dump. tell me about your day.',
       'skip or drop any last context.',
+    ],
+    onboardingName: [
+      "what should i call you? no pressure, skip if you want.",
+      "gimme a name. first, nickname, gym handle — dealer's choice.",
+      "what do you go by? i'd rather not guess.",
+      "hi. what's your name? (or skip, i'll call you friend.)",
+      "name me this, please.",
     ],
   },
 };

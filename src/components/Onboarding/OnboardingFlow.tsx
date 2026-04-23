@@ -18,6 +18,7 @@ import {
 import type { MuscleGroup } from '../../types/plan'
 import { FootprintProgress } from './FootprintProgress'
 import { StepWelcome } from './StepWelcome'
+import { StepName } from './StepName'
 import { StepPrimaryGoal } from './StepPrimaryGoal'
 import { StepMusclePriority } from './StepMusclePriority'
 import { StepAesthetic } from './StepAesthetic'
@@ -43,6 +44,7 @@ interface Props {
 // explain that it's WORK minutes only — rest between sets budgeted elsewhere.
 const STEPS = [
   'welcome',
+  'name',
   'primary_goal',
   'muscle_priority',
   'aesthetic',
@@ -204,6 +206,13 @@ export function OnboardingFlow({ onComplete }: Props) {
         <div data-testid={`onboarding-step-${stepId}`}>
           {stepId === 'welcome' && (
             <StepWelcome onNext={() => advance({})} />
+          )}
+          {stepId === 'name' && (
+            <StepName
+              value={draft.first_name}
+              onNext={(first_name) => advance({ first_name })}
+              onSkip={() => advance({ first_name: undefined })}
+            />
           )}
           {stepId === 'primary_goal' && (
             <StepPrimaryGoal
