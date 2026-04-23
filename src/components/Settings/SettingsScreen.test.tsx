@@ -15,7 +15,7 @@ import {
   waitFor,
   act,
 } from '@testing-library/react'
-import { SettingsScreen } from './SettingsScreen'
+import { SettingsScreen, REPLAN_MIN_CHECKINS, type ReplanState } from './SettingsScreen'
 import {
   useTweaks,
   THEME_PREF_KEY,
@@ -43,7 +43,14 @@ function installMatchMediaMock() {
   })
 }
 
-function renderWired() {
+function renderWired(
+  opts: {
+    onReplanNextBlock?: () => void
+    checkinCount?: number
+    replanState?: ReplanState
+    onReplanClose?: () => void
+  } = {},
+) {
   installMatchMediaMock()
   const { result } = renderHook(() => useTweaks())
   const onClose = vi.fn()
@@ -58,6 +65,10 @@ function renderWired() {
         setThemeMode={api.setThemeMode}
         onClose={onClose}
         onRegeneratePlan={onRegeneratePlan}
+        onReplanNextBlock={opts.onReplanNextBlock}
+        checkinCount={opts.checkinCount}
+        replanState={opts.replanState}
+        onReplanClose={opts.onReplanClose}
       />
     )
   }
@@ -169,6 +180,109 @@ describe('SettingsScreen', () => {
     })
     const after = screen.getByTestId('settings-screen')
     expect(after).toBe(before)
+  })
+
+  // ─── Re-plan next block (end-of-block adaptive re-plan) ─────────────
+  describe('Re-plan next block button', () => {
+    it('hides the button entirely when onReplanNextBlock is not provided', () => {
+      renderWired()
+      expect(
+        screen.queryByTestId('replan-next-block-button'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('renders the button disabled with a gate message when checkins < REPLAN_MIN_CHECKINS', () => {
+      const onReplanNextBlock = vi.fn()
+      renderWired({ onReplanNextBlock, checkinCount: 10 })
+      const btn = screen.getByTestId('replan-next-block-button')
+      expect(btn).toBeDisabled()
+      expect(btn).toHaveAttribute(
+        'title',
+        `Complete more sessions first (10/${REPLAN_MIN_CHECKINS}).`,
+      )
+      expect(screen.getByTestId('replan-gate-message')).toHaveTextContent(
+        /You've logged 10/,
+      )
+    })
+
+    it('enables the button and calls handler (via confirm dialog) when checkins >= REPLAN_MIN_CHECKINS', () => {
+      const onReplanNextBlock = vi.fn()
+      renderWired({ onReplanNextBlock, checkinCount: 20 })
+
+      const btn = screen.getByTestId('replan-next-block-button')
+      expect(btn).not.toBeDisabled()
+
+      // Opens confirm dialog first — doesn't fire the handler directly.
+      fireEvent.click(btn)
+      expect(onReplanNextBlock).not.toHaveBeenCalled()
+      expect(screen.getByTestId('replan-confirm-dialog')).toBeInTheDocument()
+
+      // Confirming fires the handler.
+      fireEvent.click(screen.getByTestId('replan-confirm'))
+      expect(onReplanNextBlock).toHaveBeenCalledTimes(1)
+    })
+
+    it('Cancel in the confirm dialog does not fire the handler', () => {
+      const onReplanNextBlock = vi.fn()
+      renderWired({ onReplanNextBlock, checkinCount: 25 })
+      fireEvent.click(screen.getByTestId('replan-next-block-button'))
+      fireEvent.click(screen.getByTestId('replan-cancel'))
+      expect(onReplanNextBlock).not.toHaveBeenCalled()
+      expect(
+        screen.queryByTestId('replan-confirm-dialog'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('shows the loading overlay while the re-plan runs', () => {
+      renderWired({
+        onReplanNextBlock: vi.fn(),
+        checkinCount: 20,
+        replanState: { phase: 'loading' },
+      })
+      expect(screen.getByTestId('replan-loading-overlay')).toBeInTheDocument()
+      // The button itself reflects the loading label.
+      expect(screen.getByTestId('replan-next-block-button')).toHaveTextContent(
+        /Re-planning/,
+      )
+      // The Fraunces italic header line shows up as plain text in the DOM.
+      expect(screen.getByText(/Looking at your last 6 weeks/i)).toBeInTheDocument()
+    })
+
+    it('renders the review modal with rationale + adjustments, and fires onReplanClose on "Got it"', () => {
+      const onReplanClose = vi.fn()
+      renderWired({
+        onReplanNextBlock: vi.fn(),
+        checkinCount: 24,
+        replanState: {
+          phase: 'reviewing',
+          rationale: 'you handled the hinge days well — kept most of the plan.',
+          adjustments: [
+            'Dropped Bulgarian split squats — knee flagged in weeks 3 & 5.',
+            'Bumped accessory volume by one set on hinge days.',
+          ],
+        },
+        onReplanClose,
+      })
+      expect(screen.getByTestId('replan-review-modal')).toBeInTheDocument()
+      expect(screen.getByTestId('replan-rationale')).toHaveTextContent(
+        /hinge days/,
+      )
+      const adjustmentsList = screen.getByTestId('replan-adjustments')
+      expect(adjustmentsList.querySelectorAll('li')).toHaveLength(2)
+      fireEvent.click(screen.getByTestId('replan-review-done'))
+      expect(onReplanClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('surfaces errors with a visible alert region', () => {
+      renderWired({
+        onReplanNextBlock: vi.fn(),
+        checkinCount: 20,
+        replanState: { phase: 'error', error: 'Network hiccup. Try again.' },
+      })
+      const err = screen.getByTestId('replan-error-message')
+      expect(err).toHaveAttribute('role', 'alert')
+      expect(err).toHaveTextContent(/Network hiccup/)
+    })
   })
 
   // Sanity check that imperative setThemeMode updates the hook state.

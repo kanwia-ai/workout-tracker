@@ -3,6 +3,8 @@ import { callEdge } from './generate'
 import { MesocycleSchema, type Mesocycle } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import { orchestratePlan } from './planner/orchestrate'
+import { buildMesocycle } from './planner/buildMesocycle'
+import type { ProgrammingDirectives } from '../types/directives'
 
 // ─── Phase-2 migration helpers ──────────────────────────────────────────────
 // Pre-2P.1 plans in Dexie lack `day_of_week` + `rationale`. On load, we
@@ -122,6 +124,61 @@ export async function generatePlanLocal(
   weeks: number = 6,
 ): Promise<Mesocycle> {
   const { mesocycle } = orchestratePlan(profile, userId, weeks)
+
+  await db.mesocycles.put({
+    id: mesocycle.id,
+    user_id: mesocycle.user_id,
+    generated_at: mesocycle.generated_at,
+    length_weeks: mesocycle.length_weeks,
+    sessions_json: JSON.stringify(mesocycle.sessions),
+    profile_snapshot_json: JSON.stringify(profile),
+    synced: false,
+  })
+
+  return mesocycle
+}
+
+/**
+ * Generate + persist a Mesocycle from ALREADY-COMPUTED ProgrammingDirectives.
+ *
+ * Sibling to `generatePlanLocal` — skips the `interpretProfile` pass because
+ * the directives were produced upstream (by the end-of-block re-planner,
+ * which runs Claude Opus against the user's check-ins + previous directives).
+ * Everything else matches: builds a `BuiltMesocycle` via `buildMesocycle`,
+ * adapts it to the persistence schema, and writes it to Dexie.
+ *
+ * This is the second half of the re-plan flow:
+ *   1. `replanNextBlock` → adjusted ProgrammingDirectives (via Opus)
+ *   2. `generatePlanFromDirectives` → Mesocycle (pure-TS, deterministic)
+ */
+export async function generatePlanFromDirectives(
+  directives: ProgrammingDirectives,
+  profile: UserProgramProfile,
+  userId: string,
+  weeks: number = 6,
+): Promise<Mesocycle> {
+  const built = buildMesocycle(directives, weeks)
+
+  // Adapt BuiltMesocycle → Mesocycle (the existing persistence schema) — same
+  // shape-merge orchestratePlan uses internally. We inline it here instead of
+  // calling orchestratePlan so we don't re-run interpretProfile and overwrite
+  // the directives we were just handed.
+  const draft = {
+    id: built.id,
+    user_id: userId,
+    generated_at: built.generated_at,
+    length_weeks: built.length_weeks,
+    sessions: built.sessions,
+    profile_snapshot: profile,
+  }
+
+  const result = MesocycleSchema.safeParse(draft)
+  if (!result.success) {
+    throw new Error(
+      `generatePlanFromDirectives: built mesocycle failed validation — ${result.error.message}`,
+    )
+  }
+  const mesocycle = result.data
 
   await db.mesocycles.put({
     id: mesocycle.id,

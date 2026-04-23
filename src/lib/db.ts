@@ -158,6 +158,21 @@ interface LocalSessionCheckin {
   synced: boolean
 }
 
+// Re-plan history. One row per end-of-block adaptive re-plan. We store the
+// FULL ReplanResult (directives + rationale + adjustments) so we can later
+// show a user timeline of how their program evolved across blocks and audit
+// what Claude Opus proposed when. `result_json` is opaque at the DB layer —
+// the shape lives in src/lib/planner/replan.ts to avoid coupling Dexie to
+// the edge-function payload format.
+interface LocalReplanHistoryEntry {
+  id: string                        // `replan-<ts>-<rand>`
+  user_id: string
+  completed_mesocycle_id: string    // refs Mesocycle.id we replanned FROM
+  created_at: string                // ISO timestamp
+  result_json: string               // JSON-stringified ReplanResult
+  synced: boolean
+}
+
 const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   sessionLogs: EntityTable<LocalSessionLog, 'id'>
   setLogs: EntityTable<LocalSetLog, 'id'>
@@ -171,6 +186,7 @@ const db = new Dexie('WorkoutTrackerDB') as Dexie & {
   dayOverrides: EntityTable<LocalDayOverride, 'id'>
   customExercises: EntityTable<LocalCustomExercise, 'id'>
   sessionCheckins: EntityTable<LocalSessionCheckin, 'session_id'>
+  replanHistory: EntityTable<LocalReplanHistoryEntry, 'id'>
 }
 
 db.version(1).stores({
@@ -271,5 +287,25 @@ db.version(8).stores({
   sessionCheckins: 'session_id, user_id, completed_at, synced',
 })
 
+// v9 — replanHistory (additive). One row per end-of-block adaptive re-plan.
+// Indexed on user_id + created_at so we can list a user's re-plans
+// newest-first, and on completed_mesocycle_id so we can answer "did we
+// replan FROM this block yet?" in O(1).
+db.version(9).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+  customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
+  sessionCheckins: 'session_id, user_id, completed_at, synced',
+  replanHistory: 'id, user_id, completed_mesocycle_id, created_at, synced',
+})
+
 export { db }
-export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise, LocalSessionCheckin }
+export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise, LocalSessionCheckin, LocalReplanHistoryEntry }
