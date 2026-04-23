@@ -154,6 +154,13 @@ function App() {
     if (/Claude is busy|rate[_ -]?limit|429|529/i.test(raw)) {
       return 'The plan generator is busy right now. Give it a moment and try again.'
     }
+    // Anthropic returns a 400 with this exact phrasing when the API key's
+    // account has no credits left. Every call fails the same way until the
+    // balance is topped up — retrying is pointless. Surface it clearly so
+    // we can act on billing instead of chasing a phantom code bug.
+    if (/credit balance is too low|insufficient.*(credit|balance|quota)|billing/i.test(raw)) {
+      return 'Anthropic API credits are exhausted. Top up at console.anthropic.com/settings/billing and try again.'
+    }
     // Server-side truncation (Claude hit max_tokens mid-response). Distinct from
     // "malformed" because the server detected it explicitly — retrying won't fix
     // it, the cap needs to go up. Surface this loudly so a future recurrence
