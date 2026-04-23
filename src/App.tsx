@@ -28,6 +28,7 @@ import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profile
 import { generatePlan } from './lib/planGen'
 import type { TimerState } from './types'
 import type { ExtractedExercise } from './lib/gemini'
+import { saveCustomExercise, type CustomExerciseEquipment } from './lib/customExercises'
 import type { UserProgramProfile } from './types/profile'
 
 const VIEW_STORAGE_KEY = 'workout-tracker:view'
@@ -382,8 +383,33 @@ function App() {
       {view === 'capture' && (
         <ExerciseCapture
           onBack={() => setView('workout')}
-          onSaveToLibrary={(exercises: ExtractedExercise[]) => {
-            console.log('Saving to library:', exercises)
+          onSaveToLibrary={async (exercises: ExtractedExercise[]) => {
+            if (!user?.id) return
+            // Persist each reviewed exercise to the custom-exercises table so
+            // the ExerciseBrowser "mine" filter picks them up. We pick the
+            // first equipment string that fits the CustomExerciseEquipment
+            // enum; anything novel falls back to 'other'.
+            const allowed = new Set<CustomExerciseEquipment>([
+              'bodyweight', 'dumbbell', 'barbell', 'cable', 'machine',
+              'kettlebell', 'bands', 'other',
+            ])
+            for (const ex of exercises) {
+              const first = ex.equipment[0]?.toLowerCase()
+              const equipment = (first && allowed.has(first as CustomExerciseEquipment)
+                ? first
+                : 'other') as CustomExerciseEquipment
+              const noteBits: string[] = []
+              if (ex.form_cues.length > 0) noteBits.push(`cues: ${ex.form_cues.join('; ')}`)
+              if (ex.notes) noteBits.push(ex.notes)
+              await saveCustomExercise(user.id, {
+                name: ex.name,
+                primary_muscles: ex.muscle_groups,
+                secondary_muscles: [],
+                equipment,
+                video_url: null,
+                notes: noteBits.length > 0 ? noteBits.join(' | ') : null,
+              })
+            }
           }}
         />
       )}

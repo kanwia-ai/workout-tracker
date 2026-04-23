@@ -7,9 +7,13 @@ import { Lumo } from './Lumo'
 import {
   extractFromUrl,
   extractFromScreenshots,
+  analyzeYouTubeShort,
+  isYouTubeUrl,
   type ExtractedExercise,
   type ExtractionResult,
+  type AnalyzedExercise,
 } from '../lib/gemini'
+import { enrichExercise, type EnrichedExercise } from '../lib/enrichExercise'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,15 +59,62 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [selectedExercises, setSelectedExercises] = useState<Set<number>>(new Set())
   const [savedMessage, setSavedMessage] = useState('')
+  // YouTube-only side channels: the Gemini analysis (with confidence +
+  // injury_flags) and the optional Claude enrichment. Both are display-only
+  // — the canonical data the user edits still lives in editingExercises.
+  const [ytAnalysis, setYtAnalysis] = useState<AnalyzedExercise | null>(null)
+  const [enrichment, setEnrichment] = useState<EnrichedExercise | null>(null)
+  const [enrichLoading, setEnrichLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ─── URL submission ────────────────────────────────────────────────────────
 
   const handleUrlSubmit = useCallback(async () => {
-    if (!url.trim()) return
+    const trimmed = url.trim()
+    if (!trimmed) return
     setStep('loading')
+    setYtAnalysis(null)
+    setEnrichment(null)
 
-    const res = await extractFromUrl(url.trim())
+    // YouTube URLs take the rich Gemini-analysis path so we can capture
+    // injury_flags + confidence for the preview panel. Non-YouTube URLs fall
+    // through to the legacy `extractFromUrl` shim (which routes to the
+    // screenshot flow via SCREENSHOT_NEEDED).
+    if (isYouTubeUrl(trimmed)) {
+      try {
+        const analyzed = await analyzeYouTubeShort(trimmed)
+        setYtAnalysis(analyzed)
+        const extracted: ExtractedExercise = {
+          name: analyzed.name,
+          muscle_groups: [...analyzed.primary_muscles, ...analyzed.secondary_muscles],
+          equipment: analyzed.equipment,
+          form_cues: analyzed.form_cues,
+          notes: undefined,
+        }
+        setResult({ exercises: [extracted], source_url: trimmed })
+        setEditingExercises([extracted])
+        setSelectedExercises(new Set([0]))
+        setStep('review')
+
+        // Fire-and-forget Claude enrichment. Failures (e.g. op not deployed
+        // yet) degrade silently — the import still works without enrichment.
+        setEnrichLoading(true)
+        enrichExercise(analyzed)
+          .then(result => setEnrichment(result))
+          .catch(() => setEnrichment(null))
+          .finally(() => setEnrichLoading(false))
+      } catch (err) {
+        setResult({
+          exercises: [],
+          source_url: trimmed,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        setStep('input')
+      }
+      return
+    }
+
+    const res = await extractFromUrl(trimmed)
 
     if (res.error === 'SCREENSHOT_NEEDED') {
       // Redirect to screenshot mode with explanation
@@ -198,6 +249,9 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
     setEditingIdx(null)
     setSelectedExercises(new Set())
     setSavedMessage('')
+    setYtAnalysis(null)
+    setEnrichment(null)
+    setEnrichLoading(false)
   }, [])
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -301,7 +355,7 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                   From YouTube URL
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--lumo-text-ter)', marginTop: 2 }}>
-                  Paste a YouTube link — AI extracts the exercises
+                  Paste a YouTube link or Short — Gemini watches the lift
                 </div>
               </div>
             </button>
@@ -647,6 +701,15 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
               >
                 source: {result.source_url}
               </div>
+            )}
+
+            {/* YouTube analysis panel — only shown on the YouTube flow. */}
+            {ytAnalysis && (
+              <YouTubeAnalysisPanel
+                analysis={ytAnalysis}
+                enrichment={enrichment}
+                enrichLoading={enrichLoading}
+              />
             )}
 
             {/* Exercise cards */}
@@ -1026,6 +1089,185 @@ function Field({ label, children, className = '' }: { label: string; children: R
         {label}
       </label>
       {children}
+    </div>
+  )
+}
+
+// ─── YouTube analysis preview ────────────────────────────────────────────────
+// Surfaces Gemini's confidence + biomechanical flags + (when available)
+// Claude's enrichment. All data here is read-only — users edit the exercise
+// itself in the card below this panel.
+
+function YouTubeAnalysisPanel({
+  analysis,
+  enrichment,
+  enrichLoading,
+}: {
+  analysis: AnalyzedExercise
+  enrichment: EnrichedExercise | null
+  enrichLoading: boolean
+}) {
+  const confidenceColor =
+    analysis.confidence === 'high' ? 'var(--brand)'
+    : analysis.confidence === 'medium' ? 'var(--accent-plum)'
+    : '#ef4444'
+
+  return (
+    <div
+      style={{
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 22,
+        padding: '14px 16px',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles size={14} style={{ color: confidenceColor }} />
+        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--lumo-text-ter)' }}>
+          Gemini analysis
+        </span>
+        <span
+          style={{
+            padding: '2px 8px',
+            borderRadius: 8,
+            fontSize: 10,
+            fontWeight: 700,
+            background: `color-mix(in srgb, ${confidenceColor} 14%, transparent)`,
+            color: confidenceColor,
+            border: `1px solid color-mix(in srgb, ${confidenceColor} 30%, transparent)`,
+          }}
+        >
+          {analysis.confidence}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginLeft: 'auto' }}>
+          pattern: {analysis.movement_pattern}
+        </span>
+      </div>
+
+      {analysis.injury_flags.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginBottom: 4 }}>
+            biomechanical flags
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {analysis.injury_flags.map(flag => (
+              <span
+                key={flag}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 8,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: 'color-mix(in srgb, var(--accent-plum) 14%, transparent)',
+                  color: 'var(--accent-plum)',
+                  border: '1px solid color-mix(in srgb, var(--accent-plum) 28%, transparent)',
+                }}
+              >
+                {flag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Claude enrichment — appears after it completes; silent if the op
+          isn't deployed yet (see src/lib/enrichExercise.ts). */}
+      {enrichLoading && !enrichment && (
+        <div
+          className="flex items-center gap-2 mt-3"
+          style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}
+        >
+          <Loader2 size={12} className="animate-spin" />
+          <span>checking protocol compatibility…</span>
+        </div>
+      )}
+      {enrichment && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--lumo-border)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--lumo-text-ter)' }}>
+              Coach notes
+            </span>
+          </div>
+
+          {enrichment.rationale && (
+            <div
+              style={{
+                fontSize: 13,
+                color: 'var(--lumo-text)',
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                lineHeight: 1.45,
+                marginBottom: 8,
+              }}
+            >
+              {enrichment.rationale}
+            </div>
+          )}
+
+          {enrichment.compatible_protocols.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginBottom: 4 }}>
+                compatible with
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {enrichment.compatible_protocols.map(p => (
+                  <span
+                    key={p}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 8,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      background: 'color-mix(in srgb, var(--brand) 14%, transparent)',
+                      color: 'var(--brand)',
+                      border: '1px solid color-mix(in srgb, var(--brand) 28%, transparent)',
+                    }}
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {enrichment.contraindicated_protocols.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)', marginBottom: 4 }}>
+                aggravates
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {enrichment.contraindicated_protocols.map(p => (
+                  <span
+                    key={p}
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 8,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      background: 'color-mix(in srgb, #ef4444 14%, transparent)',
+                      color: '#ef4444',
+                      border: '1px solid color-mix(in srgb, #ef4444 28%, transparent)',
+                    }}
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--lumo-text-sec)' }}>
+            <div>
+              <strong style={{ color: 'var(--lumo-text)' }}>Easier:</strong> {enrichment.regression.name}
+              <span style={{ color: 'var(--lumo-text-ter)' }}> — {enrichment.regression.why}</span>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <strong style={{ color: 'var(--lumo-text)' }}>Harder:</strong> {enrichment.progression.name}
+              <span style={{ color: 'var(--lumo-text-ter)' }}> — {enrichment.progression.why}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

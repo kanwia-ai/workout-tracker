@@ -158,6 +158,62 @@ export const extractExercisesSchema = {
   propertyOrdering: ['exercises'],
 } as const
 
+// Enrich-exercise response — input/output shape for the `enrich_exercise` op
+// (YouTube → Gemini → Claude handoff). Client-side Zod mirror lives at
+// src/lib/enrichExercise.ts. Protocol-id enum mirrors src/types/directives.ts
+// ProtocolIdSchema.
+//
+// NOT DEPLOYED YET (as of 2026-04-22): the op is code-only until Kyra ships
+// a new edge-function version.
+const PROTOCOL_ID_ENUM = [
+  'lower_back',
+  'meniscus',
+  'shoulder',
+  'knee_pfp',
+  'hip_flexors',
+  'upper_back',
+  'trap',
+  'elbow',
+  'wrist',
+  'ankle',
+  'neck',
+] as const
+
+export const enrichExerciseSchema = {
+  type: 'object',
+  properties: {
+    compatible_protocols: {
+      type: 'array',
+      items: { type: 'string', enum: PROTOCOL_ID_ENUM },
+    },
+    contraindicated_protocols: {
+      type: 'array',
+      items: { type: 'string', enum: PROTOCOL_ID_ENUM },
+    },
+    progression: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        why: { type: 'string', maxLength: 160 },
+      },
+      required: ['name', 'why'],
+      propertyOrdering: ['name', 'why'],
+    },
+    regression: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        why: { type: 'string', maxLength: 160 },
+      },
+      required: ['name', 'why'],
+      propertyOrdering: ['name', 'why'],
+    },
+    rationale: { type: 'string', maxLength: 240 },
+  },
+  required: ['compatible_protocols', 'contraindicated_protocols', 'progression', 'regression', 'rationale'],
+  propertyOrdering: ['compatible_protocols', 'contraindicated_protocols', 'progression', 'regression', 'rationale'],
+} as const
+
 // Routine response — warmup / cooldown / cardio content attached to a main
 // session. Each exercise carries EITHER duration_seconds (holds, cardio
 // intervals) OR reps (movement drills, activation) — enforced by the prompt,

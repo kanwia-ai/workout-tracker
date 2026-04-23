@@ -8,7 +8,7 @@
 // verbatim — only the provider swapped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import Anthropic from 'npm:@anthropic-ai/sdk@0.90.0'
-import { extractExercisesSchema, mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
+import { enrichExerciseSchema, extractExercisesSchema, mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 import { buildRoutinePrompt, type RoutineKind } from './prompts/generateRoutine.ts'
@@ -27,11 +27,30 @@ const CORS_HEADERS = {
 const JSON_HEADERS = { 'content-type': 'application/json', ...CORS_HEADERS }
 
 // Ops that require the LLM backend. Keep in sync as new LLM-backed ops land.
-const LLM_OPS = new Set(['ping', 'generate_plan', 'swap_exercise', 'generate_routine', 'extract_exercises'])
+//
+// NOTE: `enrich_exercise` is code-only as of 2026-04-22 — the op was added to
+// support the YouTube → Gemini → Claude pipeline but the edge function has
+// NOT been redeployed yet. Callers will 400 with "unknown op" until Kyra
+// ships a new deploy. Local dev can preview by running `supabase functions
+// serve generate`.
+const LLM_OPS = new Set([
+  'ping',
+  'generate_plan',
+  'swap_exercise',
+  'generate_routine',
+  'extract_exercises',
+  'enrich_exercise',
+])
 
 // Claude model ID. Opus 4.7 is the current highest-quality model. If cost
 // becomes a concern, swap to `claude-sonnet-4-7` (same API surface).
 const CLAUDE_MODEL = 'claude-opus-4-7'
+
+// Narrow enrichment model — Sonnet is plenty for mapping a structured
+// Gemini extract onto rehab-protocol compatibility + one progression /
+// regression + a one-line rationale. Opus would burn cost for no quality
+// gain on a bounded task like this.
+const CLAUDE_MODEL_SONNET = 'claude-sonnet-4-6'
 
 // Hard cap on serialized exercise-pool size. Claude's 200k-token context is
 // plenty, but the pool is untrusted client input and we don't want a runaway
@@ -132,6 +151,7 @@ async function callClaudeAsTool(params: {
   inputSchema: unknown
   cacheSystem?: boolean
   maxTokens?: number
+  model?: string
 }): Promise<string> {
   const {
     client,
@@ -142,6 +162,7 @@ async function callClaudeAsTool(params: {
     inputSchema,
     cacheSystem = true,
     maxTokens = 8192,
+    model = CLAUDE_MODEL,
   } = params
 
   const sanitized = sanitizeSchemaForAnthropic(inputSchema) as Record<string, unknown>
@@ -167,7 +188,7 @@ async function callClaudeAsTool(params: {
   // chunks in JS pushes CPU over budget and trips WORKER_RESOURCE_LIMIT even
   // though the wall-clock time is within the 150s idle timeout.
   const response = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model,
     max_tokens: maxTokens,
     system: systemBlocks,
     messages: [{ role: 'user', content: userPrompt }],
@@ -790,6 +811,84 @@ Deno.serve(async (req) => {
           // via its own Zod validation.
           console.warn('post-validate JSON parse failed', parseErr)
         }
+        return new Response(text, { headers: JSON_HEADERS })
+      } catch (err) {
+        return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    // ─── enrich_exercise ────────────────────────────────────────────────
+    // Narrow enrichment pass on a Gemini-extracted YouTube exercise. Runs on
+    // Sonnet (faster + cheaper than Opus; output is bounded).
+    //
+    // NOT LIVE YET: this op is code-only as of 2026-04-22. Until Kyra deploys
+    // a new version of the `generate` edge function, client calls will 400.
+    // The client (src/lib/enrichExercise.ts) surfaces the failure to the user
+    // so the YouTube import flow still works even without enrichment.
+    if (body.op === 'enrich_exercise') {
+      const payload = (body.payload ?? {}) as {
+        exercise?: unknown
+        profile?: unknown
+      }
+      if (!payload.exercise || typeof payload.exercise !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.exercise is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      const exercise = payload.exercise as Record<string, unknown>
+      const profile = payload.profile && typeof payload.profile === 'object'
+        ? (payload.profile as Record<string, unknown>)
+        : null
+
+      const systemPrompt = `You are a rehab-aware strength coach reviewing a user-submitted exercise.
+You will be given the exercise's structured analysis (name, muscles, movement
+pattern, form cues, biomechanical load flags) and optionally the user's
+profile (injuries, goal, equipment).
+
+Emit the emit_enrichment tool with:
+- compatible_protocols: rehab protocols this exercise variant is COMPATIBLE
+  with (i.e. safe to program during rehab for that injury). Pick from:
+  lower_back, meniscus, shoulder, knee_pfp, hip_flexors, upper_back, trap,
+  elbow, wrist, ankle, neck. Empty array if none apply.
+- contraindicated_protocols: protocols this variant would AGGRAVATE. Same
+  vocabulary. Never include a protocol in both lists.
+- progression: the next-harder variant in the SAME movement pattern. Include
+  a short 'why' (under 120 chars).
+- regression: the next-easier variant in the SAME movement pattern. Include
+  a short 'why'.
+- rationale: one sentence (under 200 chars) on why this exercise fits (or
+  doesn't fit) the user's profile. If no profile was provided, write a
+  generic rationale focused on the exercise's training value.
+
+Rules:
+- Keep strings short and coach-direct. No filler, no em-dashes, no AI tells.
+- Use standard gym names for progressions/regressions (e.g. "Back Squat",
+  "Goblet Squat"), not marketing names.`
+
+      const userPrompt = `Exercise analysis:
+${JSON.stringify(exercise, null, 2)}
+
+User profile context:
+${profile ? JSON.stringify(profile, null, 2) : '(no profile provided)'}`
+
+      try {
+        const text = await callClaudeAsTool({
+          client,
+          systemPrompt,
+          userPrompt,
+          toolName: 'emit_enrichment',
+          toolDescription:
+            'Emit the enrichment payload: protocol compatibility + progression/regression + rationale.',
+          inputSchema: enrichExerciseSchema,
+          cacheSystem: true,
+          maxTokens: 1024,
+          model: CLAUDE_MODEL_SONNET,
+        })
         return new Response(text, { headers: JSON_HEADERS })
       } catch (err) {
         return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
