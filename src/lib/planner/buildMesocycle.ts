@@ -456,11 +456,27 @@ export function buildSession(args: {
     }
   }
 
-  // Accessories — target 3 accessories on leg days, 2 on upper days
-  const accessoryTarget = sessionType.startsWith('lower') ? 3 : 2
-  for (const acc of pickAccessories(sessionType, context, accessoryTarget)) {
+  // Accessories — budget-driven. Pull the priority list (injury-forward + session
+  // defaults + decompression pair), then add one at a time until we hit the
+  // user's target lifting wall-clock (work + rest). This makes a 60-min request
+  // produce a fuller session than a 45-min request, instead of every session
+  // being the same fixed shape.
+  const targetMin = directives.target_lifting_minutes ?? 60
+  const minutesPerExercise = (ex: PlannedExercise): number =>
+    ex.sets * (ex.rest_seconds / 60 + 0.8)
+  const currentMinutes = (): number =>
+    exercises.reduce((acc, ex) => acc + minutesPerExercise(ex), 0)
+  // Fetch a wide pool — we'll filter based on budget.
+  const accessoryPool = pickAccessories(sessionType, context, 8)
+  for (const acc of accessoryPool) {
     const accScheme = pickRepScheme(acc.role, directives.goal, null)
-    exercises.push(variantToExercise(acc, 3, accScheme.reps, accScheme.rir, accScheme.rest))
+    const candidate = variantToExercise(acc, 3, accScheme.reps, accScheme.rir, accScheme.rest)
+    const projected = currentMinutes() + minutesPerExercise(candidate)
+    // Always include at least 2 accessories so cards aren't bare. Past that,
+    // stop once adding the next one would push ≥10% over target.
+    if (exercises.length >= 3 && projected > targetMin * 1.1) break
+    exercises.push(candidate)
+    if (currentMinutes() >= targetMin * 0.95) break
   }
 
   // Deload on week 6

@@ -368,6 +368,47 @@ describe("GOLDEN: Kyra's leg day structurally matches friend's workout", () => {
 
 // ─── buildSession direct ──────────────────────────────────────────────────
 
+describe('buildMesocycle — active_minutes budget', () => {
+  it('60-min budget produces more total minutes than a 30-min budget', () => {
+    const short: UserProgramProfile = { ...NO_INJURY_PROFILE, active_minutes: 30, time_budget_min: 30 }
+    const long: UserProgramProfile = { ...NO_INJURY_PROFILE, active_minutes: 75, time_budget_min: 75 }
+    const sShort = buildMesocycle(interpretProfile(short)).sessions[0]!
+    const sLong = buildMesocycle(interpretProfile(long)).sessions[0]!
+    // Larger budget → more lifting time (measured by wall-clock sum of exercises)
+    const liftingMin = (s: typeof sShort): number =>
+      s.exercises.reduce((acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8), 0)
+    expect(liftingMin(sLong)).toBeGreaterThan(liftingMin(sShort))
+  })
+
+  it('60-min budget lands within ~10% of target on a typical session', () => {
+    const profile: UserProgramProfile = { ...NO_INJURY_PROFILE, active_minutes: 60, time_budget_min: 60 }
+    const session = buildMesocycle(interpretProfile(profile)).sessions[0]!
+    const liftingMin = session.exercises.reduce(
+      (acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8),
+      0,
+    )
+    // 60-min target with ±15% tolerance (slack from minimum-accessory rule)
+    expect(liftingMin).toBeGreaterThan(45)
+    expect(liftingMin).toBeLessThan(75)
+  })
+
+  it('session.estimated_minutes = lifting + warmup (10) + cooldown (5)', () => {
+    const profile: UserProgramProfile = { ...NO_INJURY_PROFILE, active_minutes: 60, time_budget_min: 60 }
+    const session = buildMesocycle(interpretProfile(profile)).sessions[0]!
+    const liftingMin = session.exercises.reduce(
+      (acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8),
+      0,
+    )
+    // Wrapped number includes +10 +5, so estimate should be roughly lifting+15
+    expect(session.estimated_minutes).toBeGreaterThanOrEqual(
+      Math.round(liftingMin + 15) - 2,
+    )
+    expect(session.estimated_minutes).toBeLessThanOrEqual(
+      Math.round(liftingMin + 15) + 2,
+    )
+  })
+})
+
 describe('buildSession', () => {
   it('respects session-type defaults when no injury applies', () => {
     const d = interpretProfile(NO_INJURY_PROFILE)

@@ -433,6 +433,7 @@ export function interpretProfile(
     injury_directives,
     root_causes,
     progression,
+    target_lifting_minutes: profile.active_minutes ?? profile.time_budget_min ?? 60,
     source: 'rules',
     unhandled_inputs,
   }

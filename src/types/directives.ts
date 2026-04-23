@@ -136,6 +136,13 @@ export const ProgrammingDirectivesSchema = z.object({
   injury_directives: z.array(InjuryDirectiveSchema),
   root_causes: z.array(RootCauseFlagSchema),
   progression: WeeklyProgressionSchema,
+  /**
+   * Target lifting wall-clock minutes per session (work + rest between sets,
+   * excludes warmup/cooldown). Pulled from profile.active_minutes. The planner
+   * uses this as a budget when picking accessories — more time → more
+   * accessories, less time → trimmed. Defaults to 60 when missing.
+   */
+  target_lifting_minutes: z.number().int().min(15).max(180).default(60),
   // Meta: record how the directives were produced so telemetry can audit.
   source: z.enum(['rules', 'llm', 'hybrid']),
   unhandled_inputs: z.array(z.string()),  // inputs that produced no directive
