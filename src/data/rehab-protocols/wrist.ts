@@ -133,6 +133,8 @@ export const wristProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       'Restores pain-free wrist extension loading through mobility and isometric work, then progresses back to barbell pressing.',

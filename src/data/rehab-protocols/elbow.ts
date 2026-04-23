@@ -183,6 +183,8 @@ export const elbowProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       'Uses flexbar eccentrics — the most evidence-backed exercise for this — plus progressive grip loading to rebuild tendon capacity.',

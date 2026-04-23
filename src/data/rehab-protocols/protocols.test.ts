@@ -124,7 +124,8 @@ describe('clinical rigor — critical protocol content', () => {
     const pfp = getProtocol('knee_pfp')
     const squatDay = pfp!.per_session_accessories.lower_squat_focus
     expect(squatDay).toBeDefined()
-    const patterns = squatDay!.priority.map((p) => p.exercise_pattern)
+    if (!squatDay) throw new Error('unreachable')
+    const patterns = squatDay.priority.map((p) => p.exercise_pattern)
     expect(
       patterns.some((p) => p.includes('hip_abduction') || p.includes('abduction')),
       'expected hip abduction priority',
@@ -142,6 +143,8 @@ describe('clinical rigor — critical protocol content', () => {
   it('ankle protocol uses heel-elevated squat as compensation (Macrum 2012 rationale)', () => {
     const a = getProtocol('ankle')
     const squatDay = a!.per_session_type.lower_squat_focus
+    expect(squatDay).toBeDefined()
+    if (!squatDay) throw new Error('unreachable')
     expect(squatDay.modifications.some((m) => m.includes('heel_elevated'))).toBe(true)
   })
 

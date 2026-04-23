@@ -103,7 +103,7 @@ export const InjuryDirectiveSchema = z.object({
   unilateral_side: z.enum(['left', 'right']).nullable(),
   rationale: z.string(),
   global_avoid: z.array(z.string()),
-  per_session_type: z.record(SessionTypeSchema, SessionDirectiveSchema),
+  per_session_type: z.partialRecord(SessionTypeSchema, SessionDirectiveSchema),
   progression_arc: z.array(ProgressionStageSchema),
   recovery_target: z.string(),
 })

@@ -145,6 +145,8 @@ export const hipFlexorsProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       'Restores full hip extension through glute activation + daily stretching. Prevents the lower-back compensation that tight hips typically cause.',

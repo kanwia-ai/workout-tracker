@@ -17,7 +17,6 @@
 
 import type {
   ProgrammingDirectives,
-  InjuryDirective,
   SessionType,
   GoalDirectives,
 } from '../../types/directives'

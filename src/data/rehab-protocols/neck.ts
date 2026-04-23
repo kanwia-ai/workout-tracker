@@ -121,6 +121,8 @@ export const neckProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       'Builds deep-neck-flexor endurance so your head holds position without the upper traps overworking. Adds thoracic mobility to reduce forward head drive.',

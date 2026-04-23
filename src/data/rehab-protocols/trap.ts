@@ -121,6 +121,8 @@ export const trapProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       "Rebalances your shoulder blade so the upper trap doesn't carry the load. Face pulls + proneY become weekly staples.",

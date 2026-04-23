@@ -125,6 +125,8 @@ export const upperBackProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       "Strengthens the muscles that pull your shoulder blades back and down, improves your thoracic spine mobility so overhead work doesn't hitch.",

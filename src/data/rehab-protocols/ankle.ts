@@ -122,6 +122,8 @@ export const ankleProtocol: Protocol = {
     },
   },
 
+  per_session_accessories: {},
+
   user_facing: {
     what_this_plan_does:
       'Improves ankle mobility over the block so full-depth squatting becomes accessible. Heel-elevated variants bridge the gap.',
