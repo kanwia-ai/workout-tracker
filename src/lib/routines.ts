@@ -3,6 +3,7 @@ import { db } from './db'
 import { callEdge } from './generate'
 import type { PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
+import { buildRoutineLocal } from './planner/generateRoutineLocal'
 
 // ─── Zod schema + types for the routine payload ─────────────────────────────
 // Mirrors the JSON Schema used by the `generate_routine` edge op in
@@ -46,15 +47,24 @@ export interface GenerateRoutineInput {
 export async function generateRoutine(input: GenerateRoutineInput): Promise<Routine> {
   const { session, kind, profile, minutes, focusTag } = input
 
-  const payload = {
-    profile,
-    kind,
-    minutes,
-    sessionFocus: session.focus,
-    ...(focusTag ? { focusTag } : {}),
-  }
+  // Opt-in local path: same env flag as generatePlan. Skips the edge function
+  // entirely and composes the routine from the clinical-planner layer +
+  // deterministic cooldown/cardio tables. Zero API cost.
+  const useLocal = import.meta.env.VITE_USE_LOCAL_PLANNER === 'true'
 
-  const routine = await callEdge('generate_routine', payload, RoutineSchema)
+  let routine: Routine
+  if (useLocal) {
+    routine = buildRoutineLocal(kind, session, profile, minutes, focusTag)
+  } else {
+    const payload = {
+      profile,
+      kind,
+      minutes,
+      sessionFocus: session.focus,
+      ...(focusTag ? { focusTag } : {}),
+    }
+    routine = await callEdge('generate_routine', payload, RoutineSchema)
+  }
 
   await db.routines.put({
     id: `${session.id}:${kind}`,

@@ -437,11 +437,13 @@ export function buildSession(args: {
   const defaults = SESSION_DEFAULTS[sessionType]
   const context = mergeDirectivesForSession(sessionType, weekNumber, directives)
 
-  // Main lift
+  // Main lift. Modifications are captured in the rationale (below) — don't
+  // leak raw protocol-key strings into the exercise's notes field, which
+  // renders directly in the UI.
   const main = pickMainLift(sessionType, context)
   const mainScheme = pickRepScheme('main lift', directives.goal, context.rep_scheme_override)
   const exercises: PlannedExercise[] = [
-    variantToExercise(main, 4, mainScheme.reps, mainScheme.rir, mainScheme.rest, context.modifications_note || undefined),
+    variantToExercise(main, 4, mainScheme.reps, mainScheme.rir, mainScheme.rest),
   ]
 
   // Secondary lift (if session has one)

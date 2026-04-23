@@ -3,6 +3,11 @@ import 'fake-indexeddb/auto'
 import type { PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 
+// These tests exercise the edge-function path of generateRoutine. The new
+// VITE_USE_LOCAL_PLANNER flag would short-circuit to local generation; stub
+// it off for this whole suite so the callEdge assertions stay valid.
+vi.stubEnv('VITE_USE_LOCAL_PLANNER', '')
+
 // Mock `./generate` BEFORE importing routines so the mocked `callEdge` is in play.
 vi.mock('./generate', () => ({
   callEdge: vi.fn(),
