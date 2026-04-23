@@ -2,6 +2,7 @@ import { db } from './db'
 import { callEdge } from './generate'
 import { MesocycleSchema, type Mesocycle } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
+import { orchestratePlan } from './planner/orchestrate'
 
 // ─── Phase-2 migration helpers ──────────────────────────────────────────────
 // Pre-2P.1 plans in Dexie lack `day_of_week` + `rationale`. On load, we
@@ -104,11 +105,49 @@ export async function buildExercisePool(profile: UserProgramProfile): Promise<Ex
 // and persisting it to Dexie. Throws if the edge call fails or returns an
 // invalid shape. We deliberately do NOT fall back to a templated plan —
 // surface the error so the UI can retry.
+/**
+ * Generate + persist a Mesocycle using the local rule-based clinical planner.
+ *
+ * Runs entirely in the client — zero API calls, zero cost. Output is a
+ * schema-valid Mesocycle compatible with every other part of the app
+ * (storage, rendering, day-override, session entry).
+ *
+ * Opt-in via `VITE_USE_LOCAL_PLANNER=true` — the default remains the
+ * edge-function Anthropic path until Kyra flips the flag on deploy. See
+ * docs/plans/2026-04-22-clinical-planner-architecture.md for the rationale.
+ */
+export async function generatePlanLocal(
+  profile: UserProgramProfile,
+  userId: string,
+  weeks: number = 6,
+): Promise<Mesocycle> {
+  const { mesocycle } = orchestratePlan(profile, userId, weeks)
+
+  await db.mesocycles.put({
+    id: mesocycle.id,
+    user_id: mesocycle.user_id,
+    generated_at: mesocycle.generated_at,
+    length_weeks: mesocycle.length_weeks,
+    sessions_json: JSON.stringify(mesocycle.sessions),
+    profile_snapshot_json: JSON.stringify(profile),
+    synced: false,
+  })
+
+  return mesocycle
+}
+
 export async function generatePlan(
   profile: UserProgramProfile,
   userId: string,
   weeks: number = 6,
 ): Promise<Mesocycle> {
+  // Opt-in route: VITE_USE_LOCAL_PLANNER=true uses the rule-based planner
+  // and skips the edge function entirely. Default stays on the LLM path
+  // until Kyra flips the flag (no auto-switch without explicit approval).
+  if (import.meta.env.VITE_USE_LOCAL_PLANNER === 'true') {
+    return generatePlanLocal(profile, userId, weeks)
+  }
+
   const exercisePool = await buildExercisePool(profile)
 
   // The server never sees user_id / generated_at / profile_snapshot, so strip
