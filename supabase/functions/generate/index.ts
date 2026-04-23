@@ -8,10 +8,11 @@
 // verbatim — only the provider swapped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import Anthropic from 'npm:@anthropic-ai/sdk@0.90.0'
-import { enrichExerciseSchema, extractExercisesSchema, mesocycleSchema, pingSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
+import { enrichExerciseSchema, extractExercisesSchema, mesocycleSchema, pingSchema, replanMesocycleSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 import { buildRoutinePrompt, type RoutineKind } from './prompts/generateRoutine.ts'
+import { buildReplanPrompt, REPLAN_SYSTEM_PROMPT } from './prompts/replanMesocycle.ts'
 
 const ROUTINE_KINDS: readonly RoutineKind[] = ['warmup', 'cooldown', 'cardio']
 function isRoutineKind(v: unknown): v is RoutineKind {
@@ -40,6 +41,12 @@ const LLM_OPS = new Set([
   'generate_routine',
   'extract_exercises',
   'enrich_exercise',
+  // NOT LIVE YET: `replan_mesocycle` is code-only as of 2026-04-22. This is
+  // the end-of-block adaptive re-plan — the only op that uses Claude Opus's
+  // reasoning budget (~$0.37/call, runs once per 6 weeks). Kyra ships a new
+  // deploy of this edge function when ready. Until then, client calls 400
+  // with "unknown op".
+  'replan_mesocycle',
 ])
 
 // Claude model ID. Opus 4.7 is the current highest-quality model. If cost
@@ -888,6 +895,101 @@ ${profile ? JSON.stringify(profile, null, 2) : '(no profile provided)'}`
           cacheSystem: true,
           maxTokens: 1024,
           model: CLAUDE_MODEL_SONNET,
+        })
+        return new Response(text, { headers: JSON_HEADERS })
+      } catch (err) {
+        return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
+    // ─── replan_mesocycle ───────────────────────────────────────────────
+    // End-of-block adaptive re-plan. Given the completed 6-week mesocycle +
+    // per-session check-ins + the directives we USED last block, ask Claude
+    // Opus to emit adjusted ProgrammingDirectives for the NEXT block, plus a
+    // user-facing rationale + concrete adjustment bullets.
+    //
+    // This is the ONE place in the app where Opus-tier reasoning earns its
+    // cost — a single re-plan is ~$0.37 and runs once per 6 weeks. Every
+    // other LLM op uses Sonnet or the v3 Opus prompt at a shorter budget.
+    //
+    // NOT LIVE YET (2026-04-22): code-only until Kyra deploys.
+    if (body.op === 'replan_mesocycle') {
+      const payload = (body.payload ?? {}) as {
+        profile?: unknown
+        completedMesocycle?: unknown
+        checkins?: unknown
+        previousDirectives?: unknown
+      }
+      if (!payload.profile || typeof payload.profile !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.profile is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!payload.completedMesocycle || typeof payload.completedMesocycle !== 'object') {
+        return new Response(
+          JSON.stringify({
+            error: 'payload.completedMesocycle is required and must be an object',
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!Array.isArray(payload.checkins)) {
+        return new Response(
+          JSON.stringify({ error: 'payload.checkins is required and must be an array' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!payload.previousDirectives || typeof payload.previousDirectives !== 'object') {
+        return new Response(
+          JSON.stringify({
+            error: 'payload.previousDirectives is required and must be an object',
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      // Same 500KB guard as generate_plan — the check-ins array is user data
+      // and could (in theory) balloon. Bail early rather than pay tokens.
+      const payloadJson = JSON.stringify({
+        checkins: payload.checkins,
+        completedMesocycle: payload.completedMesocycle,
+      })
+      if (payloadJson.length > MAX_POOL_JSON_BYTES) {
+        return new Response(
+          JSON.stringify({
+            error: `payload exceeds ${MAX_POOL_JSON_BYTES} bytes (got ${payloadJson.length}); trim check-ins or mesocycle client-side`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      try {
+        const prompt = buildReplanPrompt({
+          profile: payload.profile,
+          completedMesocycle: payload.completedMesocycle,
+          checkins: payload.checkins,
+          previousDirectives: payload.previousDirectives,
+        })
+        const text = await callClaudeAsTool({
+          client,
+          systemPrompt: REPLAN_SYSTEM_PROMPT,
+          userPrompt: prompt,
+          toolName: 'emit_replan',
+          toolDescription:
+            'Emit adjusted ProgrammingDirectives for the next 6-week block plus a user-facing rationale and bullet-point summary of changes.',
+          inputSchema: replanMesocycleSchema,
+          cacheSystem: true,
+          // 24000 mirrors generate_plan — ProgrammingDirectives is smaller
+          // than a full mesocycle, but rationale + adjustments_summary plus
+          // verbose injury_directives.per_session_type records can still hit
+          // the 12-16k range on a user with multiple rehab constraints. We
+          // keep the cap high to prevent the silent-truncation bug that
+          // cost Kyra multiple sessions on generate_plan pre-fix.
+          maxTokens: 24000,
         })
         return new Response(text, { headers: JSON_HEADERS })
       } catch (err) {

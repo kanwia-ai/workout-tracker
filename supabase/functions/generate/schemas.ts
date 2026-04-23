@@ -214,6 +214,250 @@ export const enrichExerciseSchema = {
   propertyOrdering: ['compatible_protocols', 'contraindicated_protocols', 'progression', 'regression', 'rationale'],
 } as const
 
+// ─── Replan-mesocycle response (end-of-block adaptive re-plan) ────────────
+// The `replan_mesocycle` op produces an adjusted ProgrammingDirectives for
+// the NEXT 6-week block given the completed block + per-session check-ins.
+// Client-side Zod (ProgrammingDirectivesSchema in src/types/directives.ts)
+// mirrors the directives half of this shape exactly — update both together.
+//
+// NOT DEPLOYED YET (as of 2026-04-22): the op is code-only until Kyra ships
+// a new edge-function version. Local dev can preview via
+// `supabase functions serve generate`.
+const SESSION_TYPE_ENUM = [
+  'lower_squat_focus',
+  'lower_hinge_focus',
+  'upper_push',
+  'upper_pull',
+  'full_body_a',
+  'full_body_b',
+  'conditioning',
+  'rehab_mobility',
+] as const
+
+const SEVERITY_DIRECTIVE_ENUM = ['acute', 'rehab', 'chronic', 'modify', 'ok'] as const
+
+const repRangeTupleSchema = {
+  type: 'array',
+  items: { type: 'integer', minimum: 1, maximum: 50 },
+  minItems: 2,
+  maxItems: 2,
+} as const
+
+const repSchemeBiasSchemaMirror = {
+  type: 'object',
+  properties: {
+    main_compounds: repRangeTupleSchema,
+    accessories: repRangeTupleSchema,
+    finishers: repRangeTupleSchema,
+  },
+  required: ['main_compounds', 'accessories', 'finishers'],
+  propertyOrdering: ['main_compounds', 'accessories', 'finishers'],
+} as const
+
+const goalDirectivesSchemaMirror = {
+  type: 'object',
+  properties: {
+    aesthetic: { type: 'string', enum: ['athletic', 'hypertrophy', 'endurance', 'general'] },
+    primary_adaptation: {
+      type: 'string',
+      enum: ['strength_power', 'size', 'work_capacity', 'mixed'],
+    },
+    rep_scheme_bias: repSchemeBiasSchemaMirror,
+    intensity_bias: { type: 'string' },
+    cardio_policy: {
+      type: 'string',
+      enum: ['minimal', 'separated', 'integrated', 'aggressive'],
+    },
+  },
+  required: ['aesthetic', 'primary_adaptation', 'rep_scheme_bias', 'intensity_bias', 'cardio_policy'],
+  propertyOrdering: ['aesthetic', 'primary_adaptation', 'rep_scheme_bias', 'intensity_bias', 'cardio_policy'],
+} as const
+
+const weekShapeSchemaMirror = {
+  type: 'object',
+  properties: {
+    sessions_per_week: { type: 'integer', minimum: 1, maximum: 7 },
+    template: {
+      type: 'array',
+      items: { type: 'string', enum: SESSION_TYPE_ENUM },
+      minItems: 1,
+    },
+    session_spacing: { type: 'string', enum: ['alternating', 'ppl', 'upper_lower', 'custom'] },
+    cardio_days: {
+      type: 'array',
+      items: { type: 'string', enum: ['standalone', 'post_upper', 'rest_day', 'none'] },
+    },
+  },
+  required: ['sessions_per_week', 'template', 'session_spacing', 'cardio_days'],
+  propertyOrdering: ['sessions_per_week', 'template', 'session_spacing', 'cardio_days'],
+} as const
+
+const sessionDirectiveSchemaMirror = {
+  type: 'object',
+  properties: {
+    priority_work: { type: 'array', items: { type: 'string' } },
+    modifications: { type: 'array', items: { type: 'string' } },
+    warmup_focus: { type: 'array', items: { type: 'string' } },
+    pair_with: { type: 'array', items: { type: 'string' } },
+    avoid_on_this_session: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['priority_work', 'modifications', 'warmup_focus', 'pair_with', 'avoid_on_this_session'],
+  propertyOrdering: ['priority_work', 'modifications', 'warmup_focus', 'pair_with', 'avoid_on_this_session'],
+} as const
+
+const progressionStageSchemaMirror = {
+  type: 'object',
+  properties: {
+    week_range: {
+      type: 'array',
+      items: { type: 'integer', minimum: 0, maximum: 52 },
+      minItems: 2,
+      maxItems: 2,
+    },
+    allowed_variants: { type: 'array', items: { type: 'string' } },
+    target_at_end: { type: 'string' },
+    rep_scheme_override: {
+      type: ['array', 'null'],
+      items: { type: 'integer', minimum: 1, maximum: 50 },
+      minItems: 2,
+      maxItems: 2,
+    },
+  },
+  required: ['week_range', 'allowed_variants', 'target_at_end', 'rep_scheme_override'],
+  propertyOrdering: ['week_range', 'allowed_variants', 'target_at_end', 'rep_scheme_override'],
+} as const
+
+const injuryDirectiveSchemaMirror = {
+  type: 'object',
+  properties: {
+    source: { type: 'string' },
+    matched_protocol: {
+      type: ['string', 'null'],
+      enum: [...PROTOCOL_ID_ENUM, null],
+    },
+    severity: { type: 'string', enum: SEVERITY_DIRECTIVE_ENUM },
+    stage_weeks: { type: 'integer', minimum: 0 },
+    unilateral_side: { type: ['string', 'null'], enum: ['left', 'right', null] },
+    rationale: { type: 'string' },
+    global_avoid: { type: 'array', items: { type: 'string' } },
+    per_session_type: {
+      type: 'object',
+      // Partial record keyed by SessionType — each key optional, value is SessionDirective.
+      properties: Object.fromEntries(
+        SESSION_TYPE_ENUM.map((t) => [t, sessionDirectiveSchemaMirror]),
+      ),
+    },
+    progression_arc: {
+      type: 'array',
+      items: progressionStageSchemaMirror,
+    },
+    recovery_target: { type: 'string' },
+  },
+  required: [
+    'source',
+    'matched_protocol',
+    'severity',
+    'stage_weeks',
+    'unilateral_side',
+    'rationale',
+    'global_avoid',
+    'per_session_type',
+    'progression_arc',
+    'recovery_target',
+  ],
+  propertyOrdering: [
+    'source',
+    'matched_protocol',
+    'severity',
+    'stage_weeks',
+    'unilateral_side',
+    'rationale',
+    'global_avoid',
+    'per_session_type',
+    'progression_arc',
+    'recovery_target',
+  ],
+} as const
+
+const rootCauseFlagSchemaMirror = {
+  type: 'object',
+  properties: {
+    observation: { type: 'string' },
+    likely_cause: { type: 'string' },
+    priority_work: { type: 'array', items: { type: 'string' } },
+    avoid_under_load: { type: 'array', items: { type: 'string' } },
+    do_not_ban: { type: 'array', items: { type: 'string' } },
+    why_not_banned: { type: 'string' },
+  },
+  required: ['observation', 'likely_cause', 'priority_work', 'avoid_under_load', 'do_not_ban', 'why_not_banned'],
+  propertyOrdering: ['observation', 'likely_cause', 'priority_work', 'avoid_under_load', 'do_not_ban', 'why_not_banned'],
+} as const
+
+const weeklyProgressionSchemaMirror = {
+  type: 'object',
+  properties: {
+    wk1_2: { type: 'string' },
+    wk3_4: { type: 'string' },
+    wk5: { type: 'string' },
+    wk6: { type: 'string' },
+  },
+  required: ['wk1_2', 'wk3_4', 'wk5', 'wk6'],
+  propertyOrdering: ['wk1_2', 'wk3_4', 'wk5', 'wk6'],
+} as const
+
+const programmingDirectivesSchemaMirror = {
+  type: 'object',
+  properties: {
+    goal: goalDirectivesSchemaMirror,
+    week_shape: weekShapeSchemaMirror,
+    injury_directives: { type: 'array', items: injuryDirectiveSchemaMirror },
+    root_causes: { type: 'array', items: rootCauseFlagSchemaMirror },
+    progression: weeklyProgressionSchemaMirror,
+    target_lifting_minutes: { type: 'integer', minimum: 15, maximum: 180 },
+    source: { type: 'string', enum: ['rules', 'llm', 'hybrid'] },
+    unhandled_inputs: { type: 'array', items: { type: 'string' } },
+  },
+  required: [
+    'goal',
+    'week_shape',
+    'injury_directives',
+    'root_causes',
+    'progression',
+    'target_lifting_minutes',
+    'source',
+    'unhandled_inputs',
+  ],
+  propertyOrdering: [
+    'goal',
+    'week_shape',
+    'injury_directives',
+    'root_causes',
+    'progression',
+    'target_lifting_minutes',
+    'source',
+    'unhandled_inputs',
+  ],
+} as const
+
+export const replanMesocycleSchema = {
+  type: 'object',
+  properties: {
+    directives: programmingDirectivesSchemaMirror,
+    rationale_for_user: {
+      type: 'string',
+      maxLength: 600,
+    },
+    adjustments_summary: {
+      type: 'array',
+      items: { type: 'string', maxLength: 240 },
+      minItems: 1,
+      maxItems: 12,
+    },
+  },
+  required: ['directives', 'rationale_for_user', 'adjustments_summary'],
+  propertyOrdering: ['directives', 'rationale_for_user', 'adjustments_summary'],
+} as const
+
 // Routine response — warmup / cooldown / cardio content attached to a main
 // session. Each exercise carries EITHER duration_seconds (holds, cardio
 // intervals) OR reps (movement drills, activation) — enforced by the prompt,
