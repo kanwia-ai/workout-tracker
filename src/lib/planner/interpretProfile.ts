@@ -236,7 +236,10 @@ function severityToStageWeeks(
     case 'avoid':
       return 0         // acute — not cleared for loaded work
     case 'modify':
-      return 2         // active rehab, reintroducing load
+      // Conservative default — if user says "modify" without specifying a
+      // rehab week, assume fresh (start at stage 1). They can override via
+      // the note field ("rehab week 3").
+      return 0
     case 'chronic':
       return 52        // ongoing, address root cause; not time-boxed
     case 'ok':
