@@ -39,3 +39,13 @@ function isValidId(id: string): boolean {
   // of future format changes, but reject anything obviously wrong.
   return /^[A-Za-z0-9_-]{6,20}$/.test(id)
 }
+
+// ─── Search shortcuts ───────────────────────────────────────────────────
+// Opens YouTube search biased toward Shorts-format clips (appends "shorts"
+// to the query) and sorted by view count (sp=CAMSAhAB → order:viewCount,
+// type:video). Deep-links into youtube.com so iOS/Android hands off to the
+// native YouTube app when installed.
+export function youtubeShortsSearchUrl(query: string): string {
+  const q = encodeURIComponent(`${query} form shorts`)
+  return `https://www.youtube.com/results?search_query=${q}&sp=CAMSAhAB`
+}

@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Loader2, X } from 'lucide-react'
+import { Loader2, Play, X } from 'lucide-react'
 import { db, type LibraryExercise } from '../lib/db'
 import { getDemo } from '../data/exercise-demos'
-import { extractYouTubeVideoId } from '../lib/youtube'
+import { extractYouTubeVideoId, youtubeShortsSearchUrl } from '../lib/youtube'
 import { resolveVariant } from '../lib/planner/variants'
 import { EXERCISE_LIBRARY } from '../data/exercises'
 
@@ -196,17 +196,27 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
                 )
               }
               return (
-                <div
-                  data-testid="exercise-demo-empty"
-                  className="text-[12px] mb-4"
+                <a
+                  data-testid="exercise-demo-search"
+                  href={youtubeShortsSearchUrl(exercise.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-4 flex items-center justify-center gap-2 w-full active:scale-[0.98] transition-transform"
                   style={{
-                    color: 'var(--lumo-text-ter)',
-                    fontFamily: "'Fraunces', Georgia, serif",
-                    fontStyle: 'italic',
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    background: 'color-mix(in srgb, var(--brand) 14%, var(--lumo-overlay))',
+                    border: '1px solid color-mix(in srgb, var(--brand) 40%, transparent)',
+                    color: 'var(--brand)',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    letterSpacing: '-0.005em',
                   }}
                 >
-                  no demo curated yet — swipe down to close
-                </div>
+                  <Play size={16} />
+                  Watch on YouTube Shorts
+                </a>
               )
             })()}
 

@@ -1,5 +1,6 @@
-import { ChevronLeft, AlertTriangle, CheckCircle, Info } from 'lucide-react'
+import { ChevronLeft, AlertTriangle, CheckCircle, Info, Play } from 'lucide-react'
 import type { Exercise, KneeSafety } from '../types'
+import { youtubeShortsSearchUrl } from '../lib/youtube'
 
 // ─── Display helpers ────────────────────────────────────────────────────────
 
@@ -209,6 +210,32 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
             )}
           </div>
         </div>
+
+        {/* Watch on YouTube Shorts — opens a view-count-sorted search bent
+            toward Shorts-format demos so the user gets quick high-quality
+            form refs without leaving the flow for long. */}
+        <a
+          data-testid="exercise-detail-youtube"
+          href={youtubeShortsSearchUrl(exercise.name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full active:scale-[0.98] transition-transform"
+          style={{
+            padding: '14px 16px',
+            borderRadius: 18,
+            background: 'color-mix(in srgb, var(--brand) 14%, var(--lumo-overlay))',
+            border: '1px solid color-mix(in srgb, var(--brand) 40%, transparent)',
+            color: 'var(--brand)',
+            fontSize: 14,
+            fontWeight: 700,
+            textDecoration: 'none',
+            letterSpacing: '-0.005em',
+            marginBottom: 12,
+          }}
+        >
+          <Play size={16} />
+          Watch on YouTube Shorts
+        </a>
 
         {/* Description */}
         {exercise.description && (
