@@ -196,7 +196,12 @@ export function HomeScreen({
     selectedDate,
     viewedWeek,
   )
-  const isViewingToday = selectedDow === todayDow
+  // "Today" applies only when the viewed week is the current training week
+  // AND the selected day-of-week matches today. Without the week check, the
+  // section still reads "today" and the CTA still starts the session when
+  // the user has scrolled forward to (say) Week 3 Friday — which is a week
+  // from now and shouldn't offer a Go button.
+  const isViewingToday = selectedDow === todayDow && viewedWeek === currentTrainingWeek
   const selectedDateISO = localDateISO(selectedDate)
   const todayISO = localDateISO(today)
   const selectedHasOverride = overrides.some((o) => o.date === selectedDateISO)
