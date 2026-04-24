@@ -28,12 +28,14 @@ import type {
   PlannedSession,
   MuscleGroup,
 } from '../../types/plan'
+import type { UserProgramProfile } from '../../types/profile'
 import {
   MAIN_VARIANTS,
   ACCESSORY_VARIANTS,
   resolveVariant,
   type VariantSpec,
 } from './variants'
+import { suggestStartingWeight } from './startingWeights'
 
 // ─── Mesocycle shape ───────────────────────────────────────────────────────
 export interface BuiltMesocycle {
@@ -394,14 +396,31 @@ function pickAccessories(
 }
 
 // ─── Variant → PlannedExercise ─────────────────────────────────────────────
+// Parses the first working-rep count out of a rep-scheme string ("5-8" → 5,
+// "10" → 10). Used only to pick a starting-weight bucket; tolerant of noise.
+function firstRepOf(reps: string): number {
+  const m = reps.match(/\d+/)
+  return m ? Number.parseInt(m[0]!, 10) : 8
+}
+
 function variantToExercise(
   v: VariantSpec,
   sets: number,
   reps: string,
   rir: number,
   restSec: number,
+  profile?: UserProgramProfile,
   notes?: string,
 ): PlannedExercise {
+  const suggested = profile
+    ? suggestStartingWeight({
+      variant: v,
+      profile,
+      role: v.role,
+      reps: firstRepOf(reps),
+      rir,
+    })
+    : undefined
   return {
     library_id: v.library_id ?? `variant:${v.id}`,
     name: v.name,
@@ -411,8 +430,32 @@ function variantToExercise(
     rest_seconds: restSec,
     role: v.role,
     warmup_sets: warmupSetsFor(v.ramp_style),
+    ...(suggested !== undefined ? { suggested_weight_lbs: suggested } : {}),
     ...(notes ? { notes } : {}),
   }
+}
+
+// Per-week progressive overload for the starting-weight suggestion. Small
+// enough to stay realistic without stepping on the user's actual check-in
+// feedback: +2.5% per week on compounds, capped at the same 5-lb rounding
+// the baseline uses so accessories don't jitter by 0.3 lb. Week 6 is a
+// deload — `applyDeload` already reduces volume, and the suggestion here
+// pulls back to the pre-progression baseline so the user starts the deload
+// from a conservative load.
+function applyWeeklyProgression(
+  exercises: PlannedExercise[],
+  weekNumber: number,
+): PlannedExercise[] {
+  if (weekNumber <= 1) return exercises
+  if (weekNumber >= 6) return exercises
+  const factor = 1 + 0.025 * (weekNumber - 1)
+  return exercises.map((ex) => {
+    if (ex.suggested_weight_lbs === undefined) return ex
+    const bumped = ex.suggested_weight_lbs * factor
+    const rounded = Math.round(bumped / 5) * 5
+    const next = Math.max(ex.suggested_weight_lbs, rounded)
+    return { ...ex, suggested_weight_lbs: next }
+  })
 }
 
 // ─── Deload (week 6) adjustments ──────────────────────────────────────────
@@ -431,8 +474,9 @@ export function buildSession(args: {
   ordinal: number
   directives: ProgrammingDirectives
   dayOfWeek: number
+  profile?: UserProgramProfile
 }): PlannedSession {
-  const { sessionType, weekNumber, ordinal, directives, dayOfWeek } = args
+  const { sessionType, weekNumber, ordinal, directives, dayOfWeek, profile } = args
   const defaults = SESSION_DEFAULTS[sessionType]
   const context = mergeDirectivesForSession(sessionType, weekNumber, directives)
 
@@ -442,7 +486,7 @@ export function buildSession(args: {
   const main = pickMainLift(sessionType, context)
   const mainScheme = pickRepScheme('main lift', directives.goal, context.rep_scheme_override)
   const exercises: PlannedExercise[] = [
-    variantToExercise(main, 4, mainScheme.reps, mainScheme.rir, mainScheme.rest),
+    variantToExercise(main, 4, mainScheme.reps, mainScheme.rir, mainScheme.rest, profile),
   ]
 
   // Secondary lift (if session has one)
@@ -451,7 +495,7 @@ export function buildSession(args: {
     if (sec) {
       const secScheme = pickRepScheme(sec.role, directives.goal, context.rep_scheme_override)
       exercises.push(
-        variantToExercise(sec, 3, secScheme.reps, secScheme.rir, secScheme.rest),
+        variantToExercise(sec, 3, secScheme.reps, secScheme.rir, secScheme.rest, profile),
       )
     }
   }
@@ -470,7 +514,14 @@ export function buildSession(args: {
   const accessoryPool = pickAccessories(sessionType, context, 8)
   for (const acc of accessoryPool) {
     const accScheme = pickRepScheme(acc.role, directives.goal, null)
-    const candidate = variantToExercise(acc, 3, accScheme.reps, accScheme.rir, accScheme.rest)
+    const candidate = variantToExercise(
+      acc,
+      3,
+      accScheme.reps,
+      accScheme.rir,
+      accScheme.rest,
+      profile,
+    )
     const projected = currentMinutes() + minutesPerExercise(candidate)
     // Always include at least 2 accessories so cards aren't bare. Past that,
     // stop once adding the next one would push ≥10% over target.
@@ -479,8 +530,12 @@ export function buildSession(args: {
     if (currentMinutes() >= targetMin * 0.95) break
   }
 
+  // Progressive overload on the suggested starting weight (weeks 2-5) before
+  // deload week 6 reduces set counts.
+  const progressed = applyWeeklyProgression(exercises, weekNumber)
+
   // Deload on week 6
-  const finalExercises = weekNumber === 6 ? applyDeload(exercises) : exercises
+  const finalExercises = weekNumber === 6 ? applyDeload(progressed) : progressed
 
   // Build rationale from context — short, descriptive, under 280 chars.
   // Use display names (not protocol keys) so "glute_max_bridge_or_hip_thrust"
@@ -553,6 +608,7 @@ function spreadDaysOfWeek(sessionsPerWeek: number): number[] {
 export function buildMesocycle(
   directives: ProgrammingDirectives,
   lengthWeeks = 6,
+  profile?: UserProgramProfile,
 ): BuiltMesocycle {
   const template = directives.week_shape.template
   const sessionsPerWeek = directives.week_shape.sessions_per_week
@@ -571,6 +627,7 @@ export function buildMesocycle(
           ordinal,
           directives,
           dayOfWeek: dow,
+          profile,
         }),
       )
     }

@@ -157,7 +157,7 @@ export async function generatePlanFromDirectives(
   userId: string,
   weeks: number = 6,
 ): Promise<Mesocycle> {
-  const built = buildMesocycle(directives, weeks)
+  const built = buildMesocycle(directives, weeks, profile)
 
   // Adapt BuiltMesocycle → Mesocycle (the existing persistence schema) — same
   // shape-merge orchestratePlan uses internally. We inline it here instead of

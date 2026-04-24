@@ -37,7 +37,7 @@ export function orchestratePlan(
   lengthWeeks = 6,
 ): OrchestrationResult {
   const directives = interpretProfile(profile)
-  const built = buildMesocycle(directives, lengthWeeks)
+  const built = buildMesocycle(directives, lengthWeeks, profile)
 
   // Adapt BuiltMesocycle → Mesocycle (the existing persistence schema).
   const draft = {
