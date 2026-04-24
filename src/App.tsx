@@ -38,6 +38,26 @@ import type { UserProgramProfile } from './types/profile'
 
 const VIEW_STORAGE_KEY = 'workout-tracker:view'
 const SESSION_STARTED_STORAGE_KEY = 'workout-tracker:session-started'
+
+// Emergency escape hatch: `?reset=1` wipes Dexie + localStorage and reloads
+// the app to a clean onboarding state. Meant for debugging when the user is
+// stuck on a black/broken screen and can't reach Settings → Start fresh.
+// Runs once at module load, before any React renders, so a broken component
+// can't block the reset.
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('reset') === '1') {
+  void (async () => {
+    try {
+      const { wipeUserData } = await import('./lib/db')
+      await wipeUserData()
+    } catch (err) {
+      console.error('emergency reset wipeUserData failed', err)
+    } finally {
+      try { window.localStorage.clear() } catch {}
+      try { window.sessionStorage.clear() } catch {}
+      window.location.replace(window.location.pathname)
+    }
+  })()
+}
 const KNOWN_VIEWS: readonly AppView[] = [
   'workout',
   'exercises',
