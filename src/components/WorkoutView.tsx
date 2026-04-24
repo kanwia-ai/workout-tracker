@@ -30,7 +30,6 @@ import {
   saveSession,
   saveLastWeight,
   updatePR,
-  loadLastWeights,
   loadPRs,
 } from '../lib/persistence'
 import { loadProfileLocal } from '../lib/profileRepo'
@@ -216,7 +215,6 @@ export function WorkoutView({
       ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
       : {},
   )
-  const [lastWeights, setLastWeights] = useState<Record<string, number>>({})
   const [prs, setPrs] = useState<Record<string, number>>({})
   const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>(() =>
     selectedSessionKey
@@ -493,7 +491,6 @@ export function WorkoutView({
 
   useEffect(() => {
     if (userId) {
-      loadLastWeights(userId).then(setLastWeights)
       loadPRs(userId).then(setPrs)
     }
   }, [userId])
@@ -653,7 +650,6 @@ export function WorkoutView({
 
       if (doneSets > 0) onWorkoutComplete()
 
-      loadLastWeights(userId).then(setLastWeights)
       loadPRs(userId).then(setPrs)
       setWeights({})
       setPerSetWeights({})
@@ -1011,7 +1007,6 @@ export function WorkoutView({
                   const perSetMax = perSetArr.reduce((m, v) => (v > m ? v : m), 0)
                   const perSetActive = perSetMax > 0
                   const expanded = !!perSetExpanded[ex.library_id]
-                  const lastW = lastWeights[ex.library_id]
                   const displayedWeight = perSetActive
                     ? perSetMax
                     : weights[ex.library_id] || 0
@@ -1026,7 +1021,6 @@ export function WorkoutView({
                       perSetActive={perSetActive}
                       perSetArr={perSetArr}
                       expanded={expanded}
-                      lastWeight={lastW}
                       hasPRFlag={hasPRFlag}
                       checkedSets={checkedSets}
                       burstKey={burstKey}
@@ -1253,7 +1247,6 @@ interface LiftCardProps {
   perSetActive: boolean
   perSetArr: number[]
   expanded: boolean
-  lastWeight?: number
   hasPRFlag: boolean
   checkedSets: Record<string, boolean>
   burstKey: string | null
@@ -1275,7 +1268,6 @@ function LiftCard({
   perSetActive,
   perSetArr,
   expanded,
-  lastWeight,
   hasPRFlag,
   checkedSets,
   burstKey,
@@ -1299,214 +1291,137 @@ function LiftCard({
       }}
       data-testid="lift-card"
     >
-      {/* Header row: name + info + swap + PR badge, weight pill on right */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <div
-              className="text-[15px] font-bold"
-              style={{
-                color: 'var(--lumo-text)',
-                textDecoration: isCompleted ? 'line-through' : 'none',
-                textDecorationColor: 'var(--lumo-text-ter)',
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {ex.name}
-            </div>
-            <button
-              type="button"
-              onClick={onInfo}
-              className="p-1 rounded-md active:scale-90 transition-colors"
-              style={{
-                color: 'var(--lumo-text-ter)',
-                width: 18,
-                height: 18,
-                borderRadius: '50%',
-                border: '1px solid var(--lumo-border-strong)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              aria-label={`Info about ${ex.name}`}
-              title="Exercise info"
-            >
-              <Info size={10} />
-            </button>
-            <button
-              type="button"
-              onClick={onSwap}
-              className="p-1 rounded-md active:scale-90 transition-colors"
-              style={{ color: 'var(--lumo-text-ter)' }}
-              aria-label={`Swap ${ex.name}`}
-              title="Swap this exercise"
-            >
-              <RefreshCw size={12} />
-            </button>
-            {hasPRFlag && (
-              <span
-                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
-                style={{
-                  background: 'color-mix(in srgb, var(--accent-plum) 18%, transparent)',
-                  color: 'var(--accent-plum)',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                }}
-                title="You've set a PR on this exercise"
-              >
-                pr shot
-              </span>
-            )}
-          </div>
+      {/* Header: name + info + swap + PR badge. Weight lives in its own
+          full-width row below (see WeightRow) — no corner pill. */}
+      <div>
+        <div className="flex items-center gap-1.5 flex-wrap">
           <div
-            className="text-[11px] mt-1 tabular-nums"
-            style={{ color: 'var(--lumo-text-ter)' }}
+            className="text-[15px] font-bold"
+            style={{
+              color: 'var(--lumo-text)',
+              textDecoration: isCompleted ? 'line-through' : 'none',
+              textDecorationColor: 'var(--lumo-text-ter)',
+              letterSpacing: '-0.01em',
+            }}
           >
-            {ex.sets} × {ex.reps} · {ex.rest_seconds}s rest · RIR {ex.rir}
+            {ex.name}
           </div>
-          {ex.warmup_sets.length > 0 && (() => {
-            const rounded = Math.round(displayedWeight / 5) * 5
-            const hasWorkingWeight = rounded > 0
-            const headline =
-              ex.warmup_sets.length > 1
-                ? hasWorkingWeight
-                  ? `warmup · ${ex.warmup_sets.length} sets working up to ${rounded} lb`
-                  : `warmup · ${ex.warmup_sets.length} sets ramping up`
-                : null
-            return (
-              <div className="mt-1.5" data-testid="warmup-block">
-                {headline && (
-                  <div
-                    className="text-[11px] leading-snug"
-                    style={{
-                      color: 'var(--lumo-text-ter)',
-                      fontFamily: "'Fraunces', Georgia, serif",
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    {headline}
-                  </div>
-                )}
-                <ul
-                  className="text-[11px] leading-snug mt-0.5 pl-0 list-none tabular-nums"
-                  style={{ color: 'var(--lumo-text-ter)' }}
-                >
-                  {ex.warmup_sets.map((w, wi) => {
-                    const pct = w.percent / 100
-                    const rawW = displayedWeight * pct
-                    const rW = Math.round(rawW / 5) * 5
-                    const useNumeric = hasWorkingWeight && rW > 0
-                    const verbal =
-                      pct < 0.55
-                        ? 'light'
-                        : pct < 0.8
-                          ? 'medium'
-                          : 'almost working weight'
-                    const single = ex.warmup_sets.length === 1
-                    const label = useNumeric
-                      ? single
-                        ? `1 set @ ${rW} lb × ${w.reps} reps`
-                        : `${w.reps} reps @ ${rW} lb`
-                      : single
-                        ? `1 set · ${w.reps} reps (${verbal})`
-                        : `${w.reps} reps (${verbal})`
-                    return (
-                      <li key={wi} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ color: 'var(--lumo-text-ter)' }}>·</span>
-                        <span>{label}</span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )
-          })()}
-          {ex.notes && (
-            <div
-              className="text-[11px] mt-1"
+          <button
+            type="button"
+            onClick={onInfo}
+            className="p-1 rounded-md active:scale-90 transition-colors"
+            style={{
+              color: 'var(--lumo-text-ter)',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              border: '1px solid var(--lumo-border-strong)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label={`Info about ${ex.name}`}
+            title="Exercise info"
+          >
+            <Info size={10} />
+          </button>
+          <button
+            type="button"
+            onClick={onSwap}
+            className="p-1 rounded-md active:scale-90 transition-colors"
+            style={{ color: 'var(--lumo-text-ter)' }}
+            aria-label={`Swap ${ex.name}`}
+            title="Swap this exercise"
+          >
+            <RefreshCw size={12} />
+          </button>
+          {hasPRFlag && (
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
               style={{
-                color: 'var(--lumo-text-sec)',
-                fontFamily: "'Fraunces', Georgia, serif",
-                fontStyle: 'italic',
+                background: 'color-mix(in srgb, var(--accent-plum) 18%, transparent)',
+                color: 'var(--accent-plum)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
               }}
+              title="You've set a PR on this exercise"
             >
-              {ex.notes}
-            </div>
+              pr shot
+            </span>
           )}
         </div>
-
-        {/* Weight pill — two-line display (current + last).
-            Tap the pill to expand per-set inputs; tap center chip in the
-            5-chip row below to edit via numeric keyboard. */}
-        <div className="shrink-0 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            className="flex flex-col items-center px-2.5 py-1.5 rounded-xl active:scale-95 transition-all"
-            style={{
-              background: 'var(--lumo-input-bg)',
-              border: '1px solid var(--lumo-border)',
-              minWidth: 64,
-            }}
-            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
-            aria-expanded={expanded}
-            title="Per-set weights"
-          >
+        <div
+          className="text-[11px] mt-1 tabular-nums"
+          style={{ color: 'var(--lumo-text-ter)' }}
+        >
+          {ex.sets} × {ex.reps} · {ex.rest_seconds}s rest · RIR {ex.rir}
+        </div>
+        {ex.warmup_sets.length > 0 && (() => {
+          const steps = ex.warmup_sets.map((w) => {
+            const pct = w.percent / 100
+            const rawW = displayedWeight * pct
+            const rW = Math.round(rawW / 5) * 5
+            const useNumeric = displayedWeight > 0 && rW > 0
+            const verbal = pct < 0.55 ? 'light' : pct < 0.8 ? 'medium' : 'almost working'
+            const head = useNumeric ? `${rW}` : verbal
+            return `${head} × ${w.reps}`
+          })
+          return (
             <div
-              className="text-[9px] font-bold"
-              style={{ color: 'var(--lumo-text-ter)', letterSpacing: '0.1em' }}
+              className="mt-3"
+              data-testid="warmup-block"
+              style={{
+                padding: '10px 12px',
+                background: 'var(--lumo-overlay)',
+                borderRadius: 10,
+                borderLeft: '3px solid var(--brand)',
+              }}
             >
-              LBS
-            </div>
-            <div
-              className="text-[17px] font-bold tabular-nums"
-              style={{ color: 'var(--lumo-text)', lineHeight: 1.1 }}
-            >
-              {displayedWeight > 0 ? displayedWeight : '—'}
-            </div>
-            {lastWeight !== undefined && lastWeight > 0 && (
               <div
-                className="text-[10px] tabular-nums mt-0.5"
-                data-testid="weight-pill-last"
                 style={{
-                  color:
-                    displayedWeight > 0 && displayedWeight > lastWeight
-                      ? 'var(--accent-mint)'
-                      : 'var(--lumo-text-ter)',
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '0.14em',
+                  color: 'var(--brand)',
+                  textTransform: 'uppercase',
                 }}
               >
-                last {lastWeight}
+                Warmup
               </div>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            className="p-1 rounded-md active:scale-90 transition-transform"
-            style={{ color: 'var(--lumo-text-ter)' }}
-            aria-label={expanded ? 'Collapse per-set weights' : 'Expand per-set weights'}
-            aria-expanded={expanded}
-            title="Per-set weights"
+              <div
+                className="tabular-nums"
+                style={{
+                  fontSize: 13,
+                  color: 'var(--lumo-text)',
+                  marginTop: 2,
+                  lineHeight: 1.45,
+                }}
+              >
+                {steps.join(' → ')}
+              </div>
+            </div>
+          )
+        })()}
+        {ex.notes && (
+          <div
+            className="text-[12px] mt-2"
+            style={{
+              color: 'var(--lumo-text-sec)',
+              lineHeight: 1.45,
+            }}
           >
-            <ChevronDown
-              size={14}
-              style={{
-                transition: 'transform 200ms',
-                transform: expanded ? 'rotate(180deg)' : 'none',
-              }}
-            />
-          </button>
-        </div>
+            {ex.notes}
+          </div>
+        )}
       </div>
 
-      {/* 5-chip weight picker: [-5] [-2.5] [CURRENT] [+2.5] [+5].
-          Middle chip opens an inline numeric input (tap-to-edit).
-          When no weight is set, ± auto-starts at `lastWeight || 45`. */}
+      {/* Full-width working-weight row — tap to edit the number */}
       {!perSetActive && (
-        <WeightChipRow
+        <WeightRow
           current={displayedWeight}
-          lastWeight={lastWeight}
           onChange={onChangeWeight}
+          onTogglePerSet={onToggleExpand}
+          perSetExpanded={expanded}
         />
       )}
 
@@ -1570,20 +1485,20 @@ function LiftCard({
   )
 }
 
-// ─── WeightChipRow ──────────────────────────────────────────────────────
-// 5-chip weight picker: [-5] [-2.5] [CURRENT] [+2.5] [+5].
-//   - Middle chip: big, shows current weight. Tap to edit via numeric input.
-//     Shows "set" + opens editor when no weight is set.
-//   - ± chips: round the new value to the nearest 0.5 lb and clamp to 0.
-//     When unset, + auto-starts at `lastWeight || 45`.
-// Accessible: each chip has an explicit aria-label.
-interface WeightChipRowProps {
+// ─── WeightRow ──────────────────────────────────────────────────────────
+// Full-width working-weight field. Tap anywhere on the row to open a
+// numeric keyboard and edit. No ± chips, no step selector — the planner's
+// suggestion is the default; the user only touches it if they need to.
+// Per-set override (rare) is reachable via the chevron which toggles the
+// per-set editor in the parent LiftCard.
+interface WeightRowProps {
   current: number
-  lastWeight?: number
   onChange: (next: number) => void
+  onTogglePerSet: () => void
+  perSetExpanded: boolean
 }
 
-function WeightChipRow({ current, lastWeight, onChange }: WeightChipRowProps) {
+function WeightRow({ current, onChange, onTogglePerSet, perSetExpanded }: WeightRowProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<string>('')
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -1606,111 +1521,124 @@ function WeightChipRow({ current, lastWeight, onChange }: WeightChipRowProps) {
     setEditing(false)
   }
 
-  const bump = (delta: number) => {
-    const base = current > 0 ? current : (lastWeight && lastWeight > 0 ? lastWeight : 45)
-    const next = Math.max(0, Math.round((base + delta) * 2) / 2)
-    onChange(next)
-  }
-
   const hasWeight = current > 0
-
-  const baseChip: CSSProperties = {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    background: 'var(--lumo-input-bg)',
-    border: '1px solid var(--lumo-border)',
-    color: 'var(--lumo-text-sec)',
-    fontSize: 12,
-    fontWeight: 700,
-    fontVariantNumeric: 'tabular-nums',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-    cursor: 'pointer',
-    transition: 'transform 120ms, background 160ms',
-  }
-
-  const middleChip: CSSProperties = {
-    ...baseChip,
-    width: 48,
-    height: 36,
-    fontSize: 16,
-    fontWeight: 700,
-    color: hasWeight ? 'var(--lumo-text)' : 'var(--lumo-text-ter)',
-  }
-
-  const chipLabel = (delta: number) =>
-    (delta > 0 ? '+' : '') + (Number.isInteger(delta) ? delta : delta.toString())
-
-  const renderDelta = (delta: number) => (
-    <button
-      key={delta}
-      type="button"
-      onClick={() => bump(delta)}
-      aria-label={`${delta > 0 ? 'Add' : 'Subtract'} ${Math.abs(delta)} pounds`}
-      className="active:scale-90 weight-chip"
-      style={baseChip}
-    >
-      {chipLabel(delta)}
-    </button>
-  )
 
   return (
     <div
-      className="flex items-center justify-end gap-1.5 mt-2"
-      data-testid="weight-chip-row"
+      data-testid="weight-row"
       onClick={(e) => e.stopPropagation()}
+      className="mt-3"
+      style={{
+        padding: '14px 16px',
+        background: 'var(--lumo-input-bg)',
+        border: editing ? '1px solid var(--brand)' : '1px solid var(--lumo-border-strong)',
+        borderRadius: 14,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        transition: 'border-color 160ms',
+      }}
     >
-      <style>{WEIGHT_CHIP_KEYFRAMES}</style>
-      {renderDelta(-5)}
-      {renderDelta(-2.5)}
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: '0.14em',
+          color: 'var(--lumo-text-ter)',
+          textTransform: 'uppercase',
+        }}
+      >
+        Working weight
+      </div>
 
-      {editing ? (
-        <input
-          ref={inputRef}
-          type="number"
-          inputMode="decimal"
-          step={0.5}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitEdit()
-            else if (e.key === 'Escape') setEditing(false)
-          }}
-          aria-label="Edit current weight"
+      <div className="flex items-center gap-2">
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="number"
+            inputMode="decimal"
+            step={0.5}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEdit()
+              else if (e.key === 'Escape') setEditing(false)
+            }}
+            aria-label="Edit current weight"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--lumo-text)',
+              fontSize: 26,
+              fontWeight: 800,
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.02em',
+              textAlign: 'right',
+              width: 100,
+              padding: 0,
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={startEdit}
+            aria-label={hasWeight ? `Edit weight (${current} lb)` : 'Set weight'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: hasWeight ? 'var(--lumo-text)' : 'var(--lumo-text-ter)',
+              fontSize: 26,
+              fontWeight: 800,
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.02em',
+              padding: 0,
+              cursor: 'pointer',
+            }}
+          >
+            {hasWeight ? current : 'tap to set'}
+          </button>
+        )}
+        <span
           style={{
-            ...middleChip,
-            outline: 'none',
-            textAlign: 'center',
+            fontSize: 13,
+            fontWeight: 700,
+            color: 'var(--lumo-text-sec)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
           }}
-        />
-      ) : (
+        >
+          lb
+        </span>
         <button
           type="button"
-          onClick={startEdit}
-          aria-label={hasWeight ? `Edit current weight (${current} pounds)` : 'Set weight'}
-          className="active:scale-90 weight-chip"
-          style={middleChip}
+          onClick={onTogglePerSet}
+          aria-label={perSetExpanded ? 'Hide per-set weights' : 'Override per set'}
+          aria-expanded={perSetExpanded}
+          title="Override per set"
+          style={{
+            marginLeft: 4,
+            color: 'var(--lumo-text-ter)',
+            background: 'transparent',
+            border: 'none',
+            padding: 4,
+            cursor: 'pointer',
+          }}
         >
-          {hasWeight ? current : 'set'}
+          <ChevronDown
+            size={16}
+            style={{
+              transition: 'transform 200ms',
+              transform: perSetExpanded ? 'rotate(180deg)' : 'none',
+            }}
+          />
         </button>
-      )}
-
-      {renderDelta(2.5)}
-      {renderDelta(5)}
+      </div>
     </div>
   )
 }
-
-const WEIGHT_CHIP_KEYFRAMES = `
-.weight-chip:active { background: color-mix(in srgb, var(--brand) 18%, var(--lumo-input-bg)); }
-@media (prefers-reduced-motion: reduce) {
-  .weight-chip { transition: none !important; }
-}
-`
 
 // ─── SetCircle ──────────────────────────────────────────────────────────
 interface SetCircleProps {

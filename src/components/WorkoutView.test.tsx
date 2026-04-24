@@ -383,10 +383,10 @@ describe('WorkoutView per-set expand', () => {
   it('expands per-set weights panel when the chevron is tapped', () => {
     vi.mocked(usePlan).mockReturnValue({ plan: makePlan([makeSession()]), loading: false })
     render(<WorkoutView {...baseProps} />)
-    const chevrons = screen.getAllByRole('button', { name: /per-set weights/i })
+    const chevron = screen.getAllByRole('button', { name: /per set|per-set weights/i })[0]
     // Before expand → no Set-1 sublabel.
     expect(screen.queryByText(/^Set 1$/)).not.toBeInTheDocument()
-    fireEvent.click(chevrons[0])
+    fireEvent.click(chevron)
     // After expand the per-set panel labels each set.
     expect(screen.getAllByText(/^Set \d+$/).length).toBeGreaterThan(0)
   })
