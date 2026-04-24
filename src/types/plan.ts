@@ -38,6 +38,14 @@ export const PlannedExerciseSchema = z.object({
    * back-filled to [] in loadMesocycle, same pattern as day_of_week.
    */
   warmup_sets: z.array(WarmupSetSchema).max(6),
+  /**
+   * Rule-based starting-weight suggestion in pounds, derived from the
+   * user's bodyweight + training age + variant baseline. Omitted only for
+   * true bodyweight movements (push-ups, planks, hanging leg raises, etc.)
+   * where a prescribed load doesn't apply. UI seeds the weight pill with
+   * this value on first render so accessories don't display as "—".
+   */
+  suggested_weight_lbs: z.number().positive().optional(),
 })
 
 export const PlannedSessionSchema = z.object({

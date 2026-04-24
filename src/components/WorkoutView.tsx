@@ -440,9 +440,24 @@ export function WorkoutView({
       loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
     const savedPerSet =
       loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
+    // Seed missing entries from the planner's starting-weight suggestion so
+    // the weight pill doesn't render "—" on an accessory the user hasn't yet
+    // logged a load for. Real saved weights always win — we only fill gaps.
+    const seeded: Record<string, number> = { ...savedWeights }
+    if (selectedSession) {
+      for (const ex of selectedSession.exercises) {
+        if (
+          seeded[ex.library_id] === undefined &&
+          ex.suggested_weight_lbs !== undefined &&
+          ex.suggested_weight_lbs > 0
+        ) {
+          seeded[ex.library_id] = ex.suggested_weight_lbs
+        }
+      }
+    }
     setCheckedSets(savedChecked)
     setCheckedWarmups(savedWarmups)
-    setWeights(savedWeights)
+    setWeights(seeded)
     setPerSetWeights(savedPerSet)
     setPerSetExpanded({})
     setRestState(null)
