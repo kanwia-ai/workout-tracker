@@ -179,6 +179,27 @@ function App() {
     genTokenRef.current += 1
   }, [user?.id])
 
+  // Keep the check-in count fresh so Settings can gate the re-plan button.
+  // Runs on user change and when Settings opens (cheap Dexie query). Lives
+  // up here with the rest of the hooks — moving it below the early-return
+  // guards creates a "rendered more hooks than previous render" crash
+  // when hasProfile flips from false to true after generation succeeds.
+  useEffect(() => {
+    if (!user?.id) {
+      setCheckinCount(0)
+      return
+    }
+    let cancelled = false
+    void listCheckinsForUser(user.id).then((rows) => {
+      if (!cancelled) setCheckinCount(rows.length)
+    }).catch(() => {
+      // Dexie unavailable (test env etc.) — 0 is a safe default.
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, settingsOpen])
+
   function friendlyGenerationError(err: unknown): string {
     const raw = err instanceof Error ? err.message : String(err)
     if (/network|fetch failed|timed out/i.test(raw)) {
@@ -325,24 +346,6 @@ function App() {
   const startGlobalTimer = (seconds: number, label: string, type: 'rest' | 'work') => {
     setGlobalTimer({ seconds, label, type })
   }
-
-  // Keep the check-in count fresh so Settings can gate the re-plan button.
-  // Runs on user change and when Settings opens (cheap Dexie query).
-  useEffect(() => {
-    if (!user?.id) {
-      setCheckinCount(0)
-      return
-    }
-    let cancelled = false
-    void listCheckinsForUser(user.id).then((rows) => {
-      if (!cancelled) setCheckinCount(rows.length)
-    }).catch(() => {
-      // Dexie unavailable (test env etc.) — 0 is a safe default.
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [user?.id, settingsOpen])
 
   // Kick off the Opus re-plan. Opens the review modal on success; surfaces
   // an error in Settings on failure. The current plan stays untouched
