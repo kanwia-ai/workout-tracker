@@ -511,8 +511,16 @@ export function buildSession(args: {
   const currentMinutes = (): number =>
     exercises.reduce((acc, ex) => acc + minutesPerExercise(ex), 0)
   // Fetch a wide pool — we'll filter based on budget.
+  // Dedupe against the main + secondary we already picked: an injury-driven
+  // priority accessory (e.g. meniscus → glute_max_bridge_or_hip_thrust) can
+  // collide with the session's default secondary (lower_hinge's hip thrust),
+  // producing two "Barbell Hip Thrust" rows in the same session. Pick by
+  // library_id, not name, so variant aliases still collapse correctly.
+  const alreadyPickedIds = new Set(exercises.map((e) => e.library_id))
   const accessoryPool = pickAccessories(sessionType, context, 8)
   for (const acc of accessoryPool) {
+    const accLibraryId = `variant:${acc.id}`
+    if (alreadyPickedIds.has(accLibraryId)) continue
     const accScheme = pickRepScheme(acc.role, directives.goal, null)
     const candidate = variantToExercise(
       acc,
@@ -527,6 +535,7 @@ export function buildSession(args: {
     // stop once adding the next one would push ≥10% over target.
     if (exercises.length >= 3 && projected > targetMin * 1.1) break
     exercises.push(candidate)
+    alreadyPickedIds.add(accLibraryId)
     if (currentMinutes() >= targetMin * 0.95) break
   }
 
