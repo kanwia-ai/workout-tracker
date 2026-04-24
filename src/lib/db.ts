@@ -309,3 +309,29 @@ db.version(9).stores({
 
 export { db }
 export type { LocalSessionLog, LocalSetLog, LocalCardioLog, LocalPersonalRecord, LocalUserWeight, LibraryExercise, LocalProfile, LocalMesocycle, LocalRoutine, LocalDayOverride, LocalCustomExercise, LocalSessionCheckin, LocalReplanHistoryEntry }
+
+/**
+ * Nuke every user-scoped row across every Dexie table. Preserves the seeded
+ * `exerciseLibrary` rows (they're derived from a static dataset, re-seeding
+ * is noisy) but wipes everything the user generated: profiles, mesocycles,
+ * logs, check-ins, overrides, PRs, re-plan history.
+ *
+ * Combined with a localStorage.clear() in the caller, this returns the app
+ * to a clean "first-time onboarding" state.
+ */
+export async function wipeUserData(): Promise<void> {
+  await Promise.all([
+    db.sessionLogs.clear(),
+    db.setLogs.clear(),
+    db.cardioLogs.clear(),
+    db.personalRecords.clear(),
+    db.userWeights.clear(),
+    db.userProgramProfiles.clear(),
+    db.mesocycles.clear(),
+    db.routines.clear(),
+    db.dayOverrides.clear(),
+    db.customExercises.clear(),
+    db.sessionCheckins.clear(),
+    db.replanHistory.clear(),
+  ])
+}

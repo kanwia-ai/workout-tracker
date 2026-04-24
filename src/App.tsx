@@ -29,6 +29,7 @@ import { listCheckinsForUser } from './lib/checkins'
 import type { ProgrammingDirectives } from './types/directives'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profileRepo'
+import { wipeUserData } from './lib/db'
 import { generatePlan } from './lib/planGen'
 import type { TimerState } from './types'
 import type { ExtractedExercise } from './lib/gemini'
@@ -403,6 +404,15 @@ function App() {
         onReplanNextBlock={handleReplanNextBlock}
         onReplanApply={handleReplanApply}
         onReplanClose={handleReplanClose}
+        onResetApp={async () => {
+          try {
+            await wipeUserData()
+          } finally {
+            window.localStorage.clear()
+            window.sessionStorage.clear()
+            window.location.reload()
+          }
+        }}
         replanState={replanState}
         checkinCount={checkinCount}
         cheek={tweaksApi.tweaks.cheek}

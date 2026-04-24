@@ -79,6 +79,13 @@ export interface SettingsScreenProps {
   onReplanApply?: () => void
   /** Cheekiness tier — drives the loading-state Lumo copy pool. */
   cheek?: Cheek
+  /**
+   * "Start fresh" — wipes every user-scoped Dexie row (profile, plan,
+   * logs, check-ins, PRs, overrides) and localStorage, then hard-reloads
+   * so the user lands back on onboarding. Owner does the actual wipe;
+   * Settings just confirms intent and calls back.
+   */
+  onResetApp?: () => void
 }
 
 /**
@@ -99,7 +106,6 @@ const COMING_SOON: readonly string[] = [
   'Edit profile',
   'Edit goals',
   'Export data',
-  'Reset app',
 ]
 
 export function SettingsScreen({
@@ -116,9 +122,11 @@ export function SettingsScreen({
   onReplanClose,
   onReplanApply,
   cheek,
+  onResetApp,
 }: SettingsScreenProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [replanConfirmOpen, setReplanConfirmOpen] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
 
   // Loading-state Lumo copy — swapped every 4s while the re-plan runs so
   // the user sees a rotating pool instead of one static line. We pull from
@@ -413,6 +421,59 @@ export function SettingsScreen({
           </Row>
         </Section>
 
+        {onResetApp && (
+          <Section title="Danger zone">
+            <button
+              type="button"
+              data-testid="settings-reset-app"
+              onClick={() => setResetConfirmOpen(true)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                marginBottom: 8,
+                background: 'var(--lumo-bg)',
+                border: '1px solid color-mix(in srgb, var(--accent-blush) 35%, var(--lumo-border))',
+                borderRadius: 12,
+                color: 'var(--lumo-text)',
+                fontSize: 14,
+                fontWeight: 600,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <span>Start fresh</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  background: 'color-mix(in srgb, var(--accent-blush) 18%, transparent)',
+                  color: 'var(--accent-blush)',
+                  border: '1px solid color-mix(in srgb, var(--accent-blush) 35%, transparent)',
+                }}
+              >
+                wipe
+              </span>
+            </button>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                lineHeight: 1.45,
+                padding: '0 4px',
+              }}
+            >
+              Clears your profile, plan, check-ins, and logs. Sends you back to onboarding.
+            </div>
+          </Section>
+        )}
+
         <Section title="Coming soon">
           {COMING_SOON.map((label) => (
             <button
@@ -458,6 +519,104 @@ export function SettingsScreen({
           ))}
         </Section>
       </div>
+
+      {resetConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-dialog-title"
+          data-testid="reset-confirm-dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 1000,
+          }}
+          onClick={() => setResetConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              background: 'var(--lumo-raised)',
+              border: '1px solid var(--lumo-border)',
+              borderRadius: 20,
+              padding: 24,
+              color: 'var(--lumo-text)',
+            }}
+          >
+            <h2
+              id="reset-dialog-title"
+              style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontStyle: 'italic',
+                fontWeight: 700,
+                fontSize: 22,
+                margin: '0 0 12px',
+                color: 'var(--lumo-text)',
+              }}
+            >
+              Wipe everything?
+            </h2>
+            <p
+              style={{
+                fontSize: 14,
+                lineHeight: 1.55,
+                color: 'var(--lumo-text-sec)',
+                margin: '0 0 20px',
+              }}
+            >
+              Deletes your profile, plan, logs, check-ins, and PRs. You'll land back on onboarding. Cannot be undone.
+            </p>
+            <div
+              style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}
+            >
+              <button
+                type="button"
+                onClick={() => setResetConfirmOpen(false)}
+                data-testid="reset-cancel"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 12,
+                  background: 'transparent',
+                  color: 'var(--lumo-text-sec)',
+                  border: '1px solid var(--lumo-border)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetConfirmOpen(false)
+                  onResetApp?.()
+                }}
+                data-testid="reset-confirm"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: 12,
+                  background: 'var(--accent-blush)',
+                  color: 'var(--lumo-bg)',
+                  border: 'none',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Wipe and restart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {replanConfirmOpen && (
         <div

@@ -147,10 +147,26 @@ describe('SettingsScreen', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('Reset app row is disabled (coming soon)', () => {
-    renderWired()
-    const reset = screen.getByTestId('coming-soon-reset-app')
-    expect(reset).toBeDisabled()
+  it('"Start fresh" is hidden by default and fires onResetApp on confirm', () => {
+    const { rerender } = renderWired()
+    expect(screen.queryByTestId('settings-reset-app')).not.toBeInTheDocument()
+
+    const onResetApp = vi.fn()
+    rerender(
+      <SettingsScreen
+        tweaks={{ cheek: 2, cheekiness: 2 }}
+        setTweaks={() => {}}
+        themeMode="dark"
+        setThemeMode={() => {}}
+        onClose={() => {}}
+        onRegeneratePlan={() => {}}
+        onResetApp={onResetApp}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('settings-reset-app'))
+    expect(screen.getByTestId('reset-confirm-dialog')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('reset-confirm'))
+    expect(onResetApp).toHaveBeenCalledTimes(1)
   })
 
   it('shows the app version', () => {
