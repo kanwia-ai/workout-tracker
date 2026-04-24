@@ -58,9 +58,10 @@ export const plannedExerciseSchema = {
       items: warmupSetSchema,
       maxItems: 6,
     },
+    suggested_weight_lbs: { type: 'number', minimum: 0 },
   },
   required: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'warmup_sets'],
-  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets'],
+  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets', 'suggested_weight_lbs'],
 } as const
 
 const plannedSessionSchema = {
