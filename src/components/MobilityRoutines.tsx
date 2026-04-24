@@ -1,88 +1,33 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronDown, Timer, Clock } from 'lucide-react'
 import { Lumo } from './Lumo'
+import {
+  MOBILITY_SECTIONS,
+  pickRoutineForDay,
+  type MobilityRoutine,
+  type MobilitySection,
+} from '../data/mobility-routines'
 
-// ─── Routine definitions ────────────────────────────────────────────────────
-
-interface MobilityExercise {
-  name: string
-  duration: string
-  seconds?: number
-  cue: string
-}
-
-interface MobilityRoutine {
-  id: string
-  title: string
+// A section + the routine chosen for today. The render code below works off
+// this flattened shape so section metadata (emoji/title/description) and the
+// chosen routine's exercises sit side by side.
+interface DailyRoutine {
+  sectionId: string
+  sectionTitle: string
   emoji: string
-  duration: string
-  description: string
-  exercises: MobilityExercise[]
+  sectionDescription: string
+  routine: MobilityRoutine
 }
 
-const ROUTINES: MobilityRoutine[] = [
-  {
-    id: 'hip-mobility',
-    title: 'Hip Mobility',
-    emoji: '\u{1F9D8}',
-    duration: '10-15 min',
-    description: 'Open up tight hips from sitting all day. Great before leg day or as a standalone routine. Targets hip flexors, adductors, external rotators, and glute activation.',
-    exercises: [
-      { name: '90/90 Hip Stretch', duration: '45s each side', seconds: 45, cue: 'Sit tall, both legs at 90 degrees. Breathe into the stretch.' },
-      { name: 'Half-Kneeling Hip Flexor Stretch', duration: '30s each side', seconds: 30, cue: 'Pad under back knee, squeeze back glute, lean forward gently.' },
-      { name: 'Pigeon Pose', duration: '45s each side', seconds: 45, cue: 'Square hips, sink down. Use figure-4 if knee-sensitive.' },
-      { name: 'Frog Stretch', duration: '45s', seconds: 45, cue: 'On all fours, knees wide. Sink hips back to feel inner thigh stretch.' },
-      { name: 'Standing Hip Circle', duration: '10 each direction per leg', cue: 'Big slow circles. Hold wall for balance.' },
-      { name: 'Leg Swing (front-to-back)', duration: '10 each leg', cue: 'Hold wall for balance. Controlled swing, gradually increase range.' },
-      { name: 'Leg Swing (side-to-side)', duration: '10 each leg', cue: 'Face the wall. Swing across body.' },
-      { name: 'Fire Hydrant', duration: '10 each side', cue: 'Keep core tight, lift from the hip.' },
-      { name: 'Banded Clamshell', duration: '12 each side', cue: 'Keep feet together, rotate from hip. Slow and controlled.' },
-      { name: 'Butterfly Stretch', duration: '45s', seconds: 45, cue: 'Soles of feet together, sit tall, gentle press with elbows.' },
-      { name: 'Happy Baby Pose', duration: '30s', seconds: 30, cue: 'Grab outside of feet, pull knees toward armpits, rock side to side.' },
-    ],
-  },
-  {
-    id: 'back-spine',
-    title: 'Back & Spine',
-    emoji: '\u{1F9B4}',
-    duration: '10-12 min',
-    description: 'Release tension in the thoracic spine, lower back, and surrounding muscles. Essential if you sit at a desk or feel "tight as a knot."',
-    exercises: [
-      { name: 'Cat-Cow (slow)', duration: '10 slow cycles', cue: 'Hold each position 3 seconds. Move through the entire spine.' },
-      { name: 'Thread the Needle', duration: '8 each side', cue: 'From all fours, reach under and rotate. Follow hand with eyes.' },
-      { name: 'Thoracic Spine Rotation', duration: '8 each side', cue: 'Hand behind head, rotate open. Move from upper back, not lower.' },
-      { name: 'Child\'s Pose', duration: '45s', seconds: 45, cue: 'Knees wide, reach arms forward, sink hips to heels.' },
-      { name: 'Supine Spinal Twist', duration: '30s each side', seconds: 30, cue: 'Lie on back, drop knees to one side, look opposite direction.' },
-      { name: 'Cobra / Upward Dog', duration: '20s', seconds: 20, cue: 'Hips on floor, press up through hands, open chest.' },
-      { name: 'Knees-to-Chest Hug', duration: '30s', seconds: 30, cue: 'Lie on back, hug both knees to chest, rock gently side to side.' },
-      { name: 'Foam Roll Upper Back', duration: '60s', seconds: 60, cue: 'Roller under upper back, arms crossed. Roll mid to upper back slowly.' },
-      { name: 'Bird Dog', duration: '8 each side', cue: 'Extend opposite arm and leg. Keep hips square, slow and controlled.' },
-    ],
-  },
-  {
-    id: 'general-flexibility',
-    title: 'General Flexibility',
-    emoji: '\u{1F938}',
-    duration: '15-20 min',
-    description: 'Full-body stretch and flexibility routine. Covers hips, shoulders, back, and legs. Perfect for rest days or after any workout.',
-    exercises: [
-      { name: 'Cat-Cow', duration: '10 cycles', cue: 'Arch and round spine, move segment by segment.' },
-      { name: 'Downward Dog', duration: '30s', seconds: 30, cue: 'Inverted V, push hips up and back, pedal feet.' },
-      { name: 'Half-Kneeling Hip Flexor Stretch', duration: '30s each side', seconds: 30, cue: 'Pad under back knee, squeeze glute, tall posture.' },
-      { name: 'Pigeon Pose', duration: '45s each side', seconds: 45, cue: 'Square hips, sink down gently.' },
-      { name: 'Standing Hamstring Stretch', duration: '30s each side', seconds: 30, cue: 'Foot on low surface, hinge at hips, keep back flat.' },
-      { name: 'Standing Calf Stretch (wall)', duration: '30s each side', seconds: 30, cue: 'Back leg straight, heel down, lean forward.' },
-      { name: 'Standing Quad Stretch', duration: '20s each side', seconds: 20, cue: 'Hold wall for balance, keep knees together, gentle pull.' },
-      { name: 'Doorway Chest Stretch', duration: '30s each side', seconds: 30, cue: 'Arm on doorframe at 90 degrees, step through.' },
-      { name: 'Cross-Body Shoulder Stretch', duration: '20s each arm', seconds: 20, cue: 'Pull arm across chest, don\'t rotate torso.' },
-      { name: 'Wall Slide (Wall Angel)', duration: '10 reps', cue: 'Back flat against wall, slide arms up and down keeping contact.' },
-      { name: 'Supine Spinal Twist', duration: '30s each side', seconds: 30, cue: 'Lie on back, drop knees to one side, look opposite.' },
-      { name: 'Figure-4 Stretch', duration: '30s each side', seconds: 30, cue: 'Lie on back, ankle on opposite knee, pull bottom leg toward chest.' },
-      { name: 'Neck Side Bend', duration: '20s each side', seconds: 20, cue: 'Ear toward shoulder, gentle hand pressure.' },
-      { name: 'Deep Breathing (4-4-6)', duration: '60s', seconds: 60, cue: 'Inhale 4s, hold 4s, exhale 6s. Belly breathing, close eyes.' },
-    ],
-  },
-]
+function buildDailyRoutines(sections: MobilitySection[], date: Date): DailyRoutine[] {
+  return sections.map(section => ({
+    sectionId: section.id,
+    sectionTitle: section.title,
+    emoji: section.emoji,
+    sectionDescription: section.description,
+    routine: pickRoutineForDay(section, date),
+  }))
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -103,24 +48,29 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
   const [expandedRoutine, setExpandedRoutine] = useState<string | null>(null)
   const [checkedExercises, setCheckedExercises] = useState<Record<string, boolean>>({})
 
+  const dailyRoutines = useMemo(() => buildDailyRoutines(MOBILITY_SECTIONS, new Date()), [])
+
   const toggleRoutine = (id: string) => {
     setExpandedRoutine(expandedRoutine === id ? null : id)
   }
 
-  const toggleExercise = (routineId: string, exerciseIdx: number) => {
-    const key = `${routineId}-${exerciseIdx}`
+  const exerciseKey = (sectionId: string, routineId: string, idx: number) =>
+    `${sectionId}-${routineId}-${idx}`
+
+  const toggleExercise = (sectionId: string, routineId: string, exerciseIdx: number) => {
+    const key = exerciseKey(sectionId, routineId, exerciseIdx)
     setCheckedExercises(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const getRoutineProgress = (routine: MobilityRoutine) => {
+  const getRoutineProgress = (daily: DailyRoutine) => {
     let done = 0
-    for (let i = 0; i < routine.exercises.length; i++) {
-      if (checkedExercises[`${routine.id}-${i}`]) done++
+    for (let i = 0; i < daily.routine.exercises.length; i++) {
+      if (checkedExercises[exerciseKey(daily.sectionId, daily.routine.id, i)]) done++
     }
     return done
   }
 
-  const hasAnyProgress = ROUTINES.some(r => getRoutineProgress(r) > 0)
+  const hasAnyProgress = dailyRoutines.some(r => getRoutineProgress(r) > 0)
 
   return (
     <div
@@ -190,14 +140,15 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
 
         {/* Routines */}
         <div className="space-y-3">
-          {ROUTINES.map(routine => {
-            const isExpanded = expandedRoutine === routine.id
-            const progress = getRoutineProgress(routine)
+          {dailyRoutines.map(daily => {
+            const isExpanded = expandedRoutine === daily.sectionId
+            const progress = getRoutineProgress(daily)
+            const { routine } = daily
             const total = routine.exercises.length
 
             return (
               <div
-                key={routine.id}
+                key={daily.sectionId}
                 style={{
                   background: 'var(--lumo-raised)',
                   border: '1px solid var(--lumo-border)',
@@ -207,16 +158,16 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
               >
                 {/* Routine header */}
                 <button
-                  onClick={() => toggleRoutine(routine.id)}
+                  onClick={() => toggleRoutine(daily.sectionId)}
                   className="w-full text-left active:scale-[0.99] transition"
                   style={{ padding: 16, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className="text-2xl">{routine.emoji}</span>
+                      <span className="text-2xl">{daily.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--lumo-text)' }}>
-                          {routine.title}
+                          {daily.sectionTitle}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <div
@@ -237,6 +188,18 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                               {progress}/{total}
                             </span>
                           )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: 'var(--accent-plum)',
+                            marginTop: 4,
+                            fontFamily: "'Fraunces', Georgia, serif",
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          today: {routine.title}
                         </div>
                       </div>
                     </div>
@@ -305,7 +268,7 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                     {/* Exercise list */}
                     <div className="space-y-0.5">
                       {routine.exercises.map((exercise, idx) => {
-                        const isChecked = checkedExercises[`${routine.id}-${idx}`]
+                        const isChecked = checkedExercises[exerciseKey(daily.sectionId, routine.id, idx)]
                         return (
                           <div
                             key={idx}
@@ -320,14 +283,14 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                             <input
                               type="checkbox"
                               checked={!!isChecked}
-                              onChange={() => toggleExercise(routine.id, idx)}
+                              onChange={() => toggleExercise(daily.sectionId, routine.id, idx)}
                               className="w-4 h-4 shrink-0 rounded"
                               style={{ accentColor: 'var(--accent-plum)' }}
                             />
 
                             <div
                               className="flex-1 cursor-pointer"
-                              onClick={() => toggleExercise(routine.id, idx)}
+                              onClick={() => toggleExercise(daily.sectionId, routine.id, idx)}
                             >
                               <div className="flex items-baseline gap-2">
                                 <span
