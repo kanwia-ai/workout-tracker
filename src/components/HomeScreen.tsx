@@ -9,7 +9,7 @@
  *   5. "TODAY" label + TodayCard (big, with "let's go →") OR RestCard
  *   6. Stat chips: sessions / volume / PRs
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Flame, Moon, ArrowRight, Sparkles, Check, Settings as SettingsIcon } from 'lucide-react'
 import { Lumo } from './Lumo'
 import { usePlan } from '../hooks/usePlan'
@@ -95,9 +95,10 @@ function todayDowMon0(): number {
   return d === 0 ? 6 : d - 1
 }
 
-function mondayOf(date: Date): Date {
+function mondayOfDate(date: Date): Date {
   const d = new Date(date)
-  const dow = todayDowMon0()
+  // JS getDay: 0=Sun..6=Sat → shift to Mon=0..Sun=6 to subtract the right amount.
+  const dow = d.getDay() === 0 ? 6 : d.getDay() - 1
   d.setDate(d.getDate() - dow)
   d.setHours(0, 0, 0, 0)
   return d
@@ -129,10 +130,42 @@ export function HomeScreen({
   const [programProfile, setProgramProfile] = useState<UserProgramProfile | null>(null)
 
   const today = new Date()
-  const weekStart = mondayOf(today)
   const todayDow = todayDowMon0()
   const greetTime = timeOfDay(today.getHours())
   const overrides = useDayOverrides(userId)
+
+  // ─── Plan anchor + week navigation ────────────────────────────────────
+  // Week 1's Monday is derived from plan.generated_at so the strip shows
+  // the same 7-day slice the mesocycle was authored against — no matter
+  // what calendar week we're in. viewedWeek starts on whichever training
+  // week contains today (clamped to 1..length_weeks) and can be nudged
+  // forward/backward with the chevrons.
+  const planAnchorMonday = useMemo(() => {
+    if (!plan) return mondayOfDate(today)
+    return mondayOfDate(new Date(plan.generated_at))
+  }, [plan])
+
+  const maxWeek = plan?.length_weeks ?? 1
+
+  const currentTrainingWeek = useMemo(() => {
+    if (!plan) return 1
+    const days = Math.floor(
+      (today.getTime() - planAnchorMonday.getTime()) / 86_400_000,
+    )
+    const w = Math.floor(days / 7) + 1
+    return Math.min(Math.max(1, w), maxWeek)
+  }, [plan, planAnchorMonday, maxWeek])
+
+  const [viewedWeek, setViewedWeek] = useState<number>(1)
+  useEffect(() => {
+    setViewedWeek(currentTrainingWeek)
+  }, [currentTrainingWeek])
+
+  const weekStart = useMemo(() => {
+    const d = new Date(planAnchorMonday)
+    d.setDate(planAnchorMonday.getDate() + (viewedWeek - 1) * 7)
+    return d
+  }, [planAnchorMonday, viewedWeek])
 
   // Which day is selected for the TodayCard. Persisted to localStorage so
   // bottom-nav (home → progress → home) doesn't reset it and neither does a
@@ -153,7 +186,7 @@ export function HomeScreen({
   const selectedDate = new Date(weekStart)
   selectedDate.setDate(weekStart.getDate() + selectedDow)
 
-  const weekSessions = plan ? getWeekView(plan, 1) : []
+  const weekSessions = plan ? getWeekView(plan, viewedWeek) : []
   // getSessionForDate merges plan + active day overrides so a session pulled
   // onto a rest day via "build me one anyway" shows up just like a scheduled
   // one.
@@ -161,7 +194,7 @@ export function HomeScreen({
     plan,
     overrides,
     selectedDate,
-    1,
+    viewedWeek,
   )
   const isViewingToday = selectedDow === todayDow
   const selectedDateISO = localDateISO(selectedDate)
@@ -306,11 +339,19 @@ export function HomeScreen({
           <PlanMissingCard onRetry={onRetryGeneration} />
         ) : (
           <>
-            {/* This week label + DayStrip */}
-            <SectionLabel>this week</SectionLabel>
+            {/* Week nav + DayStrip — scrolls through all mesocycle weeks */}
+            <WeekNav
+              viewedWeek={viewedWeek}
+              maxWeek={maxWeek}
+              weekStart={weekStart}
+              currentTrainingWeek={currentTrainingWeek}
+              onPrev={() => setViewedWeek((w) => Math.max(1, w - 1))}
+              onNext={() => setViewedWeek((w) => Math.min(maxWeek, w + 1))}
+              onJumpToCurrent={() => setViewedWeek(currentTrainingWeek)}
+            />
             <HomeDayStrip
               weekSessions={weekSessions}
-              todayDow={todayDow}
+              todayDow={viewedWeek === currentTrainingWeek ? todayDow : -1}
               selectedDow={selectedDow}
               onSelect={setSelectedDow}
               doneByDow={doneByDow}
@@ -480,6 +521,141 @@ function LumoGreeting({ rationale, isRestDay, cheekLevel, firstName }: LumoGreet
       >
         {bubbleText}
       </div>
+    </div>
+  )
+}
+
+// ─── WeekNav ────────────────────────────────────────────────────────────────
+// Chevron ← Week N of M · Mon 5 – Sun 11 → with an inline "this week" pill
+// that only renders when the user has scrolled away from the current training
+// week. Keeps the user oriented while they look ahead or back across the
+// whole mesocycle.
+interface WeekNavProps {
+  viewedWeek: number
+  maxWeek: number
+  weekStart: Date
+  currentTrainingWeek: number
+  onPrev: () => void
+  onNext: () => void
+  onJumpToCurrent: () => void
+}
+
+function WeekNav({
+  viewedWeek,
+  maxWeek,
+  weekStart,
+  currentTrainingWeek,
+  onPrev,
+  onNext,
+  onJumpToCurrent,
+}: WeekNavProps) {
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const dateRange = `${fmt(weekStart)} – ${fmt(weekEnd)}`
+  const atCurrent = viewedWeek === currentTrainingWeek
+  const disabledPrev = viewedWeek <= 1
+  const disabledNext = viewedWeek >= maxWeek
+
+  return (
+    <div
+      data-testid="week-nav"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginTop: 18,
+        marginBottom: 10,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={disabledPrev}
+        aria-label="Previous week"
+        data-testid="week-nav-prev"
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 12,
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          color: disabledPrev ? 'var(--lumo-text-ter)' : 'var(--lumo-text-sec)',
+          opacity: disabledPrev ? 0.4 : 1,
+          cursor: disabledPrev ? 'not-allowed' : 'pointer',
+          fontSize: 16,
+          fontWeight: 700,
+        }}
+      >
+        ‹
+      </button>
+      <div style={{ flex: 1, textAlign: 'center' }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--lumo-text-ter)',
+          }}
+        >
+          Week {viewedWeek} of {maxWeek}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: 'var(--lumo-text)',
+            marginTop: 2,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {dateRange}
+        </div>
+        {!atCurrent && (
+          <button
+            type="button"
+            onClick={onJumpToCurrent}
+            data-testid="week-nav-jump-current"
+            style={{
+              marginTop: 4,
+              fontSize: 11,
+              fontWeight: 700,
+              color: 'var(--brand)',
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              letterSpacing: '0.04em',
+            }}
+          >
+            jump to this week ↩
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={disabledNext}
+        aria-label="Next week"
+        data-testid="week-nav-next"
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 12,
+          background: 'var(--lumo-raised)',
+          border: '1px solid var(--lumo-border)',
+          color: disabledNext ? 'var(--lumo-text-ter)' : 'var(--lumo-text-sec)',
+          opacity: disabledNext ? 0.4 : 1,
+          cursor: disabledNext ? 'not-allowed' : 'pointer',
+          fontSize: 16,
+          fontWeight: 700,
+        }}
+      >
+        ›
+      </button>
     </div>
   )
 }

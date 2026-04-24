@@ -50,6 +50,7 @@ function renderWired(
     replanState?: ReplanState
     onReplanClose?: () => void
     onReplanApply?: () => void
+    onResetApp?: () => void
   } = {},
 ) {
   installMatchMediaMock()
@@ -71,6 +72,7 @@ function renderWired(
         replanState={opts.replanState}
         onReplanClose={opts.onReplanClose}
         onReplanApply={opts.onReplanApply}
+        onResetApp={opts.onResetApp}
       />
     )
   }
@@ -147,22 +149,14 @@ describe('SettingsScreen', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('"Start fresh" is hidden by default and fires onResetApp on confirm', () => {
-    const { rerender } = renderWired()
+  it('"Start fresh" is hidden when onResetApp is not provided', () => {
+    renderWired()
     expect(screen.queryByTestId('settings-reset-app')).not.toBeInTheDocument()
+  })
 
+  it('"Start fresh" fires onResetApp on confirm', () => {
     const onResetApp = vi.fn()
-    rerender(
-      <SettingsScreen
-        tweaks={{ cheek: 2, cheekiness: 2 }}
-        setTweaks={() => {}}
-        themeMode="dark"
-        setThemeMode={() => {}}
-        onClose={() => {}}
-        onRegeneratePlan={() => {}}
-        onResetApp={onResetApp}
-      />,
-    )
+    renderWired({ onResetApp })
     fireEvent.click(screen.getByTestId('settings-reset-app'))
     expect(screen.getByTestId('reset-confirm-dialog')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('reset-confirm'))
