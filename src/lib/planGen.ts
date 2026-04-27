@@ -198,10 +198,12 @@ export async function generatePlan(
   userId: string,
   weeks: number = 6,
 ): Promise<Mesocycle> {
-  // Opt-in route: VITE_USE_LOCAL_PLANNER=true uses the rule-based planner
-  // and skips the edge function entirely. Default stays on the LLM path
-  // until Kyra flips the flag (no auto-switch without explicit approval).
-  if (import.meta.env.VITE_USE_LOCAL_PLANNER === 'true') {
+  // Default to the on-device rule-based planner — the LLM `generate_plan`
+  // edge op is dead code right now (replaced by the clinical planner) and
+  // only kept around for posterity. Set VITE_USE_LOCAL_PLANNER=false if
+  // you ever need to fall back to the edge path for a one-off comparison;
+  // otherwise local is the actual production path.
+  if (import.meta.env.VITE_USE_LOCAL_PLANNER !== 'false') {
     return generatePlanLocal(profile, userId, weeks)
   }
 

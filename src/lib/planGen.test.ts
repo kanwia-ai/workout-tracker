@@ -2,10 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { UserProgramProfile } from '../types/profile'
 import type { Mesocycle } from '../types/plan'
 
-// These tests exercise the edge-function path of generatePlan. The new
-// VITE_USE_LOCAL_PLANNER flag would short-circuit that path, so we stub
-// the env var to unset for this whole suite.
-vi.stubEnv('VITE_USE_LOCAL_PLANNER', '')
+// These tests exercise the edge-function path of generatePlan. Local is
+// now the default; opt back into the edge path explicitly with 'false'.
+vi.stubEnv('VITE_USE_LOCAL_PLANNER', 'false')
 
 // Mock `./generate` BEFORE importing planGen so the mocked `callEdge` is in play.
 vi.mock('./generate', () => ({
