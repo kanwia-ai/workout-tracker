@@ -19,6 +19,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Without these, an updated SW waits in the "installing" phase until
+        // every open tab closes — which on a PWA pinned to the home screen
+        // means it can sit stale for days. Force the new SW to take over
+        // immediately and purge the old precache so users always see the
+        // latest deploy.
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
       },
       manifest: {
         name: 'Workout Tracker',
