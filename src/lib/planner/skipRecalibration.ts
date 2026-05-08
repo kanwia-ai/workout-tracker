@@ -1,20 +1,35 @@
 // skipRecalibration — adapt planner loads when the user misses training.
 //
-// Evidence base: Mujika & Padilla 2000 — "Detraining: loss of
-// training-induced physiological and performance adaptations" (Sports Med).
-// Strength-trained athletes retain most strength through ~2 weeks of zero
-// training; power and sport-specific qualities decay faster. What we adjust
-// here is neuromuscular readiness on the first session back — a short
-// deload prevents the tendon/joint-preparedness gap from turning into a
-// tweak on the first big squat home.
+// Evidence base:
+//   - Mujika & Padilla 2000 ("Detraining: loss of training-induced
+//     physiological and performance adaptations", Sports Med) — strength is
+//     broadly retained for up to ~4 weeks of inactivity in trained athletes.
+//   - Halonen et al. 2024 (Scand J Med Sci Sports) — ~3-week breaks did not
+//     significantly reduce strength or muscle thickness in adolescent
+//     athletes vs. continuous training.
+//   - Encarnação et al. 2023 (MDPI) — under 4 weeks detraining, strength
+//     and size are typically well maintained; meaningful decrement >4 weeks.
+//   - Beginners (<12 mo) detrain faster (Mujika & Padilla 2000).
 //
-// Graded response:
-//   gap 0-3 d  → slide (no load change)
-//   gap 4-7 d  → deload mild (~10% off working weight)
-//   gap 8-14 d → step back one microcycle (re-do previous week's loads)
-//   gap 14+ d  → training-age dependent:
-//                <12 months  → full reset (novice — plan needs reassessment)
-//                ≥12 months  → step back two microcycles
+// What we adjust here is neuromuscular readiness and tendon/connective-
+// tissue ramp on the first session back — NOT a fictitious "strength loss".
+// The reason to dial weight back after a layoff is to avoid a tweak on the
+// first heavy squat home, not because the user got measurably weaker.
+//
+// Graded response (TRAINED — ≥12 months training age):
+//   gap 0-3 d   → slide          1.0×, no week change
+//   gap 4-7 d   → deload_mild    0.95×, same week
+//   gap 8-14 d  → deload_mild    0.92×, same week     ← softened
+//   gap 15-21 d → step_back_one  0.9×, week-1
+//   gap 22-28 d → step_back_two  0.85×, week-2
+//   gap 29+ d   → reset          0.75×, week 1
+//
+// Graded response (NOVICE — <12 months training age):
+//   gap 0-3 d   → slide          1.0×, no week change
+//   gap 4-7 d   → deload_mild    0.9×, same week
+//   gap 8-14 d  → deload_mild    0.85×, same week
+//   gap 15-21 d → step_back_one  0.85×, week-1
+//   gap 22+ d   → reset          0.7×, week 1, rep override [8,12]
 //
 // Pure TS — zero network, zero IndexedDB at the rule layer. The selector
 // that consumes this (getSessionForDateWithRecalibration in planSelectors)
@@ -46,9 +61,8 @@ export const RecalibrationResultSchema = z.object({
   load_multiplier: z.number().min(0).max(1),
   /**
    * Optional rep-scheme override the UI should swap in. Null means keep
-   * the mesocycle's prescribed scheme. Only populated when the action
-   * clearly changes the stimulus (e.g. a deload week wants higher reps
-   * at lower intensity).
+   * the mesocycle's prescribed scheme. Only populated on the `reset`
+   * action — step-backs preserve the planned stimulus.
    */
   rep_scheme_override: z.tuple([z.number().int(), z.number().int()]).nullable().optional(),
   /** User-facing short rationale shown on the session banner. */
@@ -62,11 +76,36 @@ export const RecalibrationResultSchema = z.object({
 export type RecalibrationResult = z.infer<typeof RecalibrationResultSchema>
 
 // ─── Thresholds ────────────────────────────────────────────────────────────
-// Named constants rather than magic numbers so the rule table stays legible.
+// Named constants rather than magic numbers so the rule table stays legible
+// and is tunable from a single place.
+
 const SLIDE_MAX_GAP = 3
-const DELOAD_MAX_GAP = 7
-const STEP_BACK_ONE_MAX_GAP = 14
-const TRAINING_AGE_NOVICE_MONTHS = 12
+const TIER_MILD_UPPER_GAP = 7         // upper bound of the "mild" tier
+const TIER_EXTENDED_UPPER_GAP = 14    // upper bound of the still-no-week-change tier
+const TIER_STEP_ONE_UPPER_GAP = 21    // upper bound of step-back-one tier
+const TIER_STEP_TWO_UPPER_GAP = 28    // upper bound of step-back-two (trained only)
+const TRAINING_AGE_NOVICE_MONTHS = 12 // <12 months ⇒ novice path
+
+// Multipliers — TRAINED (≥12 mo). Softer because Mujika/Halonen/Encarnação
+// show strength is broadly retained through ~4 weeks of layoff in trained
+// lifters. We dial back to ramp tendons/CNS, not to compensate for a drop.
+const TRAINED_MILD_MULT = 0.95
+const TRAINED_EXTENDED_MULT = 0.92
+const TRAINED_STEP_ONE_MULT = 0.9
+const TRAINED_STEP_TWO_MULT = 0.85
+const TRAINED_RESET_MULT = 0.75
+
+// Multipliers — NOVICE (<12 mo). Held closer to the original ladder because
+// novices detrain faster (Mujika & Padilla 2000) and have less movement
+// retention.
+const NOVICE_MILD_MULT = 0.9
+const NOVICE_EXTENDED_MULT = 0.85
+const NOVICE_STEP_ONE_MULT = 0.85
+const NOVICE_RESET_MULT = 0.7
+
+// Rep override applied only on a full `reset`. Step-backs preserve the
+// planned rep scheme — only a reset is conservative enough to swap stimulus.
+const RESET_REP_OVERRIDE: [number, number] = [8, 12]
 
 // ─── Rule table ────────────────────────────────────────────────────────────
 
@@ -78,6 +117,7 @@ const TRAINING_AGE_NOVICE_MONTHS = 12
  * Guarantees:
  *   - effective_week_number is ALWAYS ≥ 1
  *   - load_multiplier is ALWAYS ≤ 1.0 (we only de-load, never supercompensate)
+ *   - rep_scheme_override only fires on the `reset` action
  *   - rationale is a short user-facing string (no emoji, no protocol keys)
  */
 export function computeRecalibration(
@@ -90,6 +130,7 @@ export function computeRecalibration(
   const gap = Math.max(0, Math.floor(gapDays))
   const origWeek = Math.max(1, Math.floor(originalWeekNumber))
   const age = Math.max(0, trainingAgeMonths)
+  const trained = age >= TRAINING_AGE_NOVICE_MONTHS
 
   // 0-3 days — slide. Normal session, no rationale banner needed upstream
   // but we still surface it so integration tests can assert "returns null
@@ -104,55 +145,108 @@ export function computeRecalibration(
     }
   }
 
-  // 4-7 days — mild deload. First session back at ~90%, same rep scheme.
-  // Gives tendons/CNS a ramp back to prior load without disturbing weekly
-  // progression.
-  if (gap <= DELOAD_MAX_GAP) {
-    return {
-      action: 'deload_mild',
-      load_multiplier: 0.9,
-      rep_scheme_override: null,
-      rationale: `coming back from ${gap} days off — first session at ~90% load.`,
-      effective_week_number: origWeek,
+  if (trained) {
+    // 4-7 days — gentle nudge. Trained lifters hold strength easily over a
+    // week. The drop here is purely a tendon/CNS ramp.
+    if (gap <= TIER_MILD_UPPER_GAP) {
+      return {
+        action: 'deload_mild',
+        load_multiplier: TRAINED_MILD_MULT,
+        rep_scheme_override: null,
+        rationale: `${gap} days off — easing back at 95% to let connective tissue ramp.`,
+        effective_week_number: origWeek,
+      }
     }
-  }
 
-  // 8-14 days — step back one microcycle. Pull loads from the previous
-  // week's progression (effective_week = origWeek - 1, floored at 1) and
-  // also cut ~15% on the first session back to absorb detraining.
-  if (gap <= STEP_BACK_ONE_MAX_GAP) {
-    return {
-      action: 'step_back_one_week',
-      load_multiplier: 0.85,
-      rep_scheme_override: null,
-      rationale: `${gap} days off — repeating last week's loads to rebuild.`,
-      effective_week_number: Math.max(1, origWeek - 1),
+    // 8-14 days — still same-week, slightly more conservative load. Mujika
+    // shows trained strength is preserved through 2 weeks; the cut is a
+    // tendon ramp, not a strength comp.
+    if (gap <= TIER_EXTENDED_UPPER_GAP) {
+      return {
+        action: 'deload_mild',
+        load_multiplier: TRAINED_EXTENDED_MULT,
+        rep_scheme_override: null,
+        rationale: `${gap} days off — easing back at ~92% to let tendons ramp; strength is still there.`,
+        effective_week_number: origWeek,
+      }
     }
-  }
 
-  // 14+ days — training-age dependent.
-  if (age < TRAINING_AGE_NOVICE_MONTHS) {
-    // Novice (<12 months) detrains faster and has less movement retention.
-    // Full reset is safer than guessing how much capacity remains; the UI
-    // layer decides whether to re-run onboarding or re-issue week 1 loads.
-    // A light rep scheme (8-12) keeps the first sessions honest.
+    // 15-21 days — first time we step back a microcycle. Encarnação 2023:
+    // detraining decrement only becomes meaningful past ~4 weeks.
+    if (gap <= TIER_STEP_ONE_UPPER_GAP) {
+      return {
+        action: 'step_back_one_week',
+        load_multiplier: TRAINED_STEP_ONE_MULT,
+        rep_scheme_override: null,
+        rationale: `${gap} days off — stepping back a week at 90% load to avoid tendon irritation, not because you lost strength.`,
+        effective_week_number: Math.max(1, origWeek - 1),
+      }
+    }
+
+    // 22-28 days — step back two microcycles.
+    if (gap <= TIER_STEP_TWO_UPPER_GAP) {
+      return {
+        action: 'step_back_two_weeks',
+        load_multiplier: TRAINED_STEP_TWO_MULT,
+        rep_scheme_override: null,
+        rationale: `${gap} days off — stepping back two weeks at 85% to ramp safely back in.`,
+        effective_week_number: Math.max(1, origWeek - 2),
+      }
+    }
+
+    // 29+ days — fresh start. Past the ~4 week mark detraining starts to
+    // show; reset is honest, and strength comes back fast.
     return {
       action: 'reset',
-      load_multiplier: 0.7,
-      rep_scheme_override: [8, 12],
-      rationale: `${gap} days off as a newer lifter — resetting to base loads for a safe rebuild.`,
+      load_multiplier: TRAINED_RESET_MULT,
+      rep_scheme_override: RESET_REP_OVERRIDE,
+      rationale: `${gap}+ days off — fresh start at 75%. Strength comes back fast; this is a ramp, not a reset.`,
       effective_week_number: 1,
     }
   }
 
-  // Trained lifter (≥12 months) retains most strength through 2+ weeks.
-  // Step back two microcycles and hit first session at 80%.
+  // ── Novice path (<12 months training age) ────────────────────────────
+  // Novices detrain faster (Mujika & Padilla 2000) and have less movement
+  // retention, so the ladder is slightly steeper but still framed as ramp.
+
+  if (gap <= TIER_MILD_UPPER_GAP) {
+    return {
+      action: 'deload_mild',
+      load_multiplier: NOVICE_MILD_MULT,
+      rep_scheme_override: null,
+      rationale: `${gap} days off — easing back at 90% to let connective tissue ramp.`,
+      effective_week_number: origWeek,
+    }
+  }
+
+  if (gap <= TIER_EXTENDED_UPPER_GAP) {
+    return {
+      action: 'deload_mild',
+      load_multiplier: NOVICE_EXTENDED_MULT,
+      rep_scheme_override: null,
+      rationale: `${gap} days off — easing back at 85% to avoid soreness/tendon irritation while you find form again.`,
+      effective_week_number: origWeek,
+    }
+  }
+
+  if (gap <= TIER_STEP_ONE_UPPER_GAP) {
+    return {
+      action: 'step_back_one_week',
+      load_multiplier: NOVICE_STEP_ONE_MULT,
+      rep_scheme_override: null,
+      rationale: `${gap} days off — stepping back a week at 85% load to ramp tendons and rebuild groove.`,
+      effective_week_number: Math.max(1, origWeek - 1),
+    }
+  }
+
+  // 22+ days as a newer lifter — full reset. Less retention, fewer reps in
+  // the bank; safer to rebuild from base loads with a moderate-rep scheme.
   return {
-    action: 'step_back_two_weeks',
-    load_multiplier: 0.8,
-    rep_scheme_override: null,
-    rationale: `${gap} days off — stepping back two weeks to ease back in.`,
-    effective_week_number: Math.max(1, origWeek - 2),
+    action: 'reset',
+    load_multiplier: NOVICE_RESET_MULT,
+    rep_scheme_override: RESET_REP_OVERRIDE,
+    rationale: `${gap}+ days off as a newer lifter — fresh start at 70% with moderate reps to ramp safely.`,
+    effective_week_number: 1,
   }
 }
 

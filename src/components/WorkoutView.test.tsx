@@ -36,6 +36,13 @@ vi.mock('../lib/checkins', () => ({
   saveCheckin: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Auto-progression reads Dexie sessionCheckins to recommend next-session
+// weights. Stub to an empty map so the seeded suggestion path stays
+// deterministic and tests don't need a fake-indexeddb backend.
+vi.mock('../lib/planner/autoProgress', () => ({
+  computeAutoProgressionForSession: vi.fn().mockResolvedValue({}),
+}))
+
 // The check-in sheet renders a modal dialog; stub to a trivial hook so
 // WorkoutView tests can observe its presence without dealing with the
 // full widget surface.

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildMesocycle, buildSession, resolveStage } from './buildMesocycle'
+import {
+  buildMesocycle,
+  buildSession,
+  mesocycleLengthFor,
+  resolveStage,
+} from './buildMesocycle'
 import { interpretProfile } from './interpretProfile'
 import { getProtocol } from '../../data/rehab-protocols'
 import type { UserProgramProfile } from '../../types/profile'
@@ -246,10 +251,10 @@ describe('resolveStage', () => {
   })
 })
 
-// ─── Week 6 deload ─────────────────────────────────────────────────────────
+// ─── Deload week (last week of block) ─────────────────────────────────────
 
-describe('week 6 deload', () => {
-  it('week 6 sessions have reduced set counts vs week 3', () => {
+describe('deload (last week of block)', () => {
+  it('last week sessions have reduced set counts vs week 3', () => {
     const d = interpretProfile(NO_INJURY_PROFILE)
     const meso = buildMesocycle(d)
     const wk3First = meso.sessions.find((s) => s.week_number === 3)!
@@ -263,11 +268,37 @@ describe('week 6 deload', () => {
     )
   })
 
-  it('week 6 rationale mentions deload', () => {
+  it('last week rationale mentions deload', () => {
     const d = interpretProfile(NO_INJURY_PROFILE)
     const meso = buildMesocycle(d)
     const wk6 = meso.sessions.filter((s) => s.week_number === 6)
     expect(wk6.every((s) => s.rationale.includes('deload'))).toBe(true)
+  })
+
+  it('deload cuts sets to ≤50% and KEEPS rir identical to non-deload weeks', () => {
+    // Delphi consensus 2024: cut volume OR intensity, not both. We chose
+    // volume — RIR should stay flat across the block.
+    const d = interpretProfile(NO_INJURY_PROFILE)
+    const meso = buildMesocycle(d)
+    const wk3 = meso.sessions.find((s) => s.week_number === 3)!
+    const wk6 = meso.sessions.find(
+      (s) =>
+        s.week_number === 6 && s.subtitle === wk3.subtitle && s.ordinal === wk3.ordinal,
+    )!
+    for (let i = 0; i < wk3.exercises.length && i < wk6.exercises.length; i += 1) {
+      const w3 = wk3.exercises[i]!
+      const w6 = wk6.exercises[i]!
+      // Match exercises by library_id so we're comparing the same lift.
+      if (w3.library_id !== w6.library_id) continue
+      // RIR is unchanged on deload.
+      expect(w6.rir, `${w3.name}: rir should be flat across deload`).toBe(w3.rir)
+      // Sets reduced to ~50% (Math.ceil(sets * 0.5), floored at 1).
+      const expectedMaxSets = Math.max(1, Math.ceil(w3.sets * 0.5))
+      expect(
+        w6.sets,
+        `${w3.name}: deload should cut sets to ≤50%`,
+      ).toBeLessThanOrEqual(expectedMaxSets)
+    }
   })
 })
 
@@ -429,5 +460,104 @@ describe('buildSession', () => {
     const s1 = buildSession({ sessionType: 'upper_push', weekNumber: 1, ordinal: 1, directives: d, dayOfWeek: 0 })
     const s2 = buildSession({ sessionType: 'upper_push', weekNumber: 1, ordinal: 2, directives: d, dayOfWeek: 1 })
     expect(s1.id).not.toBe(s2.id)
+  })
+})
+
+// ─── Goal-driven mesocycle length (audit 2026-05-07 #9) ────────────────────
+
+describe('mesocycleLengthFor — goal-driven block length', () => {
+  it('strength-leaning (lean_and_strong) → 5 weeks', () => {
+    const profile: UserProgramProfile = { ...NO_INJURY_PROFILE, primary_goal: 'lean_and_strong' }
+    expect(mesocycleLengthFor(profile)).toBe(5)
+  })
+
+  it('hypertrophy (build_muscle) → 6 weeks', () => {
+    const profile: UserProgramProfile = { ...NO_INJURY_PROFILE, primary_goal: 'build_muscle' }
+    expect(mesocycleLengthFor(profile)).toBe(6)
+  })
+
+  it('unknown / unspecified primary_goal → 6 weeks (default)', () => {
+    expect(mesocycleLengthFor(undefined)).toBe(6)
+    const profile: UserProgramProfile = { ...NO_INJURY_PROFILE, primary_goal: 'general_fitness' }
+    expect(mesocycleLengthFor(profile)).toBe(6)
+  })
+
+  it('buildMesocycle uses goal-driven length when no explicit lengthWeeks is passed', () => {
+    const strengthProfile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      primary_goal: 'lean_and_strong',
+      primary_goals: ['lean_and_strong'],
+    }
+    const d = interpretProfile(strengthProfile)
+    const meso = buildMesocycle(d, undefined, strengthProfile)
+    expect(meso.length_weeks).toBe(5)
+    expect(new Set(meso.sessions.map((s) => s.week_number))).toEqual(
+      new Set([1, 2, 3, 4, 5]),
+    )
+    // Deload week is the LAST week of the block (week 5 here), so its
+    // rationale must mention 'deload'.
+    const lastWeek = meso.sessions.filter((s) => s.week_number === 5)
+    expect(lastWeek.length).toBeGreaterThan(0)
+    expect(lastWeek.every((s) => s.rationale.includes('deload'))).toBe(true)
+  })
+
+  it('explicit lengthWeeks override wins over goal inference', () => {
+    const strengthProfile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      primary_goal: 'lean_and_strong',
+      primary_goals: ['lean_and_strong'],
+    }
+    const d = interpretProfile(strengthProfile)
+    // mesocycleLengthFor would return 5; caller forces 6.
+    const meso = buildMesocycle(d, 6, strengthProfile)
+    expect(meso.length_weeks).toBe(6)
+  })
+})
+
+// ─── Seed weight is flat across the block (audit 2026-05-07 #2) ───────────
+// `applyWeeklyProgression` was removed: the seed `suggested_weight_lbs` is
+// the FIRST-TIME starting weight only. Once a check-in exists,
+// `computeAutoProgressionForSession` owns the trajectory. The seed must
+// therefore be identical across weeks 1, 2, 3 of a block.
+
+describe('seed suggested_weight_lbs stays flat across weeks', () => {
+  it('same exercise, same seed in weeks 1, 2, 3 (no weekly progression)', () => {
+    const d = interpretProfile(NO_INJURY_PROFILE)
+    // Pass the profile so suggestStartingWeight can compute a non-undefined seed.
+    const meso = buildMesocycle(d, 6, NO_INJURY_PROFILE)
+
+    const seedByWeekByLib = new Map<string, Map<number, number>>()
+    for (const s of meso.sessions) {
+      if (s.week_number > 3) continue
+      for (const ex of s.exercises) {
+        if (ex.suggested_weight_lbs === undefined) continue
+        if (!seedByWeekByLib.has(ex.library_id)) {
+          seedByWeekByLib.set(ex.library_id, new Map())
+        }
+        // Take the first occurrence per (library_id, week) — sessions don't
+        // duplicate exercises within a week, so this is safe.
+        const inner = seedByWeekByLib.get(ex.library_id)!
+        if (!inner.has(s.week_number)) {
+          inner.set(s.week_number, ex.suggested_weight_lbs)
+        }
+      }
+    }
+
+    // At least one exercise must have appeared in all of wks 1-3 to make this
+    // test meaningful; assert that every such exercise has a constant seed.
+    let comparedAtLeastOne = false
+    for (const [libId, weekMap] of seedByWeekByLib) {
+      const w1 = weekMap.get(1)
+      const w2 = weekMap.get(2)
+      const w3 = weekMap.get(3)
+      if (w1 === undefined || w2 === undefined || w3 === undefined) continue
+      comparedAtLeastOne = true
+      expect(w2, `${libId}: wk2 seed should match wk1`).toBe(w1)
+      expect(w3, `${libId}: wk3 seed should match wk1`).toBe(w1)
+    }
+    expect(
+      comparedAtLeastOne,
+      'expected at least one exercise present in weeks 1-3 with a seed',
+    ).toBe(true)
   })
 })

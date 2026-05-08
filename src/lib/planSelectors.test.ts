@@ -223,7 +223,7 @@ describe('getSessionForDateWithRecalibration', () => {
 
   it('returns recalibration banner when gap ≥ 4 days (deload_mild)', async () => {
     const plan = makePlanWithDow()
-    // Last session 5 days ago — deload range.
+    // Last session 5 days ago — 4-7d tier for trained lifters (≥12mo) → 0.95×.
     const logs: CompletedSessionRef[] = [
       {
         user_id: userId,
@@ -236,11 +236,11 @@ describe('getSessionForDateWithRecalibration', () => {
     expect(result.session).not.toBeNull()
     expect(result.recalibration).not.toBeNull()
     expect(result.recalibration?.action).toBe('deload_mild')
-    expect(result.recalibration?.load_multiplier).toBe(0.9)
-    expect(result.recalibration?.rationale).toMatch(/90%/)
+    expect(result.recalibration?.load_multiplier).toBe(0.95)
+    expect(result.recalibration?.rationale).toMatch(/95%/)
   })
 
-  it('step_back_one_week when gap is 10 days on a non-week-1 session', async () => {
+  it('mild deload (no week step-back) when gap is 10 days for a trained lifter', async () => {
     const plan = makePlanWithDow()
     const logs: CompletedSessionRef[] = [
       {
@@ -248,13 +248,15 @@ describe('getSessionForDateWithRecalibration', () => {
         ended_at: new Date(2026, 3, 12, 18, 0, 0).toISOString(),
       },
     ]
-    // Tell selector this is week 4.
+    // 8-14d tier for trained lifters (≥12mo) → mild deload at 0.92×, no week change.
+    // (Mujika & Padilla: trained lifters retain strength through ~2 weeks off.)
     const result = await getSessionForDateWithRecalibration(
       plan, [], wednesday, 4, userId, { logs, trainingAgeMonths: 24 },
     )
     expect(result.session?.week_number).toBe(4)
-    expect(result.recalibration?.action).toBe('step_back_one_week')
-    expect(result.recalibration?.effective_week_number).toBe(3)
+    expect(result.recalibration?.action).toBe('deload_mild')
+    expect(result.recalibration?.load_multiplier).toBe(0.92)
+    expect(result.recalibration?.effective_week_number).toBe(4)
   })
 
   it('reset for novice lifter with 20+ day gap', async () => {

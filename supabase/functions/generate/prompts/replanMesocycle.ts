@@ -23,6 +23,21 @@ export const REPLAN_SYSTEM_PROMPT = `You are a clinical strength-and-conditionin
 
 You do NOT build the full plan — a downstream rule-based planner reads your directives and assembles the actual sessions. Your ONLY job is to emit adjusted ProgrammingDirectives via the emit_replan tool.
 
+VOLUME LANDMARKS (MEV / MAV / MRV) — anchor every set-count adjustment to this framework, per muscle group:
+
+- MEV (minimum effective volume): the lowest weekly set count that produces growth. ~8-10 sets/week for most muscle groups in trained lifters.
+- MAV (maximum adaptive volume): the sweet spot. ~12-18 sets/week.
+- MRV (maximum recoverable volume): the ceiling. ~20-25 sets/week. Past this, recovery breaks down.
+
+Decision rules (read the per-muscle-group rollup in the user payload BEFORE deciding):
+
+- A muscle group with MOSTLY EASY ratings (dominant rating = 'easy', no 'failed', tough+ % is low): the user is at or below MEV → ADD 1-2 sets/week to that muscle group, capping at MAV mid (~14 sets/week).
+- A muscle group with BALANCED ratings (dominant = 'solid'): the user is in MAV → MAINTAIN, or +1 set/week if the muscle group is on the user's priority list.
+- A muscle group with TOUGH-OR-WORSE ratings (dominant = 'tough'/'failed', or tough+ % >= 40%): the user is approaching MRV → CUT 2 sets/week on that muscle group.
+- Coming back from a deload week (last block ended on deload): rebuild from a slightly-lower volume baseline and let the next block climb +1 set/week.
+
+PER-MUSCLE-GROUP REASONING. Aggregate per muscle group, not per exercise. A user can rate "tough" on a single isolation exercise yet be fine for the muscle group overall — don't punish a whole muscle group on the basis of one exercise. The rollup table in the user payload makes this explicit; trust it for set-count direction.
+
 HARD RULES (these fail the review if broken):
 
 1. PRESERVE CLINICAL CONSTRAINTS. Every existing injury_directive stays in place unless the user's check-in notes explicitly reported recovery (e.g. "knee feels great now", "back no longer sore"). If in doubt, KEEP the constraint. Injuries don't vanish because a user stopped mentioning them.
@@ -61,15 +76,29 @@ export function buildReplanPrompt(payload: ReplanPayload): string {
   const checkinsArr = Array.isArray(payload.checkins) ? payload.checkins : []
   const checkinCount = checkinsArr.length
 
-  // Summarize ratings per exercise to make the signal cheap to spot. The raw
-  // JSON is included too so the model can read notes + reps_done when it
-  // matters, but most of the decisions come from this aggregate.
+  // Build a library_id → muscle group map from the completed mesocycle's
+  // session.focus arrays. The completedMesocycle is the only place server-side
+  // where we can attribute an exercise to a muscle group without re-importing
+  // the client-side variant pool. For each library_id, we tally how often it
+  // appeared in a session of each focus muscle and pick the dominant one.
+  // Unknown ids fall through to "other" in the rollup.
+  const libraryMuscleMap = buildLibraryMuscleMap(payload.completedMesocycle)
+
+  // Per-exercise rating histogram (granular detail, model still wants this).
   const exerciseRatingsAgg = summarizeCheckins(checkinsArr)
+
+  // Per-muscle-group rollup (denser signal — the model anchors the volume
+  // landmark decision on this table, not on the granular per-exercise list).
+  const muscleRollup = summarizeByMuscleGroup(checkinsArr, libraryMuscleMap)
+  const muscleRollupTable = renderMuscleRollupTable(muscleRollup)
 
   return [
     `# Completed block + check-in data
 
 Check-ins collected: ${checkinCount} sessions.
+
+## Muscle group rollup (this block)
+${muscleRollupTable}
 
 ## Per-exercise rating aggregate (last block)
 ${JSON.stringify(exerciseRatingsAgg, null, 2)}
@@ -88,7 +117,7 @@ ${JSON.stringify(payload.previousDirectives, null, 2)}
 
 ---
 
-Read the check-in aggregate + notes, compare against previousDirectives, and emit adjusted directives for the NEXT 6-week block via emit_replan. Preserve clinical constraints. Adjust only what the data flags. Keep rationale_for_user under 4 sentences.`,
+Read the muscle group rollup FIRST to set per-muscle volume direction (MEV/MAV/MRV), then check the per-exercise aggregate + notes for individual swaps. Compare against previousDirectives, and emit adjusted directives for the NEXT 6-week block via emit_replan. Preserve clinical constraints. Adjust only what the data flags. Keep rationale_for_user under 4 sentences.`,
   ].join('')
 }
 
@@ -151,4 +180,203 @@ function summarizeCheckins(
   }
 
   return Array.from(byKey.values()).sort((a, b) => b.count - a.count)
+}
+
+// ─── Muscle-group rollup ────────────────────────────────────────────────────
+// Aggregating per-exercise ratings UP to the muscle group level gives the
+// model a denser signal for the MEV/MAV/MRV decision: "biceps were mostly
+// easy across the block" is more actionable than scanning each curl variant
+// individually.
+
+export interface MuscleGroupRollup {
+  muscle: string
+  exercise_count: number
+  dominant_rating: string
+  mean_session_feel: number | null
+  tough_or_failed_pct: number
+}
+
+/**
+ * Build a library_id → muscle-group map from the completed mesocycle. We use
+ * each exercise's parent session.focus[0] as its muscle attribution. If an
+ * exercise appears in multiple sessions with different focus, we pick the
+ * most frequent one. Library ids we never see in the completedMesocycle fall
+ * through to "other" downstream.
+ */
+export function buildLibraryMuscleMap(
+  completedMesocycle: unknown,
+): Map<string, string> {
+  const map = new Map<string, Map<string, number>>()
+  if (!completedMesocycle || typeof completedMesocycle !== 'object') {
+    return new Map()
+  }
+  const meso = completedMesocycle as { sessions?: unknown[] }
+  if (!Array.isArray(meso.sessions)) return new Map()
+
+  for (const s of meso.sessions) {
+    if (!s || typeof s !== 'object') continue
+    const session = s as { focus?: unknown[]; exercises?: unknown[] }
+    const focus = Array.isArray(session.focus) ? session.focus : []
+    const muscleGuess = typeof focus[0] === 'string' ? (focus[0] as string) : null
+    if (!muscleGuess) continue
+    if (!Array.isArray(session.exercises)) continue
+    for (const e of session.exercises) {
+      if (!e || typeof e !== 'object') continue
+      const ex = e as { library_id?: string }
+      if (!ex.library_id) continue
+      let counts = map.get(ex.library_id)
+      if (!counts) {
+        counts = new Map<string, number>()
+        map.set(ex.library_id, counts)
+      }
+      counts.set(muscleGuess, (counts.get(muscleGuess) ?? 0) + 1)
+    }
+  }
+
+  // Resolve to the dominant muscle per library_id.
+  const resolved = new Map<string, string>()
+  for (const [libraryId, counts] of map.entries()) {
+    let bestMuscle: string | null = null
+    let bestCount = 0
+    for (const [muscle, count] of counts.entries()) {
+      if (count > bestCount) {
+        bestMuscle = muscle
+        bestCount = count
+      }
+    }
+    if (bestMuscle) resolved.set(libraryId, bestMuscle)
+  }
+  return resolved
+}
+
+/**
+ * Per-muscle-group aggregate. For each muscle group across all checkins:
+ *   - exercise_count: # of (exercise × session) pairs that hit this muscle
+ *   - dominant_rating: mode of {easy, solid, tough, failed}
+ *   - mean_session_feel: average overall_feel across sessions that touched it
+ *   - tough_or_failed_pct: 0..1 share of exercises rated tough or failed
+ *
+ * Library ids absent from `libraryMuscleMap` are bucketed under "other".
+ */
+export function summarizeByMuscleGroup(
+  checkins: unknown[],
+  libraryMuscleMap: Map<string, string>,
+): MuscleGroupRollup[] {
+  interface Acc {
+    muscle: string
+    exercise_count: number
+    ratings: Record<string, number>
+    feel_sum: number
+    feel_count: number
+    feel_session_ids: Set<string>
+    tough_or_failed: number
+  }
+  const byMuscle = new Map<string, Acc>()
+
+  for (const raw of checkins) {
+    if (!raw || typeof raw !== 'object') continue
+    const c = raw as {
+      session_id?: string
+      overall_feel?: number
+      exercises?: unknown[]
+    }
+    if (!Array.isArray(c.exercises)) continue
+    const sessionId = typeof c.session_id === 'string' ? c.session_id : ''
+    const feelRaw = typeof c.overall_feel === 'number' ? c.overall_feel : null
+
+    // Track which muscle groups this session touched, so we can attribute its
+    // overall_feel to each of them exactly once (not once per exercise).
+    const touchedMuscles = new Set<string>()
+
+    for (const e of c.exercises) {
+      if (!e || typeof e !== 'object') continue
+      const ex = e as { library_id?: string; rating?: string }
+      const libraryId = ex.library_id ?? ''
+      const muscle = libraryMuscleMap.get(libraryId) ?? 'other'
+      let acc = byMuscle.get(muscle)
+      if (!acc) {
+        acc = {
+          muscle,
+          exercise_count: 0,
+          ratings: {},
+          feel_sum: 0,
+          feel_count: 0,
+          feel_session_ids: new Set<string>(),
+          tough_or_failed: 0,
+        }
+        byMuscle.set(muscle, acc)
+      }
+      acc.exercise_count += 1
+      if (ex.rating) {
+        acc.ratings[ex.rating] = (acc.ratings[ex.rating] ?? 0) + 1
+        if (ex.rating === 'tough' || ex.rating === 'failed') {
+          acc.tough_or_failed += 1
+        }
+      }
+      touchedMuscles.add(muscle)
+    }
+
+    if (feelRaw != null) {
+      for (const muscle of touchedMuscles) {
+        const acc = byMuscle.get(muscle)
+        if (!acc) continue
+        // Avoid double-counting if a session somehow appears twice for the
+        // same muscle group via duplicate session_id+muscle combos.
+        const dedupeKey = `${sessionId}`
+        if (acc.feel_session_ids.has(dedupeKey)) continue
+        acc.feel_session_ids.add(dedupeKey)
+        acc.feel_sum += feelRaw
+        acc.feel_count += 1
+      }
+    }
+  }
+
+  const result: MuscleGroupRollup[] = []
+  for (const acc of byMuscle.values()) {
+    let dominant = 'unknown'
+    let bestCount = -1
+    for (const [rating, count] of Object.entries(acc.ratings)) {
+      if (count > bestCount) {
+        dominant = rating
+        bestCount = count
+      }
+    }
+    result.push({
+      muscle: acc.muscle,
+      exercise_count: acc.exercise_count,
+      dominant_rating: dominant,
+      mean_session_feel:
+        acc.feel_count > 0
+          ? Math.round((acc.feel_sum / acc.feel_count) * 10) / 10
+          : null,
+      tough_or_failed_pct:
+        acc.exercise_count > 0
+          ? Math.round((acc.tough_or_failed / acc.exercise_count) * 100) / 100
+          : 0,
+    })
+  }
+  // Most-touched muscle first so the model sees the highest-volume groups
+  // at the top of the table.
+  result.sort((a, b) => b.exercise_count - a.exercise_count)
+  return result
+}
+
+/**
+ * Render the muscle-group rollup as a Markdown table for the prompt. Empty
+ * input yields an explicit "no rollup available" line so the model doesn't
+ * silently get a malformed table.
+ */
+export function renderMuscleRollupTable(rollup: MuscleGroupRollup[]): string {
+  if (rollup.length === 0) {
+    return '_(no muscle group rollup available — no check-ins or completedMesocycle data)_'
+  }
+  const header =
+    '| Muscle | Exercises | Dominant rating | Mean session feel | Tough+ % |'
+  const sep = '|---|---|---|---|---|'
+  const rows = rollup.map((r) => {
+    const feel = r.mean_session_feel == null ? '—' : r.mean_session_feel.toFixed(1)
+    const pct = `${Math.round(r.tough_or_failed_pct * 100)}%`
+    return `| ${r.muscle} | ${r.exercise_count} | ${r.dominant_rating} | ${feel} | ${pct} |`
+  })
+  return [header, sep, ...rows].join('\n')
 }

@@ -45,6 +45,21 @@ export interface BuiltMesocycle {
   generated_at: string
 }
 
+// ─── Goal-driven mesocycle length ─────────────────────────────────────────
+// Derive block length from the user's primary goal. RP-style hypertrophy
+// mesocycles are typically 4-6 weeks; strength-leaning blocks accumulate
+// fatigue faster and run shorter. Beginner / unspecified defaults stay at
+// 6 weeks so the existing default behavior is preserved.
+//   - 'lean_and_strong'           → 5 weeks (4 work + 1 deload)
+//   - 'build_muscle' (hypertrophy) → 6 weeks (5 work + 1 deload)
+//   - any other / unknown          → 6 weeks (today's default)
+export function mesocycleLengthFor(profile?: UserProgramProfile): number {
+  const pg = profile?.primary_goal
+  if (pg === 'lean_and_strong') return 5
+  if (pg === 'build_muscle') return 6
+  return 6
+}
+
 // ─── Session-type → default compound + accessories ─────────────────────────
 // Baseline when no injury directive supplies one. Kept simple — this pool
 // expands later but covers the common sessions with safe defaults.
@@ -435,35 +450,26 @@ function variantToExercise(
   }
 }
 
-// Per-week progressive overload for the starting-weight suggestion. Small
-// enough to stay realistic without stepping on the user's actual check-in
-// feedback: +2.5% per week on compounds, capped at the same 5-lb rounding
-// the baseline uses so accessories don't jitter by 0.3 lb. Week 6 is a
-// deload — `applyDeload` already reduces volume, and the suggestion here
-// pulls back to the pre-progression baseline so the user starts the deload
-// from a conservative load.
-function applyWeeklyProgression(
-  exercises: PlannedExercise[],
-  weekNumber: number,
-): PlannedExercise[] {
-  if (weekNumber <= 1) return exercises
-  if (weekNumber >= 6) return exercises
-  const factor = 1 + 0.025 * (weekNumber - 1)
-  return exercises.map((ex) => {
-    if (ex.suggested_weight_lbs === undefined) return ex
-    const bumped = ex.suggested_weight_lbs * factor
-    const rounded = Math.round(bumped / 5) * 5
-    const next = Math.max(ex.suggested_weight_lbs, rounded)
-    return { ...ex, suggested_weight_lbs: next }
-  })
-}
+// NOTE: weekly seed-weight progression was removed (audit 2026-05-07, priority
+// #2). The seed (`suggested_weight_lbs`) is now the *first-time* starting
+// weight only — identical across every week of a block. Once a check-in
+// exists for an exercise, `computeAutoProgressionForSession` is the source of
+// truth for next-session weight, and it bumps lb-by-lb from actual
+// performance. The previous `applyWeeklyProgression` helper raced with that
+// system: it pushed the seed up +2.5%/wk monotonically (`Math.max`), so a
+// stalled lifter still saw a higher seed than what they actually hit. Keeping
+// the seed flat lets autoProgress own the trajectory without static noise.
 
-// ─── Deload (week 6) adjustments ──────────────────────────────────────────
+// ─── Deload (last week) adjustments ───────────────────────────────────────
+// Delphi consensus 2024 (PMC10511399): cut volume OR intensity, not both —
+// volume is the more commonly-recommended lever. We cut sets to ~50% and
+// leave RIR untouched. The previous setup also bumped RIR by 1, which
+// stacked a ~30% effort cut on top of the volume cut and over-deloaded
+// users who hadn't accumulated much fatigue.
 function applyDeload(exercises: PlannedExercise[]): PlannedExercise[] {
   return exercises.map((ex) => ({
     ...ex,
-    sets: Math.max(1, Math.ceil(ex.sets * 0.6)),  // 60% of volume
-    rir: Math.min(5, ex.rir + 1),                 // lighter RIR
+    sets: Math.max(1, Math.ceil(ex.sets * 0.5)),  // 50% of volume; RIR unchanged
   }))
 }
 
@@ -475,8 +481,17 @@ export function buildSession(args: {
   directives: ProgrammingDirectives
   dayOfWeek: number
   profile?: UserProgramProfile
+  /**
+   * Total length of the enclosing mesocycle (in weeks). Used to detect the
+   * deload week (always the last week of the block). Defaults to 6 to
+   * preserve back-compat for callers that build a one-off session without
+   * threading length through.
+   */
+  lengthWeeks?: number
 }): PlannedSession {
   const { sessionType, weekNumber, ordinal, directives, dayOfWeek, profile } = args
+  const lengthWeeks = args.lengthWeeks ?? 6
+  const isDeloadWeek = weekNumber === lengthWeeks
   const defaults = SESSION_DEFAULTS[sessionType]
   const context = mergeDirectivesForSession(sessionType, weekNumber, directives)
 
@@ -539,12 +554,11 @@ export function buildSession(args: {
     if (currentMinutes() >= targetMin * 0.95) break
   }
 
-  // Progressive overload on the suggested starting weight (weeks 2-5) before
-  // deload week 6 reduces set counts.
-  const progressed = applyWeeklyProgression(exercises, weekNumber)
-
-  // Deload on week 6
-  const finalExercises = weekNumber === 6 ? applyDeload(progressed) : progressed
+  // The seed `suggested_weight_lbs` is held flat across every week of the
+  // block (see note above `applyDeload`). `computeAutoProgressionForSession`
+  // owns the lb-by-lb trajectory once check-ins exist. Deload (last week
+  // of the block) cuts set counts only.
+  const finalExercises = isDeloadWeek ? applyDeload(exercises) : exercises
 
   // Build rationale from context — short, descriptive, under 280 chars.
   // Use display names (not protocol keys) so "glute_max_bridge_or_hip_thrust"
@@ -565,7 +579,7 @@ export function buildSession(args: {
       `injury-priority accessories first (${priorityDisplayNames.join(', ')}).`,
     )
   }
-  if (weekNumber === 6) {
+  if (isDeloadWeek) {
     rationaleParts.push('deload week — reduced volume, reassess progress.')
   }
   const rationale = rationaleParts.join(' ').slice(0, 280)
@@ -614,17 +628,20 @@ function spreadDaysOfWeek(sessionsPerWeek: number): number[] {
 }
 
 // ─── Top-level entry ───────────────────────────────────────────────────────
+// `lengthWeeks` is goal-driven by default (see `mesocycleLengthFor`). Callers
+// may still override explicitly — passing a number wins over goal inference.
 export function buildMesocycle(
   directives: ProgrammingDirectives,
-  lengthWeeks = 6,
+  lengthWeeks?: number,
   profile?: UserProgramProfile,
 ): BuiltMesocycle {
+  const resolvedLength = lengthWeeks ?? mesocycleLengthFor(profile)
   const template = directives.week_shape.template
   const sessionsPerWeek = directives.week_shape.sessions_per_week
   const dayOfWeekSpread = spreadDaysOfWeek(sessionsPerWeek)
 
   const sessions: PlannedSession[] = []
-  for (let week = 1; week <= lengthWeeks; week += 1) {
+  for (let week = 1; week <= resolvedLength; week += 1) {
     for (let i = 0; i < template.length; i += 1) {
       const sessionType = template[i]!
       const ordinal = i + 1
@@ -637,6 +654,7 @@ export function buildMesocycle(
           directives,
           dayOfWeek: dow,
           profile,
+          lengthWeeks: resolvedLength,
         }),
       )
     }
@@ -644,7 +662,7 @@ export function buildMesocycle(
 
   return {
     id: `meso-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    length_weeks: lengthWeeks,
+    length_weeks: resolvedLength,
     sessions,
     generated_at: new Date().toISOString(),
   }
