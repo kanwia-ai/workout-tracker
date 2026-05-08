@@ -37,6 +37,7 @@ import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
 import { swapVariantLocal } from '../lib/swapLocal'
 import { saveCheckin } from '../lib/checkins'
+import { computeAutoProgressionForSession } from '../lib/planner/autoProgress'
 import { SwapSheet } from './SwapSheet'
 import type { SessionCheckin } from '../types/checkin'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
@@ -460,6 +461,40 @@ export function WorkoutView({
     setPerSetExpanded({})
     setRestState(null)
     hydratedForRef.current = selectedSessionKey
+
+    // Async second pass: replace the planner's static suggestion with a
+    // history-aware recommendation when one exists. Reads Dexie, so we have
+    // to guard against (a) the effect re-running before the read returns
+    // and (b) overwriting weights the user manually saved last session.
+    if (!userId || !selectedSession) return
+    let cancelled = false
+    const sessionKeyAtStart = selectedSessionKey
+    void computeAutoProgressionForSession(userId, selectedSession.id, selectedSession.exercises)
+      .then((autoMap) => {
+        if (cancelled) return
+        if (hydratedForRef.current !== sessionKeyAtStart) return
+        if (Object.keys(autoMap).length === 0) return
+        setWeights((prev) => {
+          const next = { ...prev }
+          for (const [libId, result] of Object.entries(autoMap)) {
+            if (savedWeights[libId] !== undefined) continue
+            // TODO(bodyweight): bodyweight rep-target progression returns
+            // weight=0 + rep_target=N. We don't yet have a UI affordance to
+            // surface the rep_target — skip writing 0 to the weight pill so
+            // it doesn't render "0 lb". When wiring up: render rep_target
+            // beside (or instead of) the weight pill for action='add-rep'.
+            if (result.weight === 0 && result.rep_target !== undefined) continue
+            next[libId] = result.weight
+          }
+          return next
+        })
+      })
+      .catch((err) => {
+        console.error('computeAutoProgressionForSession failed', err)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [selectedSessionKey])
 
   useEffect(() => {

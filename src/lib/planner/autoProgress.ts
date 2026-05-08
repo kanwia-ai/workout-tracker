@@ -118,12 +118,25 @@ function roundToIncrement(weight: number, increment: number): number {
   return Math.round(weight / increment) * increment
 }
 
-export type ProgressionAction = 'bump' | 'hold' | 'drop' | 'first-time'
+export type ProgressionAction = 'bump' | 'hold' | 'drop' | 'first-time' | 'add-rep'
 
+/**
+ * Outcome of one exercise's auto-progression decision.
+ *
+ * Two modes:
+ *   - Weighted (the original): `weight` is the recommended starting load in
+ *     pounds. `action` is 'bump' | 'hold' | 'drop' | 'first-time'.
+ *     `rep_target` is undefined.
+ *   - Bodyweight (rep-target progression): `weight` is 0 (sentinel — no
+ *     load to recommend), `rep_target` is the recommended reps-per-set
+ *     target. `action` can additionally be 'add-rep'. Used when the
+ *     planner emitted no `suggested_weight_lbs` (true bodyweight movement).
+ */
 export interface ProgressionResult {
   weight: number
   action: ProgressionAction
   reason: string
+  rep_target?: number
 }
 
 interface ComputeArgs {
@@ -133,6 +146,79 @@ interface ComputeArgs {
   // Optional — when omitted, falls back to the "intermediate" bump column
   // (today's behavior) so callers without a profile keep working.
   trainingAgeMonths?: number
+}
+
+/**
+ * Bodyweight rep-target progression. Mirrors the weighted decision tree
+ * but moves the rep TARGET instead of the weight:
+ *   - easy/solid + ceiling met → +1 rep target (double-progression past
+ *     the prescribed range — let it grow)
+ *   - tough/floor-only / failed one-strike → hold at the prescribed ceiling
+ *   - two-strike (fails at the same target inside lookback) → reset target
+ *     to the prescribed floor
+ *
+ * `weight: 0` is the bodyweight sentinel (there's no load to prescribe).
+ * `rep_target` carries the actual recommendation.
+ */
+function computeBodyweightRepTarget(
+  exercise: PlannedExercise,
+  history: ExerciseCheckin[],
+): ProgressionResult | null {
+  const last = history[0]!
+  const ceiling = maxRepsOf(exercise.reps)
+  const floor = minRepsOf(exercise.reps)
+  const lastMetReps = metRepTarget(last, exercise.sets, exercise.reps)
+  const lastMetCeiling = metRepCeiling(last, exercise.sets, exercise.reps)
+
+  // Two-strike: two failures within the lookback window resets the target
+  // back to the prescribed floor. Same window as the weighted branch.
+  if (last.rating === 'failed' || !lastMetReps) {
+    const LOOKBACK = 4
+    const isMiss = (c: ExerciseCheckin): boolean =>
+      c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
+    const priorMiss = history.slice(1, 1 + LOOKBACK).find(isMiss)
+    if (priorMiss !== undefined) {
+      return {
+        weight: 0,
+        rep_target: floor,
+        action: 'drop',
+        reason: `two sessions stalled — resetting target back to ${floor} reps to rebuild`,
+      }
+    }
+    return {
+      weight: 0,
+      rep_target: ceiling,
+      action: 'hold',
+      reason: 'last session missed reps — holding target to consolidate',
+    }
+  }
+
+  if (last.rating === 'tough') {
+    return {
+      weight: 0,
+      rep_target: ceiling,
+      action: 'hold',
+      reason: 'last session felt tough — holding target',
+    }
+  }
+
+  // Rating is 'easy' or 'solid' AND reps were hit.
+  if (lastMetCeiling) {
+    const next = ceiling + 1
+    return {
+      weight: 0,
+      rep_target: next,
+      action: 'add-rep',
+      reason: `cleared all sets at ${ceiling} reps — aiming for ${next} next session`,
+    }
+  }
+  // Floor only: hold at ceiling so user keeps trying to crack it.
+  return {
+    weight: 0,
+    rep_target: ceiling,
+    action: 'hold',
+    reason: `cleared the floor but not all sets at ${ceiling} — holding target`,
+  }
 }
 
 /**
@@ -148,6 +234,16 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
   if (history.length === 0) return null
 
   const last = history[0]!
+
+  // Bodyweight branch: pull-ups, dips, BW push-ups in main-lift role.
+  // Detected by BOTH the planner emitting no `suggested_weight_lbs` AND the
+  // user not logging a weight. (If only one is true, treat as a weighted
+  // exercise the user just didn't log → preserve null behavior so we don't
+  // silently turn a weighted lift into rep-progression.)
+  if (last.used_weight_lb === undefined && exercise.suggested_weight_lbs === undefined) {
+    return computeBodyweightRepTarget(exercise, history)
+  }
+
   if (last.used_weight_lb === undefined || last.used_weight_lb <= 0) return null
 
   const lastWeight = last.used_weight_lb

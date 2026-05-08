@@ -85,14 +85,20 @@ describe('computeNextWeight — empty / unusable history', () => {
     expect(computeNextWeight({ exercise: ex, history: [] })).toBeNull()
   })
 
-  it('returns null when most recent checkin has no used_weight_lb', () => {
-    const ex = mkExercise()
+  it('returns null when planner gave suggested_weight_lbs but user did not log a weight', () => {
+    // The exercise IS weighted (planner emitted a suggestion), the user
+    // just skipped entering the load. We don't have a basis to bump *from*
+    // — return null and let the planner's static suggestion stand. Note:
+    // when BOTH suggested_weight_lbs and used_weight_lb are absent, the
+    // exercise is treated as bodyweight (rep-target progression) — see
+    // the bodyweight describe block for that path.
+    const ex = mkExercise({ suggested_weight_lbs: 100 })
     const history = [mkCheckin({ used_weight_lb: undefined })]
     expect(computeNextWeight({ exercise: ex, history })).toBeNull()
   })
 
   it('returns null when most recent checkin used_weight_lb is 0', () => {
-    const ex = mkExercise()
+    const ex = mkExercise({ suggested_weight_lbs: 100 })
     const history = [mkCheckin({ used_weight_lb: 0 })]
     expect(computeNextWeight({ exercise: ex, history })).toBeNull()
   })
@@ -469,6 +475,121 @@ describe('computeNextWeight — two-strike same-load guard', () => {
     ]
     const result = computeNextWeight({ exercise: ex, history })
     expect(result).toMatchObject({ action: 'hold', weight: 145 })
+  })
+})
+
+// ─── Bodyweight rep-target progression (audit follow-up) ───────────────────
+
+describe('computeNextWeight — bodyweight main lifts (rep-target progression)', () => {
+  // Bodyweight = exercise has no `suggested_weight_lbs` AND most recent
+  // checkin has no `used_weight_lb`. Pull-ups, dips, BW push-ups in main-
+  // lift role should progress by adding REPS instead of being skipped.
+
+  function mkBwExercise(overrides: Partial<PlannedExercise> = {}): PlannedExercise {
+    return mkExercise({
+      library_id: 'ex:pull-up',
+      name: 'Pull-up',
+      sets: 3,
+      reps: '8-12',
+      role: 'main lift',
+      ...overrides,
+    })
+  }
+  function mkBwCheckin(overrides: Partial<ExerciseCheckin> = {}): ExerciseCheckin {
+    return mkCheckin({
+      library_id: 'ex:pull-up',
+      name: 'Pull-up',
+      used_weight_lb: undefined,
+      ...overrides,
+    })
+  }
+
+  it("'easy' + ceiling met (12/12/12 of 8-12) → add-rep, rep_target=13, weight=0", () => {
+    const ex = mkBwExercise()
+    const history = [mkBwCheckin({ rating: 'easy', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'add-rep', rep_target: 13, weight: 0 })
+  })
+
+  it("'solid' + ceiling met → add-rep, rep_target=13", () => {
+    const ex = mkBwExercise()
+    const history = [mkBwCheckin({ rating: 'solid', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'add-rep', rep_target: 13, weight: 0 })
+  })
+
+  it("'solid' + only floor met (10/10/10 of 8-12) → hold, rep_target=12 (top of range)", () => {
+    const ex = mkBwExercise()
+    const history = [mkBwCheckin({ rating: 'solid', reps_done: [10, 10, 10] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', rep_target: 12, weight: 0 })
+  })
+
+  it("'tough' + ceiling met → hold (no half-rep concept for bodyweight)", () => {
+    const ex = mkBwExercise()
+    const history = [mkBwCheckin({ rating: 'tough', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', rep_target: 12, weight: 0 })
+  })
+
+  it("'tough' + only floor met → hold", () => {
+    const ex = mkBwExercise()
+    const history = [mkBwCheckin({ rating: 'tough', reps_done: [9, 9, 9] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', rep_target: 12, weight: 0 })
+  })
+
+  it("'failed' rating with one strike → hold at ceiling target", () => {
+    const ex = mkBwExercise()
+    const history = [
+      mkBwCheckin({ rating: 'failed', reps_done: [10, 10, 5] }),
+      // Prior session was a clean clear → only one consecutive strike.
+      mkBwCheckin({ rating: 'solid', reps_done: [12, 12, 12] }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', rep_target: 12, weight: 0 })
+  })
+
+  it('two-strike: two failures in a row → drop, rep_target reset to floor (8)', () => {
+    const ex = mkBwExercise()
+    const history = [
+      mkBwCheckin({ rating: 'failed', reps_done: [10, 10, 5] }),
+      mkBwCheckin({ rating: 'failed', reps_done: [10, 9, 6] }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'drop', rep_target: 8, weight: 0 })
+  })
+
+  it("role='rehab' bodyweight stretch with no weight → still null (excluded)", () => {
+    const ex = mkBwExercise({ role: 'rehab' })
+    const history = [mkBwCheckin({ rating: 'easy', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toBeNull()
+  })
+
+  it("role='core' bodyweight with no weight → still null (excluded)", () => {
+    const ex = mkBwExercise({ role: 'core' })
+    const history = [mkBwCheckin({ rating: 'easy', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toBeNull()
+  })
+
+  it("planner DID give suggested_weight (loaded exercise), but user didn't log weight → null (not bodyweight)", () => {
+    // suggested_weight_lbs present means the planner thinks this IS a
+    // weighted exercise. User just didn't log → preserve old null behavior
+    // so we don't accidentally turn a weighted lift into a rep-progression.
+    const ex = mkBwExercise({ suggested_weight_lbs: 100 })
+    const history = [mkBwCheckin({ rating: 'easy', reps_done: [12, 12, 12] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toBeNull()
+  })
+
+  it('single-rep target (e.g. "10") + ceiling met → add-rep, rep_target=11', () => {
+    // Double-progression beyond a single-rep prescription.
+    const ex = mkBwExercise({ reps: '10' })
+    const history = [mkBwCheckin({ rating: 'easy', reps_done: [10, 10, 10] })]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'add-rep', rep_target: 11, weight: 0 })
   })
 })
 
