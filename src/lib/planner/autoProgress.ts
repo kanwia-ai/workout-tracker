@@ -160,27 +160,62 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
   // own assessment of effort; we let it dominate, then layer rep-completion
   // as a guardrail on top.
   if (last.rating === 'failed' || !lastMetReps) {
-    // One miss → hold. Two misses in a row at *similar load* → drop ~10%.
-    // The same-load guard (audit rec 11) prevents a stale failure at a
-    // different weight from triggering a phantom drop after a successful
-    // bump-and-fail cycle.
-    const prev = history[1]
-    const prevMissed =
-      prev !== undefined &&
-      (prev.rating === 'failed' ||
-        !metRepTarget(prev, exercise.sets, exercise.reps))
-    const sameLoad =
-      prev !== undefined &&
-      prev.used_weight_lb !== undefined &&
-      Math.abs(prev.used_weight_lb - lastWeight) <= bump
-    if (prevMissed && sameLoad) {
+    // One miss → hold. Two misses at the same load → drop ~10%.
+    //
+    // Why scan a window instead of just history[1]:
+    //   On a 4-day split each main lift hits weekly. A user who fails at X,
+    //   drops to Y < X, succeeds at Y, climbs back to X, fails again has TWO
+    //   strikes at X — but they're separated in history by the recovery
+    //   session at Y. history[1] alone misses this, so DROP never fired in
+    //   realistic split-day patterns.
+    //
+    // Window of 4 entries (~4 weeks for a once-per-week main lift) keeps
+    // the lookback physiologically meaningful — older fails are stale signal.
+    //
+    // Same-load guard (audit rec 11) preserved: only counts prior misses
+    // within ±1 bump of the current load. A miss at a different weight is
+    // a different problem.
+    //
+    // Earliness rule: if the most recent prior attempt at the *same load*
+    // succeeded, that overrides any older fail at that load — the user has
+    // since proven the load works, today is a one-time stumble, not a stall.
+    const LOOKBACK = 4
+    // "Near same load" — within ±1 bump. Used for the miss-match so that
+    // e.g. failed@200 + failed@195 still counts as a stall (one bump apart).
+    const nearSameLoadAt = (c: ExerciseCheckin): boolean =>
+      c.used_weight_lb !== undefined && Math.abs(c.used_weight_lb - lastWeight) <= bump
+    // "Exactly same load" — used for the success-override. A success at a
+    // *lower* recovery load doesn't overrule a fail at the current heavier
+    // load. Only a success at this exact load proves "today is a stumble,
+    // not a stall."
+    const exactSameLoadAt = (c: ExerciseCheckin): boolean =>
+      c.used_weight_lb !== undefined && c.used_weight_lb === lastWeight
+    const isMiss = (c: ExerciseCheckin): boolean =>
+      c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
+
+    let priorSameLoadMiss: ExerciseCheckin | undefined
+    for (const candidate of history.slice(1, 1 + LOOKBACK)) {
+      if (exactSameLoadAt(candidate) && !isMiss(candidate)) {
+        // Most recent attempt at this exact load succeeded → today is a
+        // one-time stumble at a known-good weight. Stop scanning; this
+        // overrides any older fail at the same load.
+        priorSameLoadMiss = undefined
+        break
+      }
+      if (nearSameLoadAt(candidate) && isMiss(candidate)) {
+        priorSameLoadMiss = candidate
+        break
+      }
+    }
+
+    if (priorSameLoadMiss !== undefined) {
       const dropped = lastWeight * 0.9
       const rounded = roundToIncrement(dropped, bump)
       const safeDrop = Math.min(rounded, lastWeight - bump)
       return {
         weight: Math.max(safeDrop, bump),
         action: 'drop',
-        reason: 'two sessions in a row stalled at this load — backing off ~10% to rebuild',
+        reason: 'two sessions stalled at this load — backing off ~10% to rebuild',
       }
     }
     return {

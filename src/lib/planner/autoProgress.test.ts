@@ -404,6 +404,72 @@ describe('computeNextWeight — two-strike same-load guard', () => {
     const result = computeNextWeight({ exercise: ex, history })
     expect(result?.action).toBe('drop')
   })
+
+  // ─── Lookback window for prior same-load fails (audit follow-up) ─────────
+  // On a 4-day split each main lift hits weekly. A user who fails at X, drops
+  // back to Y < X, succeeds at Y, climbs to X again, and fails — has TWO
+  // strikes at X but they're separated by an intervening successful session
+  // at a lower load. history[1] alone misses this; we need to scan a bounded
+  // lookback window for the most recent prior miss at the same load.
+
+  it('two-strike fires across one intervening easy session at a lower load', () => {
+    // newest first: failed-145, easy-140, failed-145.
+    // The easy@140 was a recovery-load success; the prior fail@145 is 2
+    // entries back. Scan must find it and DROP.
+    const ex = mkExercise({ role: 'main lift', sets: 3, reps: '8-12' })
+    const history = [
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 140, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result?.action).toBe('drop')
+    expect(result!.weight).toBeLessThan(145)
+  })
+
+  it('single-strike: most recent prior at same load was easy → HOLD (not drop)', () => {
+    // newest first: failed-145, easy-145, easy-140.
+    // The most recent prior attempt at the same load (145) succeeded — this
+    // is a one-time stumble at a known-good weight, not a real stall.
+    const ex = mkExercise({ role: 'main lift', sets: 3, reps: '8-12' })
+    const history = [
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 145, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 140, reps_done: [12, 12, 12] }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', weight: 145 })
+  })
+
+  it('lookback edge: prior same-load fail 4 entries back still triggers drop', () => {
+    // Window = 4: history[1..4]. With prior fail at history[4] (5th entry),
+    // it sits at the edge of the inclusive lookback. Should DROP.
+    const ex = mkExercise({ role: 'main lift', sets: 3, reps: '8-12' })
+    const history = [
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 140, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 135, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 130, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result?.action).toBe('drop')
+  })
+
+  it('past lookback: prior same-load fail 5+ entries back does NOT drop', () => {
+    // history[5] is outside the window of history[1..4] — must HOLD.
+    const ex = mkExercise({ role: 'main lift', sets: 3, reps: '8-12' })
+    const history = [
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 140, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 135, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 130, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'easy', used_weight_lb: 125, reps_done: [12, 12, 12] }),
+      mkCheckin({ rating: 'failed', used_weight_lb: 145 }),
+    ]
+    const result = computeNextWeight({ exercise: ex, history })
+    expect(result).toMatchObject({ action: 'hold', weight: 145 })
+  })
 })
 
 // ─── computeAutoProgressionForSession (Dexie-backed) ───────────────────────
