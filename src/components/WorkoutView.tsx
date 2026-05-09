@@ -216,6 +216,12 @@ export function WorkoutView({
       ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
       : {},
   )
+  // Adaptive rep-target recommendations for bodyweight main lifts (pull-ups,
+  // dips, etc.) where there's no weight to bump. Populated by the same async
+  // auto-progression effect that seeds `weights`. Keyed by library_id; only
+  // present when the recommendation actually differs from the planner's
+  // prescribed range (i.e. add-rep or drop branches).
+  const [repTargets, setRepTargets] = useState<Record<string, number>>({})
   const [prs, setPrs] = useState<Record<string, number>>({})
   const [checkedSets, setCheckedSets] = useState<Record<string, boolean>>(() =>
     selectedSessionKey
@@ -425,6 +431,7 @@ export function WorkoutView({
       setCheckedSets({})
       setCheckedWarmups({})
       setWeights({})
+      setRepTargets({})
       setPerSetWeights({})
       setPerSetExpanded({})
       setRestState(null)
@@ -457,6 +464,7 @@ export function WorkoutView({
     setCheckedSets(savedChecked)
     setCheckedWarmups(savedWarmups)
     setWeights(seeded)
+    setRepTargets({})
     setPerSetWeights(savedPerSet)
     setPerSetExpanded({})
     setRestState(null)
@@ -478,16 +486,26 @@ export function WorkoutView({
           const next = { ...prev }
           for (const [libId, result] of Object.entries(autoMap)) {
             if (savedWeights[libId] !== undefined) continue
-            // TODO(bodyweight): bodyweight rep-target progression returns
-            // weight=0 + rep_target=N. We don't yet have a UI affordance to
-            // surface the rep_target — skip writing 0 to the weight pill so
-            // it doesn't render "0 lb". When wiring up: render rep_target
-            // beside (or instead of) the weight pill for action='add-rep'.
+            // Bodyweight branch: rep-target lives in `repTargets` (below);
+            // skip writing 0 to the weight pill so it doesn't render "0 lb".
             if (result.weight === 0 && result.rep_target !== undefined) continue
             next[libId] = result.weight
           }
           return next
         })
+        // Surface rep-target only when it actually differs from the
+        // planner's prescribed range — add-rep (target above ceiling) or
+        // drop (target reset to floor). `hold` returns the ceiling, which
+        // is already visible in the prescribed reps string.
+        const rtUpdates: Record<string, number> = {}
+        for (const [libId, result] of Object.entries(autoMap)) {
+          if (result.rep_target === undefined) continue
+          if (result.action !== 'add-rep' && result.action !== 'drop') continue
+          rtUpdates[libId] = result.rep_target
+        }
+        if (Object.keys(rtUpdates).length > 0) {
+          setRepTargets((prev) => ({ ...prev, ...rtUpdates }))
+        }
       })
       .catch((err) => {
         console.error('computeAutoProgressionForSession failed', err)
@@ -1053,6 +1071,7 @@ export function WorkoutView({
                       exIdx={ei}
                       isCompleted={isCompleted}
                       displayedWeight={displayedWeight}
+                      repTarget={repTargets[ex.library_id]}
                       perSetActive={perSetActive}
                       perSetArr={perSetArr}
                       expanded={expanded}
@@ -1279,6 +1298,7 @@ interface LiftCardProps {
   exIdx: number
   isCompleted: boolean
   displayedWeight: number
+  repTarget: number | undefined
   perSetActive: boolean
   perSetArr: number[]
   expanded: boolean
@@ -1295,11 +1315,12 @@ interface LiftCardProps {
   onChangePerSet: (setIdx: number, v: number) => void
 }
 
-function LiftCard({
+export function LiftCard({
   ex,
   exIdx,
   isCompleted,
   displayedWeight,
+  repTarget,
   perSetActive,
   perSetArr,
   expanded,
@@ -1389,7 +1410,20 @@ function LiftCard({
           className="text-[11px] mt-1 tabular-nums"
           style={{ color: 'var(--lumo-text-ter)' }}
         >
-          {ex.sets} × {ex.reps} · {ex.rest_seconds}s rest · RIR {ex.rir}
+          {ex.sets} × {ex.reps}
+          {repTarget !== undefined && (
+            <>
+              {' · '}
+              <span
+                data-testid={`rep-target-${ex.library_id}`}
+                style={{ color: 'var(--brand)', fontWeight: 700 }}
+                title="Adaptive rep target based on your last session"
+              >
+                aim {repTarget}
+              </span>
+            </>
+          )}
+          {' · '}{ex.rest_seconds}s rest · RIR {ex.rir}
         </div>
         {ex.warmup_sets.length > 0 && (() => {
           const steps = ex.warmup_sets.map((w) => {

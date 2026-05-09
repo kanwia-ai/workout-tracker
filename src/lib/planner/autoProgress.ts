@@ -34,6 +34,13 @@ import { loadProfileLocal } from '../profileRepo'
 // rehab work either has no load or is calibrated by feel, not 5-lb jumps.
 const NON_PROGRESSING_ROLES = new Set(['core', 'rehab', 'mobility'])
 
+// How far back to scan for a same-load prior miss when deciding two-strike
+// drops (weighted) or two-strike rep-target resets (bodyweight). 4 entries
+// is ~4 weeks of once-per-week main-lift cadence — physiologically
+// meaningful, not so long that an ancient stall keeps biting. If the user
+// ever moves to a 2x/week-per-main-lift split, revisit this.
+const TWO_STRIKE_LOOKBACK = 4
+
 // "8-12" → 8. "10" → 10. Used as the floor for "did they hit reps?".
 function minRepsOf(repsString: string): number {
   const m = repsString.match(/\d+/)
@@ -173,10 +180,9 @@ function computeBodyweightRepTarget(
   // Two-strike: two failures within the lookback window resets the target
   // back to the prescribed floor. Same window as the weighted branch.
   if (last.rating === 'failed' || !lastMetReps) {
-    const LOOKBACK = 4
     const isMiss = (c: ExerciseCheckin): boolean =>
       c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
-    const priorMiss = history.slice(1, 1 + LOOKBACK).find(isMiss)
+    const priorMiss = history.slice(1, 1 + TWO_STRIKE_LOOKBACK).find(isMiss)
     if (priorMiss !== undefined) {
       return {
         weight: 0,
@@ -275,7 +281,6 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
     // Earliness rule: if the most recent prior attempt at the *same load*
     // succeeded, that overrides any older fail at that load — the user has
     // since proven the load works, today is a one-time stumble, not a stall.
-    const LOOKBACK = 4
     // "Near same load" — within ±1 bump. Used for the miss-match so that
     // e.g. failed@200 + failed@195 still counts as a stall (one bump apart).
     const nearSameLoadAt = (c: ExerciseCheckin): boolean =>
@@ -290,7 +295,7 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
       c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
 
     let priorSameLoadMiss: ExerciseCheckin | undefined
-    for (const candidate of history.slice(1, 1 + LOOKBACK)) {
+    for (const candidate of history.slice(1, 1 + TWO_STRIKE_LOOKBACK)) {
       if (exactSameLoadAt(candidate) && !isMiss(candidate)) {
         // Most recent attempt at this exact load succeeded → today is a
         // one-time stumble at a known-good weight. Stop scanning; this

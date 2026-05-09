@@ -110,7 +110,7 @@ vi.mock('./SessionBar', () => ({
   ),
 }))
 
-import { WorkoutView } from './WorkoutView'
+import { WorkoutView, LiftCard } from './WorkoutView'
 import { usePlan } from '../hooks/usePlan'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -317,6 +317,45 @@ describe('WorkoutView session rendering', () => {
     // Lumo is in the sleepy state inside the card itself (the preamble
     // ALSO goes sleepy on rest days, so we scope the query).
     expect(card.querySelector('[data-lumo-state="sleepy"]')).toBeTruthy()
+  })
+})
+
+describe('LiftCard adaptive rep-target badge', () => {
+  // Direct prop-driven tests of LiftCard render, isolating the rep_target
+  // wire-up from WorkoutView's effect chain. The end-to-end render path
+  // (Dexie → autoProgress → setRepTargets → LiftCard) is browser-tested.
+  function makeExercise() {
+    return makeSession().exercises[0]!
+  }
+  const baseLiftCardProps = {
+    exIdx: 0,
+    isCompleted: false,
+    displayedWeight: 100,
+    perSetActive: false,
+    perSetArr: [],
+    expanded: false,
+    hasPRFlag: false,
+    checkedSets: {} as Record<string, boolean>,
+    burstKey: null,
+    burstTrigger: 0,
+    burstIsWarmup: false,
+    onTapSet: vi.fn(),
+    onInfo: vi.fn(),
+    onSwap: vi.fn(),
+    onToggleExpand: vi.fn(),
+    onChangeWeight: vi.fn(),
+    onChangePerSet: vi.fn(),
+  }
+
+  it('renders an "aim N" badge when repTarget prop is set', () => {
+    render(<LiftCard {...baseLiftCardProps} ex={makeExercise()} repTarget={13} />)
+    const badge = screen.getByTestId('rep-target-ex:rdl')
+    expect(badge.textContent).toContain('aim 13')
+  })
+
+  it('does not render the badge when repTarget is undefined', () => {
+    render(<LiftCard {...baseLiftCardProps} ex={makeExercise()} repTarget={undefined} />)
+    expect(screen.queryByTestId('rep-target-ex:rdl')).not.toBeInTheDocument()
   })
 })
 
