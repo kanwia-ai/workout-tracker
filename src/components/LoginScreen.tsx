@@ -23,10 +23,28 @@ export function LoginScreen({ onSignIn }: LoginScreenProps) {
     setSending(false)
 
     if (result.error) {
-      setError(result.error)
+      setError(friendlyAuthError(result.error))
     } else {
       setSent(true)
     }
+  }
+
+  // Map raw Supabase / fetch errors to copy a non-developer can act on.
+  // The most common one is a network failure when the Supabase project has
+  // auto-paused after a week of inactivity (free tier) — that surfaces as
+  // a generic "Failed to fetch" which reads like a frontend bug.
+  function friendlyAuthError(raw: string): string {
+    const lower = raw.toLowerCase()
+    if (lower.includes('failed to fetch') || lower.includes('networkerror')) {
+      return "couldn't reach the server — give it a minute and try again. if this keeps happening, the backend may be paused."
+    }
+    if (lower.includes('rate limit') || lower.includes('429')) {
+      return 'too many requests just now — wait a minute before trying again.'
+    }
+    if (lower.includes('invalid email')) {
+      return "that email doesn't look right — double-check it."
+    }
+    return raw
   }
 
   return (

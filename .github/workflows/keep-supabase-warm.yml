@@ -1,0 +1,65 @@
+# Keep the Supabase free-tier project warm by pinging it daily.
+#
+# Free Supabase projects auto-pause after ~7 days without any API activity,
+# which surfaces in the app as a "Failed to fetch" on the magic-link login
+# screen and looks like a bug to anyone who isn't us. Pinging both /auth and
+# /rest covers the auth-only and database-query pause heuristics.
+#
+# Required GitHub repo secret:
+#   SUPABASE_ANON_KEY  — the public anon key from the Supabase dashboard
+#                        (already in the published JS bundle, so it's not
+#                        a sensitive value — just stored as a secret for
+#                        easy rotation).
+#
+# To set it once:
+#   gh secret set SUPABASE_ANON_KEY -b "<paste-anon-key-here>"
+
+name: Keep Supabase warm
+
+on:
+  schedule:
+    # Daily at 14:00 UTC (~9am ET). Picks an off-cron-rush minute (37) to
+    # avoid GitHub's hot scheduler windows that can delay runs by 30+ min.
+    - cron: '37 14 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase auth + REST
+        env:
+          SUPABASE_URL: https://erloankcalivhfqdweyv.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -uo pipefail
+
+          echo "→ Pinging /auth/v1/health (no auth)"
+          auth_status=$(curl -sS -o /tmp/auth.out -w "%{http_code}" "$SUPABASE_URL/auth/v1/health")
+          echo "  status: $auth_status"
+          head -c 200 /tmp/auth.out; echo
+
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "⚠ SUPABASE_ANON_KEY secret not set — skipping REST ping."
+            echo "   Set it with: gh secret set SUPABASE_ANON_KEY"
+            # Auth ping alone may not count toward the database-activity
+            # heuristic Supabase uses to decide pause. Surface it loudly.
+            if [ "$auth_status" != "200" ]; then exit 1; fi
+            exit 0
+          fi
+
+          echo "→ Pinging /rest/v1/ (uses anon key — counts as DB activity)"
+          rest_status=$(curl -sS -o /tmp/rest.out -w "%{http_code}" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/")
+          echo "  status: $rest_status"
+          head -c 200 /tmp/rest.out; echo
+
+          # 200 = healthy, 401 = also fine (RLS rejected anon read but the
+          # request still hit the database). Anything else is a real problem.
+          if [ "$auth_status" != "200" ] || [ "$rest_status" != "200" -a "$rest_status" != "401" ]; then
+            echo "✗ Project may be down or paused — investigate."
+            exit 1
+          fi
+          echo "✓ Supabase project is alive."
