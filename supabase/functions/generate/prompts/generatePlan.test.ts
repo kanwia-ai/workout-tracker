@@ -172,9 +172,89 @@ describe('buildPlanPrompt (v3)', () => {
     expect(prompt).toMatch(/unique within a week/)
   })
 
-  it('stays under ~300 lines in the emitted prompt', () => {
+  it('stays under ~340 lines in the emitted prompt', () => {
     // Soft guard: prompt character budget. If this suddenly grows much, re-read
     // MASTER-SYNTHESIS and trim — we don't want the prompt to dwarf the pool.
-    expect(prompt.split('\n').length).toBeLessThan(260)
+    expect(prompt.split('\n').length).toBeLessThan(340)
+  })
+
+  // ── Hallucination guard (rule 0) ─────────────────────────────────────────
+  it('always emits the "name must match pool entry exactly" hallucination guard', () => {
+    expect(prompt).toMatch(/EXERCISE POOL IS THE SOURCE OF TRUTH/)
+    expect(prompt).toMatch(/select exercises ONLY from the provided EXERCISE POOL/)
+    expect(prompt).toMatch(/must EXACTLY match the `name` of an entry in the pool with the same `library_id`/)
+    expect(prompt).toMatch(/OMIT that slot — never invent/)
+    // Positive + negative example
+    expect(prompt).toMatch(/GOOD:.*Barbell Bench Press/)
+    expect(prompt).toMatch(/BAD:.*Lying Leg Pullover/)
+    // Loud restatement near the OUTPUT block
+    expect(prompt).toMatch(/HALLUCINATION CHECK BEFORE EMITTING/)
+    expect(prompt).toMatch(/character-identical to a name in the pool/)
+  })
+
+  // ── Posture overlay (rule 13) ────────────────────────────────────────────
+  it('with posture_notes mentioning desk work, requires upper-trap/neck + hip-flexor protective warmups', () => {
+    const p = buildPlanPrompt({
+      profile: { ...PROFILE, posture_notes: 'I sit at a desk 12 hours/day' },
+      exercisePool: POOL,
+      weeks: 6,
+    })
+    expect(p).toMatch(/posture_notes/)
+    expect(p).toMatch(/contains "desk"/)
+    expect(p).toMatch(/UPPER-body day, REQUIRE one upper-trap \/ neck release/)
+    expect(p).toMatch(/LOWER-body day, REQUIRE one hip-flexor opener/)
+  })
+
+  // ── Weight overlay (rule 13) ─────────────────────────────────────────────
+  it('with weight_kg=130, contains the high-body-mass low-impact substitution instruction', () => {
+    const p = buildPlanPrompt({
+      profile: { ...PROFILE, weight_kg: 130 },
+      exercisePool: POOL,
+      weeks: 6,
+    })
+    expect(p).toMatch(/weight_kg/)
+    expect(p).toMatch(/> 120 kg/)
+    expect(p).toMatch(/substitute every plyometric, deep-squat, or high-impact movement with a low-impact pool equivalent/)
+    expect(p).toMatch(/Do NOT exclude lifts entirely/)
+  })
+
+  // ── Age overlay (rule 13) ────────────────────────────────────────────────
+  it('with age=65, contains the RIR cap + low-impact substitution instruction', () => {
+    const p = buildPlanPrompt({
+      profile: { ...PROFILE, age: 65 },
+      exercisePool: POOL,
+      weeks: 6,
+    })
+    expect(p).toMatch(/age \(int, optional\)/)
+    expect(p).toMatch(/60\+\s*→\s*cap RIR at 2 on ALL sets/)
+    expect(p).toMatch(/replace any plyometric or jumping movement with a low-impact equivalent/)
+  })
+
+  // ── Deadline awareness (rule 13 / specific_target) ───────────────────────
+  it('with specific_target containing a deadline, contains deadline-awareness language and a today date', () => {
+    const p = buildPlanPrompt({
+      profile: { ...PROFILE, specific_target: 'lose 1 dress size by end of May' },
+      exercisePool: POOL,
+      weeks: 6,
+      today: '2026-05-09',
+    })
+    expect(p).toMatch(/DEADLINE AWARENESS/)
+    expect(p).toContain("today's date is 2026-05-09")
+    expect(p).toMatch(/≥ 12 weeks/)
+    expect(p).toMatch(/6-12 weeks/)
+    expect(p).toMatch(/2-6 weeks/)
+    expect(p).toMatch(/< 2 weeks/)
+    expect(p).toMatch(/Body-composition targets.*are weight\/shape goals, not strength goals/)
+  })
+
+  it('falls back to runtime current date when `today` is omitted', () => {
+    const p = buildPlanPrompt({ profile: PROFILE, exercisePool: POOL, weeks: 6 })
+    // ISO date pattern YYYY-MM-DD appears after "today's date is "
+    expect(p).toMatch(/today's date is \d{4}-\d{2}-\d{2}/)
+  })
+
+  // ── Height (reserved) ────────────────────────────────────────────────────
+  it('mentions height_cm as reserved / not currently active', () => {
+    expect(prompt).toMatch(/height_cm.*NOT currently active/)
   })
 })

@@ -19,6 +19,17 @@
 //
 // IMPORTANT: `exercisePool` is untrusted client-provided data. The caller must
 // validate shape and cap size before invoking this builder.
+//
+// HALLUCINATION GUARD — STRUCTURAL VALIDATOR TODO:
+// The prompt below tells the model to emit only library_ids/names that exist
+// in the pool, but the structural enforcement is still missing. Add a Zod
+// `.superRefine` (or post-parse check) on the mesocycle schema in
+// /Users/kyraatekwana/Projects/workout-tracker/supabase/functions/generate/schemas.ts
+// (and the matching client-side Zod in /Users/kyraatekwana/Projects/workout-tracker/src/types/plan.ts)
+// that, given the originating exercise pool, asserts:
+//   1) every emitted exercise.library_id exists in the pool
+//   2) every exercise.name === pool entry's name (character-identical)
+// Until that validator lands, hallucinated names CAN slip past schema parse.
 
 export interface ExercisePoolEntry {
   id: string
@@ -31,11 +42,26 @@ export interface BuildPlanPromptInput {
   profile: unknown
   exercisePool: ExercisePoolEntry[]
   weeks: number
+  /**
+   * ISO date string (YYYY-MM-DD) representing "today" — used by the deadline-
+   * awareness logic in the personalization overlay (rule 13, specific_target).
+   * Optional; defaults to the runtime current date so legacy callers in
+   * supabase/functions/generate/index.ts don't break.
+   */
+  today?: string
 }
 
 export function buildPlanPrompt(input: BuildPlanPromptInput): string {
   const { profile, exercisePool, weeks } = input
+  const today = input.today ?? new Date().toISOString().slice(0, 10)
   return `You are a board-certified sports physical therapist and ACSM-CPT strength coach, calibrated to Mike Israetel's Renaissance Periodization volume/intensity framework. You build plans that a working PT would sign off on: every session has a named muscle focus, a recovery-spacing rationale, explicit warmup ramp prescriptions, and a clear split logic. You do NOT output generic lifter-bro labels or hand-waving "full body" placeholder sessions.
+
+═══ 0. EXERCISE POOL IS THE SOURCE OF TRUTH (HALLUCINATION GUARD) ═══
+
+You MUST select exercises ONLY from the provided EXERCISE POOL below. The \`name\` field of every exercise you emit must EXACTLY match the \`name\` of an entry in the pool with the same \`library_id\`. If you cannot find a suitable exercise in the pool for a session slot, OMIT that slot — never invent. Do not paraphrase pool names, do not pluralize, do not add qualifiers ("lying", "seated") that aren't in the pool entry. Copy the pool row's \`name\` field verbatim.
+
+GOOD: pool contains {library_id: "fedb:Barbell_Bench_Press", name: "Barbell Bench Press"} → you emit {library_id: "fedb:Barbell_Bench_Press", name: "Barbell Bench Press"}.
+BAD:  you emit {name: "Lying Leg Pullover", library_id: "fedb:Lying_Leg_Pullover"} when no such entry exists in the pool. The validator will reject the response.
 
 Build a ${weeks}-week training block for the user below. FIRST decide the SPLIT (by sessions_per_week + goal + injuries), THEN for each session pick the dominant muscle group(s), THEN fill exercises from the pool. Plan the whole week as a coherent recovery-spaced split before writing any single session. The rules below are HARD — treat every numbered item as a constraint the output must satisfy.
 
@@ -117,7 +143,7 @@ Every exercise object MUST include a warmup_sets array (it may be empty, but the
        ENDURANCE focus (goal contains "endurance" / "toned"):  12-20 reps × 2-3 sets, RIR 2-3
        When uncertain, default to hypertrophy.
 5.4 Rest seconds per role: main compound 180s, accessory 120s, isolation 75s, rehab/mobility 30-45s, core 45-60s.
-5.5 Every library_id MUST exist in the provided pool. Every exercise's name is denormalized from the pool entry (copy the pool row's "name" field verbatim).
+5.5 Every library_id MUST exist in the provided pool. Every exercise's name is denormalized from the pool entry (copy the pool row's "name" field verbatim). See rule 0.
 
 ═══ 6. VOLUME LANDMARKS (weekly, cumulative across the block) ═══
 
@@ -197,7 +223,7 @@ If profile.equipment = ["bands_only"] → no barbell/cable/machine. If "bodyweig
 
 ═══ 13. PERSONALIZATION OVERLAY ═══
 
-Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.specific_target, profile.active_minutes:
+Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.specific_target, profile.active_minutes, profile.posture_notes, profile.age, profile.weight_kg, profile.height_cm:
 
 • primary_goals (ordered list of 1-2): dominant first. When both "get_stronger" AND "build_muscle" appear, treat as 60% hypertrophy / 40% strength — 3-4 sets of 6-10 reps on main compounds at RIR 1-2, plus 3-4 sets of 8-12 on accessories. When "lean_and_strong" is combined with anything, bias toward compound work + mixed rep ranges. When "mobility" appears as a second goal, pad warmups and insert 1 mobility/rehab exercise per session. When only one goal is present, apply its rep-range bucket as spec'd in rule 5.3.
 • muscle_priority (ordered list): prioritize these muscles. Give them more sets (toward MAV, not MEV), better position early in the session, and the compound lift slot when relevant.
@@ -209,9 +235,29 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
      "balanced"         → even
      "none"             → ignore
 • exercise_dislikes (multi-select): EXCLUDE entirely. Never emit any exercise matching a dislike tag.
-• specific_target (free text, e.g. "first pull-up"): bias selection toward progressive loading of that goal — e.g. pull-up progressions in every upper session.
+• specific_target (free text, e.g. "first pull-up", "lose 1 dress size by end of May"): bias selection toward progressive loading of that goal — e.g. pull-up progressions in every upper session.
+
+  DEADLINE AWARENESS: today's date is ${today}. If specific_target contains a date, month name, or "by [time]" pattern, compute approximate weeks until that deadline from today and apply:
+       ≥ 12 weeks  → no urgency; standard progression as spec'd in rules 7-8.
+       6-12 weeks  → bias toward compounds + slightly higher volume on muscle_priority groups (push toward MAV, not MEV).
+       2-6 weeks   → emphasize compound full-body sessions; in the per-session rationale, suggest the user pair this with a calorie deficit / cardio (this is a strength program, not a weight-loss tracker).
+       < 2 weeks   → in the per-session rationale, surface ONCE per mesocycle: "this is a tight timeline — strength training builds slowly; pair with diet for any weight-loss goal."
+  Body-composition targets ("dress size", "lose X lbs", "bikini body") are weight/shape goals, not strength goals — surface the diet-pairing note in rationale and do NOT promise the program alone will deliver it.
+
 • want_demo_videos: no effect on generation (UI concern only).
 • active_minutes (int, optional): ACTIVE LIFTING MINUTES — the user's work time only, rest between sets NOT counted. When present, use this (NOT time_budget_min) to cap set counts: assume ~60-90 seconds of actual work per set (reps × tempo), and set rest per rule 5.4. Example: active_minutes=45 on a pull day → ~25-30 working sets max across the session. If only time_budget_min is present, subtract ~30% to estimate active work time.
+• posture_notes (free text — desk worker, lifestyle context): scan for these patterns and weave protective work into warm-ups:
+     contains "desk" / "computer" / "sit"  → on every UPPER-body day, REQUIRE one upper-trap / neck release in the warm-up (e.g. doorway pec stretch, banded face pull, scapular wall slide). On every LOWER-body day, REQUIRE one hip-flexor opener in the warm-up (e.g. half-kneel hip flexor stretch, 90/90 transition, banded supine march).
+     contains "stand" / "on my feet"       → REQUIRE one calf/Achilles mobility move in the warm-up (e.g. wall ankle mob, eccentric calf raise).
+     contains "kid" / "baby" / "lift"      → REQUIRE rotational core work (Pallof press or wood-chop) in the core/rehab slot.
+     otherwise                              → no override.
+• age (int, optional):
+     < 30   → no change.
+     30-45  → cap RIR floor at 1 on main compounds (no near-failure work without an experienced lifter).
+     45-60  → same as 30-45, PLUS pad warm-ups by 1 extra mobility move per session.
+     60+    → cap RIR at 2 on ALL sets, AND replace any plyometric or jumping movement with a low-impact equivalent from the pool.
+• weight_kg (float, optional): if > 120 kg (~265 lb), substitute every plyometric, deep-squat, or high-impact movement with a low-impact pool equivalent. Prefer machine + cable variants over barbell free-weight where the pool offers it. Cap reps on standing single-leg work at 8 (joint stress). Do NOT exclude lifts entirely — the user is here to train.
+• height_cm (float, optional): NOT currently active. Reserved for future range-of-motion (ROM) scaling — ignore for now.
 • units: UI display preference only — no effect on generation.
 
 ═══ OUTPUT ═══
@@ -221,6 +267,8 @@ ${JSON.stringify(profile, null, 2)}
 
 EXERCISE POOL (${exercisePool.length} entries; every library_id must come from this list):
 ${JSON.stringify(exercisePool)}
+
+⚠ HALLUCINATION CHECK BEFORE EMITTING: Every exercise.name you emit must be character-identical to a name in the pool with the matching library_id. The validator will reject the response if any exercise has a name that doesn't appear in the pool's entries with the matching library_id. If unsure, OMIT the slot — never invent.
 
 Return a mesocycle as JSON matching the provided schema. length_weeks must equal ${weeks}. status on every session is "upcoming". intended_date optional; omit unless anchoring to a date. Every exercise must have warmup_sets (possibly empty []). Every session must have subtitle. No prose outside the JSON.`
 }
