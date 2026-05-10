@@ -22,6 +22,7 @@ import { ParticleBurst } from './ParticleBurst'
 import { PRCelebration } from './PRCelebration'
 import { RestBanner } from './RestBanner'
 import { SessionCheckinSheet } from './SessionCheckinSheet'
+import { CheckinSummary } from './CheckinSummary'
 import { useSession } from '../hooks/useSession'
 import { usePlan } from '../hooks/usePlan'
 import { useDayOverrides } from '../hooks/useDayOverrides'
@@ -43,7 +44,7 @@ import type { SessionCheckin } from '../types/checkin'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
 import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { TimerState, SessionPhase } from '../types'
-import type { PlannedSession, PlannedExercise } from '../types/plan'
+import type { PlannedSession, PlannedExercise, BandTension } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 
 // ─── Design reference ────────────────────────────────────────────────────
@@ -81,6 +82,47 @@ const PER_SET_WEIGHTS_KEY = (sessionId: string) =>
 // Warmup checked state. Keyed "ei-wi" (exercise index, warmup index).
 const WARMUP_CHECKED_KEY = (sessionId: string) =>
   `workout-tracker:warmup-checked:${sessionId}`
+// Per-exercise band-tension picks. Mirrors WEIGHTS_KEY shape but stores a
+// BandTension string instead of a number. Only populated when a banded
+// exercise is detected (see `isBandedExercise`).
+const BAND_TENSIONS_KEY = (sessionId: string) =>
+  `workout-tracker:band-tensions:${sessionId}`
+
+// ─── Banded-exercise detection + tension ↔ load sentinel mapping ─────────
+// A banded exercise has no pound load — the user picks a band by feel
+// (light/medium/heavy/x-heavy). We detect via name match because
+// PlannedExercise carries no equipment field; the variants table (the only
+// authoritative source) lives behind library_id, which we don't resolve
+// here. The bodyweight branch in autoProgress already handles
+// suggested_weight_lbs===undefined for true bodyweight movements (push-ups,
+// hanging leg raises) — the band regex won't match those, so the two paths
+// stay disjoint.
+const BAND_NAME_RE = /\bband(ed|s)?\b/i
+function isBandedExercise(ex: PlannedExercise): boolean {
+  if (ex.suggested_weight_lbs !== undefined) return false
+  return BAND_NAME_RE.test(ex.name)
+}
+
+// WHY a sentinel: the SessionCheckin schema only has `used_weight_lb?: number`
+// per exercise (see src/types/checkin.ts — agent A owns it, schema frozen).
+// To let the auto-progression engine read tension changes between sessions
+// without breaking that contract, we encode tension as a fake load on a
+// 10/20/30/40 ladder. autoProgress's bump/hold/drop logic is monotonic on
+// this scalar, so "user moved up a band" looks like "+10 lb" → bump path.
+// Reverse-mapped on hydration in the band detection branch so the user
+// still sees light/medium/heavy/x-heavy in the UI.
+const BAND_TENSION_TO_LB: Record<BandTension, number> = {
+  light: 10,
+  medium: 20,
+  heavy: 30,
+  'x-heavy': 40,
+}
+const BAND_LB_TO_TENSION: Record<number, BandTension> = {
+  10: 'light',
+  20: 'medium',
+  30: 'heavy',
+  40: 'x-heavy',
+}
 
 // JS Date.getDay(): 0=Sun..6=Sat. App convention: 0=Mon..6=Sun.
 function toAppDow(jsDow: number): number {
@@ -171,7 +213,6 @@ interface WorkoutViewProps {
     streak: number
     knee_flag: boolean
   } | null
-  onSignOut: () => void
   onWorkoutComplete: () => void
   onNavigateToCapture: () => void
   onNavigateCardio: () => void
@@ -236,6 +277,15 @@ export function WorkoutView({
   const [perSetWeights, setPerSetWeights] = useState<Record<string, number[]>>(() =>
     selectedSessionKey
       ? loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
+      : {},
+  )
+  // Per-exercise band-tension picks for banded exercises (clamshells,
+  // monster walks, etc.). Keyed by library_id. Lives alongside `weights`
+  // because a banded exercise renders the tension control in the spot the
+  // weight pill would otherwise occupy.
+  const [bandTensions, setBandTensions] = useState<Record<string, BandTension>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, BandTension>>(BAND_TENSIONS_KEY(selectedSessionKey)) || {}
       : {},
   )
   const [perSetExpanded, setPerSetExpanded] = useState<Record<string, boolean>>({})
@@ -433,6 +483,7 @@ export function WorkoutView({
       setWeights({})
       setRepTargets({})
       setPerSetWeights({})
+      setBandTensions({})
       setPerSetExpanded({})
       setRestState(null)
       return
@@ -446,6 +497,8 @@ export function WorkoutView({
       loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
     const savedPerSet =
       loadStoredRecord<Record<string, number[]>>(PER_SET_WEIGHTS_KEY(selectedSessionKey)) || {}
+    const savedTensions =
+      loadStoredRecord<Record<string, BandTension>>(BAND_TENSIONS_KEY(selectedSessionKey)) || {}
     // Seed missing entries from the planner's starting-weight suggestion so
     // the weight pill doesn't render "—" on an accessory the user hasn't yet
     // logged a load for. Real saved weights always win — we only fill gaps.
@@ -466,6 +519,7 @@ export function WorkoutView({
     setWeights(seeded)
     setRepTargets({})
     setPerSetWeights(savedPerSet)
+    setBandTensions(savedTensions)
     setPerSetExpanded({})
     setRestState(null)
     hydratedForRef.current = selectedSessionKey
@@ -482,6 +536,12 @@ export function WorkoutView({
         if (cancelled) return
         if (hydratedForRef.current !== sessionKeyAtStart) return
         if (Object.keys(autoMap).length === 0) return
+        // Build a libId → exercise map once so the banded reverse-map
+        // doesn't re-scan exercises for every entry.
+        const exById = new Map<string, PlannedExercise>(
+          selectedSession.exercises.map((e) => [e.library_id, e]),
+        )
+        const tensionUpdates: Record<string, BandTension> = {}
         setWeights((prev) => {
           const next = { ...prev }
           for (const [libId, result] of Object.entries(autoMap)) {
@@ -489,10 +549,25 @@ export function WorkoutView({
             // Bodyweight branch: rep-target lives in `repTargets` (below);
             // skip writing 0 to the weight pill so it doesn't render "0 lb".
             if (result.weight === 0 && result.rep_target !== undefined) continue
+            // Banded branch: the auto-progression engine sees the sentinel
+            // load (10/20/30/40) we wrote at session-end and may bump it
+            // to the next rung. Reverse-map back to a tension so the user
+            // sees light/medium/heavy/x-heavy in the UI, NOT a raw "20 lb".
+            const ex = exById.get(libId)
+            if (ex && isBandedExercise(ex)) {
+              if (savedTensions[libId] === undefined) {
+                const tension = BAND_LB_TO_TENSION[result.weight]
+                if (tension !== undefined) tensionUpdates[libId] = tension
+              }
+              continue
+            }
             next[libId] = result.weight
           }
           return next
         })
+        if (Object.keys(tensionUpdates).length > 0) {
+          setBandTensions((prev) => ({ ...prev, ...tensionUpdates }))
+        }
         // Surface rep-target only when it actually differs from the
         // planner's prescribed range — add-rep (target above ceiling) or
         // drop (target reset to floor). `hold` returns the ceiling, which
@@ -534,6 +609,11 @@ export function WorkoutView({
     if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
     localStorage.setItem(PER_SET_WEIGHTS_KEY(selectedSessionKey), JSON.stringify(perSetWeights))
   }, [selectedSessionKey, perSetWeights])
+
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(BAND_TENSIONS_KEY(selectedSessionKey), JSON.stringify(bandTensions))
+  }, [selectedSessionKey, bandTensions])
 
   useEffect(() => {
     if (session && !hasUsed) {
@@ -674,6 +754,7 @@ export function WorkoutView({
       localStorage.removeItem(WARMUP_CHECKED_KEY(finishedSessionId))
       localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
       localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
+      localStorage.removeItem(BAND_TENSIONS_KEY(finishedSessionId))
 
       const now = new Date().toISOString()
       await saveSession({
@@ -693,9 +774,22 @@ export function WorkoutView({
         const max = arr.reduce((m, v) => (v > m ? v : m), 0)
         if (max > 0) effectiveWeights[exerciseId] = max
       }
+      // Banded exercises: encode tension as a sentinel pound value
+      // (light=10/medium=20/heavy=30/x-heavy=40) so the SessionCheckin
+      // schema (which only carries `used_weight_lb?: number`) can round-trip
+      // the user's pick into the auto-progression engine. See the comment
+      // on BAND_TENSION_TO_LB above for why.
+      for (const [exerciseId, tension] of Object.entries(bandTensions)) {
+        effectiveWeights[exerciseId] = BAND_TENSION_TO_LB[tension]
+      }
       for (const [exerciseId, weight] of Object.entries(effectiveWeights)) {
         if (weight > 0) {
           const ex = exercises.find((e) => e.library_id === exerciseId)
+          // Skip PR / lastWeight writes for banded exercises — the sentinel
+          // (10/20/30/40) is a tension proxy for autoProgress, not a real
+          // load. Persisting it would surface a bogus "Banded Clamshell PR
+          // 20 lb" record. The tension still round-trips via the checkin.
+          if (ex && isBandedExercise(ex)) continue
           await saveLastWeight(userId, exerciseId, weight)
           await updatePR(userId, exerciseId, ex?.name || exerciseId, weight)
         }
@@ -706,6 +800,7 @@ export function WorkoutView({
       loadPRs(userId).then(setPrs)
       setWeights({})
       setPerSetWeights({})
+      setBandTensions({})
       setPerSetExpanded({})
       clearSession()
     },
@@ -713,6 +808,7 @@ export function WorkoutView({
       userId,
       weights,
       perSetWeights,
+      bandTensions,
       doneSets,
       totalSets,
       onWorkoutComplete,
@@ -749,6 +845,11 @@ export function WorkoutView({
       const max = arr.reduce((m, v) => (v > m ? v : m), 0)
       if (max > 0) effectiveWeights[exerciseId] = max
     }
+    // Sentinel-encode banded picks into the same map (see finalizeSession
+    // for the WHY).
+    for (const [exerciseId, tension] of Object.entries(bandTensions)) {
+      effectiveWeights[exerciseId] = BAND_TENSION_TO_LB[tension]
+    }
 
     pendingFinalizeRef.current = {
       sessionId: finishedSessionId,
@@ -761,7 +862,7 @@ export function WorkoutView({
       exercises: selectedSession.exercises,
       completedWeights: effectiveWeights,
     })
-  }, [session, selectedSession, weights, perSetWeights, endSession])
+  }, [session, selectedSession, weights, perSetWeights, bandTensions, endSession])
 
   const handleCheckinSave = useCallback(
     async (checkin: SessionCheckin) => {
@@ -1064,6 +1165,7 @@ export function WorkoutView({
                     ? perSetMax
                     : weights[ex.library_id] || 0
                   const hasPRFlag = (prs[ex.library_id] ?? 0) > 0
+                  const banded = isBandedExercise(ex)
                   return (
                     <LiftCard
                       key={`${ex.library_id}-${ei}`}
@@ -1071,6 +1173,8 @@ export function WorkoutView({
                       exIdx={ei}
                       isCompleted={isCompleted}
                       displayedWeight={displayedWeight}
+                      bandTension={banded ? bandTensions[ex.library_id] : undefined}
+                      isBanded={banded}
                       repTarget={repTargets[ex.library_id]}
                       perSetActive={perSetActive}
                       perSetArr={perSetArr}
@@ -1091,6 +1195,9 @@ export function WorkoutView({
                       }
                       onChangeWeight={(v) =>
                         setWeights((prev) => ({ ...prev, [ex.library_id]: v }))
+                      }
+                      onChangeBandTension={(t) =>
+                        setBandTensions((prev) => ({ ...prev, [ex.library_id]: t }))
                       }
                       onChangePerSet={(k, v) =>
                         setPerSetWeights((prev) => {
@@ -1128,6 +1235,14 @@ export function WorkoutView({
                   <strong>Sleep is key!</strong> Aim for 7-9 hours.
                 </div>
               </div>
+
+              {/* Post-session check-in recall — only after the user finishes
+                  every set. Reads from Dexie so the user can see (and trust)
+                  the rating + notes they captured a moment ago. Read-only;
+                  no state side-effects. */}
+              {sessionComplete && (
+                <CheckinSummary sessionId={selectedSession.id} />
+              )}
             </>
           ) : (
             <div
@@ -1298,6 +1413,11 @@ interface LiftCardProps {
   exIdx: number
   isCompleted: boolean
   displayedWeight: number
+  /** Selected band tension for banded exercises (clamshells etc.). */
+  bandTension?: BandTension
+  /** When true, render the band-tension segmented control instead of the
+   *  weight pill. Detected by the parent via `isBandedExercise`. */
+  isBanded?: boolean
   repTarget: number | undefined
   perSetActive: boolean
   perSetArr: number[]
@@ -1312,6 +1432,7 @@ interface LiftCardProps {
   onSwap: () => void
   onToggleExpand: () => void
   onChangeWeight: (v: number) => void
+  onChangeBandTension?: (t: BandTension) => void
   onChangePerSet: (setIdx: number, v: number) => void
 }
 
@@ -1320,6 +1441,8 @@ export function LiftCard({
   exIdx,
   isCompleted,
   displayedWeight,
+  bandTension,
+  isBanded = false,
   repTarget,
   perSetActive,
   perSetArr,
@@ -1334,6 +1457,7 @@ export function LiftCard({
   onSwap,
   onToggleExpand,
   onChangeWeight,
+  onChangeBandTension,
   onChangePerSet,
 }: LiftCardProps) {
   return (
@@ -1484,14 +1608,24 @@ export function LiftCard({
         )}
       </div>
 
-      {/* Full-width working-weight row — tap to edit the number */}
-      {!perSetActive && (
-        <WeightRow
-          current={displayedWeight}
-          onChange={onChangeWeight}
-          onTogglePerSet={onToggleExpand}
-          perSetExpanded={expanded}
+      {/* Full-width working-weight row — tap to edit the number.
+          For banded exercises (clamshells, monster walks, …) there's no
+          pound load, so we swap in a 4-button tension picker instead. */}
+      {isBanded ? (
+        <BandTensionRow
+          libraryId={ex.library_id}
+          tension={bandTension}
+          onChange={(t) => onChangeBandTension?.(t)}
         />
+      ) : (
+        !perSetActive && (
+          <WeightRow
+            current={displayedWeight}
+            onChange={onChangeWeight}
+            onTogglePerSet={onToggleExpand}
+            perSetExpanded={expanded}
+          />
+        )
       )}
 
       {/* Per-set weight inputs (expand on caret tap) */}
@@ -1704,6 +1838,104 @@ function WeightRow({ current, onChange, onTogglePerSet, perSetExpanded }: Weight
             }}
           />
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── BandTensionRow ─────────────────────────────────────────────────────
+// Banded exercises (clamshells, monster walks, …) have no meaningful pound
+// load. The user picks a band by feel, on a 4-step ladder. This component
+// occupies the same vertical slot as WeightRow so the LiftCard layout
+// stays consistent. Default state is "nothing selected" — that pick is the
+// user's call (we don't auto-default to 'light').
+const BAND_TENSION_OPTIONS: ReadonlyArray<{ value: BandTension; label: string }> = [
+  { value: 'light', label: 'light' },
+  { value: 'medium', label: 'medium' },
+  { value: 'heavy', label: 'heavy' },
+  { value: 'x-heavy', label: 'x-heavy' },
+]
+
+interface BandTensionRowProps {
+  libraryId: string
+  tension: BandTension | undefined
+  onChange: (next: BandTension) => void
+}
+
+function BandTensionRow({ libraryId, tension, onChange }: BandTensionRowProps) {
+  return (
+    <div
+      data-testid={`band-tension-${libraryId}`}
+      onClick={(e) => e.stopPropagation()}
+      className="mt-3"
+      style={{
+        padding: '10px 12px',
+        background: 'var(--lumo-input-bg)',
+        border: '1px solid var(--lumo-border-strong)',
+        borderRadius: 14,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: '0.14em',
+          color: 'var(--lumo-text-ter)',
+          textTransform: 'uppercase',
+          flexShrink: 0,
+        }}
+      >
+        Band
+      </div>
+      <div
+        role="radiogroup"
+        aria-label="Band tension"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: 'var(--lumo-overlay)',
+          borderRadius: 10,
+          padding: 3,
+          flex: 1,
+          justifyContent: 'space-between',
+          minWidth: 0,
+        }}
+      >
+        {BAND_TENSION_OPTIONS.map(({ value, label }) => {
+          const selected = tension === value
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              data-testid={`band-tension-${libraryId}-${value}`}
+              onClick={() => onChange(value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: '6px 4px',
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                borderRadius: 8,
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'background 160ms, color 160ms',
+                background: selected ? 'var(--brand)' : 'transparent',
+                color: selected ? '#fff' : 'var(--lumo-text-sec)',
+              }}
+            >
+              {label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

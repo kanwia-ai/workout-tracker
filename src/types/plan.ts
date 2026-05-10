@@ -81,3 +81,13 @@ export const MesocycleSchema = z.object({
 export type Mesocycle = z.infer<typeof MesocycleSchema>
 export type PlannedSession = z.infer<typeof PlannedSessionSchema>
 export type PlannedExercise = z.infer<typeof PlannedExerciseSchema>
+
+/**
+ * Resistance-band tension level. Banded exercises (e.g. clamshells, monster
+ * walks) have no meaningful pound number — the user picks a band by feel.
+ * The four-step ladder mirrors how bands are commonly sold + cues; the
+ * WorkoutView weight pill swaps for a 4-button segmented control on banded
+ * exercises (detected by the absence of `suggested_weight_lbs` + a name
+ * match on /\bband(ed|s)?\b/).
+ */
+export type BandTension = 'light' | 'medium' | 'heavy' | 'x-heavy'

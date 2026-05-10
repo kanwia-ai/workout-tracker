@@ -174,7 +174,6 @@ const baseProfile = {
 const baseProps = {
   userId: 'user-1',
   profile: baseProfile,
-  onSignOut: vi.fn(),
   onWorkoutComplete: vi.fn(),
   onNavigateToCapture: vi.fn(),
   onNavigateCardio: vi.fn(),
@@ -356,6 +355,125 @@ describe('LiftCard adaptive rep-target badge', () => {
   it('does not render the badge when repTarget is undefined', () => {
     render(<LiftCard {...baseLiftCardProps} ex={makeExercise()} repTarget={undefined} />)
     expect(screen.queryByTestId('rep-target-ex:rdl')).not.toBeInTheDocument()
+  })
+})
+
+describe('LiftCard band-tension picker', () => {
+  // Direct prop-driven tests, mirroring the rep-target block above. The
+  // detection branch (suggested_weight_lbs undefined + name regex) is wired
+  // up in WorkoutView itself; here we exercise the rendered control by
+  // passing isBanded through directly.
+  function makeBandedExercise(): PlannedSession['exercises'][number] {
+    return {
+      library_id: 'ex:clamshell',
+      name: 'banded clamshell',
+      sets: 2,
+      reps: '15',
+      rir: 1,
+      rest_seconds: 45,
+      role: 'isolation',
+      warmup_sets: [],
+      // Note: no suggested_weight_lbs — that's what triggers the band branch
+      // in the WorkoutView call site. Here we control it via isBanded.
+    }
+  }
+  function makeBodyweightExercise(): PlannedSession['exercises'][number] {
+    return {
+      library_id: 'ex:pullup',
+      name: 'pull-up',
+      sets: 3,
+      reps: '5-8',
+      rir: 2,
+      rest_seconds: 120,
+      role: 'main lift',
+      warmup_sets: [],
+    }
+  }
+  const baseLiftCardProps = {
+    exIdx: 0,
+    isCompleted: false,
+    displayedWeight: 0,
+    perSetActive: false,
+    perSetArr: [],
+    expanded: false,
+    hasPRFlag: false,
+    checkedSets: {} as Record<string, boolean>,
+    burstKey: null,
+    burstTrigger: 0,
+    burstIsWarmup: false,
+    onTapSet: vi.fn(),
+    onInfo: vi.fn(),
+    onSwap: vi.fn(),
+    onToggleExpand: vi.fn(),
+    onChangeWeight: vi.fn(),
+    onChangePerSet: vi.fn(),
+  }
+
+  it('renders the 4-button tension control instead of the weight pill when isBanded', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeBandedExercise()}
+        isBanded
+        onChangeBandTension={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('band-tension-ex:clamshell')).toBeInTheDocument()
+    expect(screen.getByTestId('band-tension-ex:clamshell-light')).toBeInTheDocument()
+    expect(screen.getByTestId('band-tension-ex:clamshell-medium')).toBeInTheDocument()
+    expect(screen.getByTestId('band-tension-ex:clamshell-heavy')).toBeInTheDocument()
+    expect(screen.getByTestId('band-tension-ex:clamshell-x-heavy')).toBeInTheDocument()
+    // The weight-row is the OTHER branch — should not render alongside.
+    expect(screen.queryByTestId('weight-row')).not.toBeInTheDocument()
+  })
+
+  it('calls onChangeBandTension with the selected value when a button is tapped', () => {
+    const onChange = vi.fn()
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeBandedExercise()}
+        isBanded
+        onChangeBandTension={onChange}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('band-tension-ex:clamshell-medium'))
+    expect(onChange).toHaveBeenCalledWith('medium')
+    fireEvent.click(screen.getByTestId('band-tension-ex:clamshell-x-heavy'))
+    expect(onChange).toHaveBeenLastCalledWith('x-heavy')
+  })
+
+  it('renders all 4 buttons unselected when no tension is set yet', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeBandedExercise()}
+        isBanded
+        bandTension={undefined}
+        onChangeBandTension={vi.fn()}
+      />,
+    )
+    for (const t of ['light', 'medium', 'heavy', 'x-heavy']) {
+      const btn = screen.getByTestId(`band-tension-ex:clamshell-${t}`)
+      expect(btn.getAttribute('aria-checked')).toBe('false')
+    }
+  })
+
+  it('does NOT render the band-tension control for a non-banded bodyweight exercise', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeBodyweightExercise()}
+        isBanded={false}
+        repTarget={8}
+      />,
+    )
+    expect(screen.queryByTestId('band-tension-ex:pullup')).not.toBeInTheDocument()
+    // The non-banded branch should still render the weight row (when not perSetActive).
+    expect(screen.getByTestId('weight-row')).toBeInTheDocument()
+    // And the rep-target badge stays present, proving the bodyweight rep-target path
+    // still works alongside this change.
+    expect(screen.getByTestId('rep-target-ex:pullup')).toBeInTheDocument()
   })
 })
 
