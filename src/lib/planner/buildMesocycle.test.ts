@@ -463,6 +463,98 @@ describe('buildSession', () => {
   })
 })
 
+// ─── User-preferred lifting days (onboarding day-picker → planner) ────────
+// The day-picker step writes `preferred_days` onto the profile. When the
+// length matches sessions_per_week, the planner places sessions on those
+// days exactly. When it doesn't, the planner falls back to its rest-aware
+// default spread so the user never loses a session silently.
+
+describe('preferred_days → planner integration', () => {
+  it('honors preferred_days 1:1 when length matches sessions_per_week', () => {
+    // 3 sessions on Tue/Thu/Sat (1, 3, 5)
+    const profile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      sessions_per_week: 3,
+      preferred_days: [1, 3, 5],
+    }
+    const d = interpretProfile(profile)
+    const meso = buildMesocycle(d, 6, profile)
+    const wk1 = meso.sessions.filter((s) => s.week_number === 1).sort(
+      (a, b) => a.ordinal - b.ordinal,
+    )
+    expect(wk1).toHaveLength(3)
+    expect(wk1.map((s) => s.day_of_week)).toEqual([1, 3, 5])
+  })
+
+  it('sorts preferred_days Mon→Sun before assigning to ordinals', () => {
+    // User taps Sat (5), Mon (0), Wed (2) — sorted = [0, 2, 5]
+    const profile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      sessions_per_week: 3,
+      preferred_days: [5, 0, 2],
+    }
+    const d = interpretProfile(profile)
+    const meso = buildMesocycle(d, 6, profile)
+    const wk1Days = meso.sessions
+      .filter((s) => s.week_number === 1)
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((s) => s.day_of_week)
+    expect(wk1Days).toEqual([0, 2, 5])
+  })
+
+  it('falls back to default spread when no preferred_days is set', () => {
+    // No preferred_days field → original behavior preserved.
+    const profile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      sessions_per_week: 4,
+    }
+    const d = interpretProfile(profile)
+    const meso = buildMesocycle(d, 6, profile)
+    const wk1Days = meso.sessions
+      .filter((s) => s.week_number === 1)
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((s) => s.day_of_week)
+    // Default spread for 4 sessions = Mon/Tue/Thu/Fri (0, 1, 3, 4).
+    expect(wk1Days).toEqual([0, 1, 3, 4])
+  })
+
+  it('falls back to default spread when preferred_days length mismatches sessions_per_week', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    // Length 2, but sessions_per_week=4 → mismatch → use default.
+    const profile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      sessions_per_week: 4,
+      preferred_days: [0, 6],
+    }
+    const d = interpretProfile(profile)
+    const meso = buildMesocycle(d, 6, profile)
+    const wk1Days = meso.sessions
+      .filter((s) => s.week_number === 1)
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((s) => s.day_of_week)
+    expect(wk1Days).toEqual([0, 1, 3, 4])
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('preferred_days are reused on every week of the mesocycle', () => {
+    const profile: UserProgramProfile = {
+      ...NO_INJURY_PROFILE,
+      sessions_per_week: 3,
+      preferred_days: [1, 3, 5],
+    }
+    const d = interpretProfile(profile)
+    const meso = buildMesocycle(d, 6, profile)
+    for (let week = 1; week <= 6; week += 1) {
+      const days = meso.sessions
+        .filter((s) => s.week_number === week)
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((s) => s.day_of_week)
+      expect(days, `week ${week}`).toEqual([1, 3, 5])
+    }
+  })
+})
+
 // ─── Goal-driven mesocycle length (audit 2026-05-07 #9) ────────────────────
 
 describe('mesocycleLengthFor — goal-driven block length', () => {

@@ -24,6 +24,7 @@ import { StepMusclePriority } from './StepMusclePriority'
 import { StepAesthetic } from './StepAesthetic'
 import { StepSpecificTarget } from './StepSpecificTarget'
 import { StepSessions } from './StepSessions'
+import { StepDays } from './StepDays'
 import { StepActiveMinutes } from './StepActiveMinutes'
 import { StepEquipment } from './StepEquipment'
 import { StepTrainingAge } from './StepTrainingAge'
@@ -50,6 +51,7 @@ const STEPS = [
   'aesthetic',
   'specific_target',
   'sessions',
+  'days',
   'active_minutes',
   'equipment',
   'training_age',
@@ -152,6 +154,13 @@ export function OnboardingFlow({ onComplete }: Props) {
       first_name: draft.first_name,
       active_minutes: activeMinutes,
       units: draft.units ?? 'imperial',
+      // Optional: only include when the user actually picked days. An
+      // empty/undefined value lets the planner fall back to its built-in
+      // recovery spread (Mon/Wed/Fri etc.).
+      preferred_days:
+        draft.preferred_days && draft.preferred_days.length > 0
+          ? draft.preferred_days
+          : undefined,
     }
     const parsed = UserProgramProfileSchema.safeParse(complete)
     if (!parsed.success) {
@@ -255,6 +264,16 @@ export function OnboardingFlow({ onComplete }: Props) {
           {stepId === 'sessions' && (
             <StepSessions
               value={{ sessions_per_week: draft.sessions_per_week }}
+              onNext={(patch) => advance(patch)}
+            />
+          )}
+          {stepId === 'days' && (
+            <StepDays
+              // Falls back to 3 only if the user somehow lands here without
+              // having answered sessions/week. The flow always sets it, so
+              // this is a defensive default rather than a real path.
+              sessionsPerWeek={draft.sessions_per_week ?? 3}
+              value={draft.preferred_days}
               onNext={(patch) => advance(patch)}
             />
           )}

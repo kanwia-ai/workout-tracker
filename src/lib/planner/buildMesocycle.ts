@@ -616,7 +616,37 @@ export function buildSession(args: {
 // ─── Day-of-week spread ────────────────────────────────────────────────────
 // Spread N sessions across a 7-day week. Mon/Tue/Thu/Fri for 4 sessions,
 // Mon/Wed/Fri for 3, etc. Rest days between matched session types.
-function spreadDaysOfWeek(sessionsPerWeek: number): number[] {
+//
+// `preferredDays` (when provided AND length matches sessions_per_week) is
+// honored 1:1 in the order given — this is how the onboarding day-picker
+// reaches the planner. Length mismatch falls back to the rest-aware spread
+// rather than producing a partial week the user didn't intend.
+function spreadDaysOfWeek(
+  sessionsPerWeek: number,
+  preferredDays?: number[],
+): number[] {
+  if (
+    preferredDays &&
+    preferredDays.length === sessionsPerWeek &&
+    preferredDays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+  ) {
+    // Sort Mon→Sun so session ordinal 1 is the user's earliest selected day
+    // (matches the recovery spread's monotonically-increasing convention).
+    return [...preferredDays].sort((a, b) => a - b)
+  }
+  if (
+    preferredDays &&
+    preferredDays.length > 0 &&
+    preferredDays.length !== sessionsPerWeek
+  ) {
+    // Soft warn — caller intent was ambiguous (e.g. profile saved before the
+    // sessions_per_week change). Fall through to the default spread so we
+    // never emit fewer sessions than requested.
+    console.warn(
+      `[buildMesocycle] preferred_days length ${preferredDays.length} ≠ ` +
+        `sessions_per_week ${sessionsPerWeek}; using default spread instead.`,
+    )
+  }
   // 0=Mon..6=Sun
   if (sessionsPerWeek === 1) return [0]
   if (sessionsPerWeek === 2) return [0, 3]
@@ -638,7 +668,13 @@ export function buildMesocycle(
   const resolvedLength = lengthWeeks ?? mesocycleLengthFor(profile)
   const template = directives.week_shape.template
   const sessionsPerWeek = directives.week_shape.sessions_per_week
-  const dayOfWeekSpread = spreadDaysOfWeek(sessionsPerWeek)
+  // Honor the user's preferred lifting days when present. The onboarding
+  // day-picker step writes them onto the profile; everywhere else the
+  // planner falls back to its rest-aware default spread.
+  const dayOfWeekSpread = spreadDaysOfWeek(
+    sessionsPerWeek,
+    profile?.preferred_days,
+  )
 
   const sessions: PlannedSession[] = []
   for (let week = 1; week <= resolvedLength; week += 1) {

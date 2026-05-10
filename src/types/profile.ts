@@ -134,6 +134,13 @@ export const UserProgramProfileSchema = z.object({
    * are back-filled to 'metric' on load so nothing silently switches.
    */
   units: Units.optional(),
+  /**
+   * User's preferred lifting days, indexed 0=Mon..6=Sun. Empty array or
+   * undefined = let the planner pick. When provided, the planner places
+   * sessions on these days exactly (truncated/padded to sessions_per_week
+   * if mismatch).
+   */
+  preferred_days: z.array(z.number().int().min(0).max(6)).max(7).optional(),
 })
 
 export type UserProgramProfile = z.infer<typeof UserProgramProfileSchema>

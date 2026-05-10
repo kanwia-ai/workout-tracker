@@ -42,6 +42,10 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('radio', { name: '3' }))
     fireEvent.click(screen.getByTestId('step-sessions-next'))
 
+    // days — defaults pre-fill Mon/Wed/Fri for 3 sessions; just continue
+    expectStep('days')
+    fireEvent.click(screen.getByTestId('onboarding-days-continue'))
+
     // active minutes — pick 45 (split from sessions step)
     expectStep('active_minutes')
     fireEvent.click(screen.getByRole('radio', { name: /45/ }))
@@ -91,6 +95,8 @@ describe('OnboardingFlow', () => {
       expect(parsed.data.injuries).toEqual([])
       expect(parsed.data.sex).toBe('female')
       expect(parsed.data.age).toBe(30)
+      // Default day-picker fill for 3 sessions = Mon/Wed/Fri.
+      expect(parsed.data.preferred_days).toEqual([0, 2, 4])
       // skipped optionals should not be set (or empty)
       expect(parsed.data.muscle_priority).toBeUndefined()
       expect(parsed.data.aesthetic_preference).toBeUndefined()
@@ -121,7 +127,8 @@ describe('OnboardingFlow', () => {
   it('footprint progress bar shows total steps and current index', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     const bar = screen.getByRole('progressbar')
-    expect(bar).toHaveAttribute('aria-valuemax', '15')
+    // 16 steps after adding the day-picker between sessions and active_minutes.
+    expect(bar).toHaveAttribute('aria-valuemax', '16')
     expect(bar).toHaveAttribute('aria-valuenow', '1')
   })
 
@@ -156,6 +163,9 @@ describe('OnboardingFlow', () => {
     // sessions
     fireEvent.click(screen.getByRole('radio', { name: '4' }))
     fireEvent.click(screen.getByTestId('step-sessions-next'))
+
+    // days — defaults pre-fill Mon/Tue/Thu/Fri for 4 sessions; just continue
+    fireEvent.click(screen.getByTestId('onboarding-days-continue'))
 
     // active minutes — pick 60 (split from sessions step)
     fireEvent.click(screen.getByRole('radio', { name: /60/ }))
@@ -203,5 +213,7 @@ describe('OnboardingFlow', () => {
     expect(profile.specific_target).toBe('first pull-up')
     expect(profile.weight_kg).toBe(65)
     expect(profile.exercise_dislikes).toEqual(['burpees'])
+    // Default fill for 4 sessions = Mon/Tue/Thu/Fri.
+    expect(profile.preferred_days).toEqual([0, 1, 3, 4])
   })
 })

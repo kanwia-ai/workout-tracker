@@ -87,6 +87,8 @@ type CopyShape = {
   readonly onboardingSessions: readonly string[];
   /** Active-minutes step — lifting duration. 3+ per tier. */
   readonly onboardingActiveMinutes: readonly string[];
+  /** Day-picker step — which days of the week to lift. 3+ per tier. */
+  readonly onboardingDays: readonly string[];
   /** Equipment step. 3+ per tier. */
   readonly onboardingEquipment: readonly string[];
   /** Experience / training-age step. 3+ per tier. */
@@ -632,6 +634,11 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'work time only. no rest.',
       'pick a range.',
     ],
+    onboardingDays: [
+      'pick days.',
+      'which days.',
+      'tap each lifting day.',
+    ],
     onboardingEquipment: [
       'what you have.',
       'select all that apply.',
@@ -919,6 +926,12 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'work minutes only — rest between sets not counted.',
       'active time on the floor.',
       'we budget rest separately.',
+    ],
+    onboardingDays: [
+      'which days are lifting days?',
+      "tap the days you'll actually train.",
+      "we'll plan around your real schedule.",
+      'pick your usual lifting days.',
     ],
     onboardingEquipment: [
       'what do you have access to?',
@@ -1289,6 +1302,13 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'active minutes on the floor — not total gym time.',
       'how long are you actually under the bar?',
       'time you’re actually lifting, not scrolling.',
+    ],
+    onboardingDays: [
+      'which days are gym days? real schedule please.',
+      'tap the days you actually show up.',
+      "no fantasy schedules — pick what's real.",
+      'which days. no overcommitting.',
+      'lifting days, real talk.',
     ],
     onboardingEquipment: [
       "what's in your toolbox?",
