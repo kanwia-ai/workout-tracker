@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, RefreshCw, AlertTriangle, X, ChevronDown } from 'lucide-react'
+import { Loader2, RefreshCw, AlertTriangle, X, ChevronDown, Info } from 'lucide-react'
 import type { PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import type { RoutineKind } from '../lib/routines'
 import { generateRoutine } from '../lib/routines'
 import { useRoutine } from '../hooks/useRoutine'
+import { ExerciseInfoSheet } from './ExerciseInfoSheet'
 
 // ─── Defaults & chip menus ────────────────────────────────────────────────
 // These live in-module so the component re-renders never reallocate them and
@@ -82,6 +83,10 @@ export function RoutineSlot({ session, kind, profile }: Props) {
   // Accordion starts open so a freshly-generated routine is visible without
   // an extra tap. User can collapse to get it out of the way.
   const [expanded, setExpanded] = useState(true)
+  // Currently-open info sheet target. Warm-up / cool-down rows don't carry a
+  // library_id so we pass the display name as `nameFallback` and let the
+  // sheet resolve via curated lookup → Dexie name match → name-only stub.
+  const [infoName, setInfoName] = useState<string | null>(null)
   const reducedMotion = prefersReducedMotion()
 
   // Guard the auto-generate effect so we only fire once per (session, kind)
@@ -271,17 +276,20 @@ export function RoutineSlot({ session, kind, profile }: Props) {
           const right = ex.notes || primary
           return (
             <div
-              className="mt-[8px] pt-[8px] flex items-baseline justify-between gap-3"
+              className="mt-[8px] pt-[8px] flex items-center justify-between gap-3"
               style={{
                 borderTop: '1px solid color-mix(in srgb, var(--lumo-border-strong) 40%, transparent)',
                 padding: '4px 2px',
               }}
             >
-              <span
-                className="text-[15px] min-w-0 truncate"
-                style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
-              >
-                {ex.name}
+              <span className="flex items-center gap-1.5 min-w-0 flex-1">
+                <span
+                  className="text-[15px] min-w-0 truncate"
+                  style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
+                >
+                  {ex.name}
+                </span>
+                <RoutineInfoButton index={0} name={ex.name} onOpen={setInfoName} />
               </span>
               {right && (
                 <span
@@ -309,7 +317,7 @@ export function RoutineSlot({ session, kind, profile }: Props) {
               return (
                 <li
                   key={`${ex.name}-${i}`}
-                  className="flex items-baseline justify-between gap-3"
+                  className="flex items-center justify-between gap-3"
                   style={{
                     padding: '11px 2px',
                     borderBottom:
@@ -318,11 +326,14 @@ export function RoutineSlot({ session, kind, profile }: Props) {
                         : '1px solid color-mix(in srgb, var(--lumo-border-strong) 40%, transparent)',
                   }}
                 >
-                  <span
-                    className="text-[15px] min-w-0 truncate"
-                    style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
-                  >
-                    {ex.name}
+                  <span className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <span
+                      className="text-[15px] min-w-0 truncate"
+                      style={{ color: 'var(--lumo-text)', fontWeight: 500 }}
+                    >
+                      {ex.name}
+                    </span>
+                    <RoutineInfoButton index={i} name={ex.name} onOpen={setInfoName} />
                   </span>
                   {primary && (
                     <span
@@ -347,7 +358,53 @@ export function RoutineSlot({ session, kind, profile }: Props) {
           onCancel={() => setPicking(false)}
         />
       )}
+
+      {/* Per-row info sheet. Mounted unconditionally so the sheet can manage
+          its own visibility — null `libraryId` + null `nameFallback` collapses
+          to a no-op render. Warm-up / cool-down rows pass `nameFallback`
+          since they have no library_id; the sheet then resolves via curated
+          name match → Dexie name match → name-only stub. */}
+      <ExerciseInfoSheet
+        libraryId={null}
+        nameFallback={infoName ?? undefined}
+        onClose={() => setInfoName(null)}
+      />
     </section>
+  )
+}
+
+// Small inline (i) affordance shared by the cardio single-row + the per-item
+// `<li>` rendering. Mirrors the lift-card info button in WorkoutView for a
+// consistent visual language. `index` lets tests target each row uniquely
+// (`routine-info-0`, `routine-info-1`, ...).
+interface RoutineInfoButtonProps {
+  index: number
+  name: string
+  onOpen: (name: string) => void
+}
+
+function RoutineInfoButton({ index, name, onOpen }: RoutineInfoButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(name)}
+      data-testid={`routine-info-${index}`}
+      aria-label={`Info about ${name}`}
+      title="Exercise info"
+      className="p-1 rounded-md active:scale-90 transition-colors shrink-0"
+      style={{
+        color: 'var(--lumo-text-ter)',
+        width: 18,
+        height: 18,
+        borderRadius: '50%',
+        border: '1px solid var(--lumo-border-strong)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Info size={10} />
+    </button>
   )
 }
 

@@ -363,6 +363,57 @@ function orderExercises(
     })
 }
 
+// Strip common warmup-qualifier suffixes so "Ankle Dorsiflexion Mobility"
+// and "Ankle Dorsiflexion Drill" collapse to the same root. Order matters:
+// trim trailing qualifiers iteratively in case multiple stack up
+// (e.g., "Hip Mobility Drill" → "hip"). We collapse whitespace last so
+// repeated trims don't leave double spaces.
+const QUALIFIER_RE =
+  /\b(?:drill|mobility|exercise|move|stretch|warm[- ]?up|warmup|prep|activation)s?$/i
+
+function normalizeForDedup(raw: string): string {
+  let s = raw.toLowerCase().trim()
+  // Strip parenthetical qualifiers e.g. "(Foam Roller)", "(Lower Trap Bias)".
+  s = s.replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+  // Iteratively strip trailing qualifiers until stable.
+  let prev = ''
+  while (prev !== s) {
+    prev = s
+    s = s.replace(QUALIFIER_RE, '').trim()
+  }
+  // Collapse all whitespace and any remaining punctuation runs.
+  s = s.replace(/[\s_\-]+/g, ' ').trim()
+  return s
+}
+
+// Drop later entries whose name (or library id) matches an earlier one
+// either exactly OR after normalization (qualifier-stripped). Stable —
+// the first occurrence wins, preserving the rule-based ordering.
+//
+// Exported for direct testing; callers should use the integrated
+// generateWarmup() flow.
+export function dedupWarmupExercises(
+  list: StructuredWarmupExercise[],
+): StructuredWarmupExercise[] {
+  const seenIds = new Set<string>()
+  const seenNorms = new Set<string>()
+  const out: StructuredWarmupExercise[] = []
+  for (const ex of list) {
+    const idKey = ex.name.toLowerCase().trim()
+    const displayKey = ex.display_name.toLowerCase().trim()
+    const normKey = normalizeForDedup(ex.display_name)
+    // Exact match on id OR display_name → drop
+    if (seenIds.has(idKey) || seenIds.has(displayKey)) continue
+    // Near-dup: shares normalized root with an earlier entry → drop
+    if (normKey && seenNorms.has(normKey)) continue
+    seenIds.add(idKey)
+    seenIds.add(displayKey)
+    if (normKey) seenNorms.add(normKey)
+    out.push(ex)
+  }
+  return out
+}
+
 function estimateMinutes(list: StructuredWarmupExercise[]): number {
   let seconds = 0
   for (const ex of list) {
@@ -447,7 +498,10 @@ export function generateWarmup(input: GenerateWarmupInput): StructuredWarmup {
     }
   }
 
-  const ordered = orderExercises(exercises)
+  // Dedup BEFORE ordering so the order-stable winner is the first occurrence
+  // in collection order (which matches the rule precedence above).
+  const deduped = dedupWarmupExercises(exercises)
+  const ordered = orderExercises(deduped)
   const estMinutes = estimateMinutes(ordered)
 
   // Short summary — human-readable one-liner for UI

@@ -136,4 +136,57 @@ describe('ExerciseInfoSheet', () => {
 
     expect(screen.getByRole('status')).toBeInTheDocument()
   })
+
+  it('renders the "no description available" fallback when instructions are empty', () => {
+    vi.mocked(useLiveQuery).mockReturnValue({
+      ...sampleExercise,
+      instructions: [],
+    })
+
+    render(
+      <ExerciseInfoSheet libraryId="fedb:barbell-squat" onClose={vi.fn()} />,
+    )
+
+    expect(screen.getByTestId('exercise-info-no-description')).toBeInTheDocument()
+    expect(screen.getByText(/no description available/i)).toBeInTheDocument()
+  })
+
+  it('renders Instructions BEFORE the demo so the description is the primary content', () => {
+    vi.mocked(useLiveQuery).mockReturnValue(sampleExercise)
+
+    const { container } = render(
+      <ExerciseInfoSheet libraryId="fedb:barbell-squat" onClose={vi.fn()} />,
+    )
+
+    // sampleExercise has imageCount=2, so the demo path renders an <img>.
+    // Compare DOM order via compareDocumentPosition.
+    const firstStep = screen.getByText('Set the bar on your upper back.')
+    const demoImg = container.querySelector('img')
+    expect(demoImg).not.toBeNull()
+    // 4 = NODE_FOLLOWING — demoImg follows firstStep in document order.
+    expect(firstStep.compareDocumentPosition(demoImg!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('opens via nameFallback alone when libraryId is null', () => {
+    vi.mocked(useLiveQuery).mockReturnValue({
+      ...sampleExercise,
+      name: 'Cat / Cow',
+      instructions: ['Round the spine.', 'Then extend.'],
+    })
+
+    render(
+      <ExerciseInfoSheet
+        libraryId={null}
+        nameFallback="Cat / Cow"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByRole('heading', { name: 'Cat / Cow' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Round the spine.')).toBeInTheDocument()
+  })
 })

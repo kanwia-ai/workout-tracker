@@ -93,7 +93,10 @@ describe("generateWarmup — Kyra's leg day (golden)", () => {
       directives: d,
     })
     const names = w.exercises.map((e) => e.name)
-    expect(names).toContain('reverse_incline_walking_5min')
+    // Dedup pass collapses near-duplicates ("reverse_incline_walking" vs the
+    // "_5min"/"_3min" siblings). Stage warmup is collected first so the
+    // unsuffixed id wins — assert on the substring instead of a specific id.
+    expect(names.some((n) => n.startsWith('reverse_incline_walking'))).toBe(true)
   })
 
   it('includes hip/ankle mobility (meniscus + hip flexors + ankle-adjacent)', () => {

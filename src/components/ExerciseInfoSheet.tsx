@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Loader2, Play, X } from 'lucide-react'
 import { db, type LibraryExercise } from '../lib/db'
 import { getDemo } from '../data/exercise-demos'
-import { extractYouTubeVideoId, youtubeShortsSearchUrl } from '../lib/youtube'
+import { extractYouTubeVideoId, youtubeSearchUrl } from '../lib/youtube'
 import { resolveVariant } from '../lib/planner/variants'
 import { EXERCISE_LIBRARY } from '../data/exercises'
 
@@ -20,43 +20,67 @@ const IMAGE_BASE =
 interface Props {
   libraryId: string | null
   onClose: () => void
+  // Optional fallback lookup key when the caller has only a display name
+  // (e.g., warm-up / cool-down rows seeded by name from the rule-based
+  // routine generator). When `libraryId` doesn't resolve, the sheet tries
+  // a case-insensitive name match against the curated library + Dexie.
+  nameFallback?: string
 }
 
-export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
+// Normalize an exercise name for fuzzy matching. Lowercases, strips
+// punctuation runs, and collapses whitespace. Used only for the
+// `nameFallback` lookup path.
+function normalizeName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[()[\]/\-_,.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function ExerciseInfoSheet({ libraryId, onClose, nameFallback }: Props) {
   // Reactive fetch from Dexie. `useLiveQuery` returns `undefined` while the
-  // query is pending and `null`/row once resolved. Keyed on libraryId so the
-  // effect re-fires when the caller switches exercises without unmounting.
+  // query is pending and `null`/row once resolved. Keyed on libraryId +
+  // nameFallback so the effect re-fires when the caller switches exercises
+  // without unmounting.
   //
   // Lookup order so the sheet doesn't come up empty on local-planner plans:
   //   1. Dexie `exerciseLibrary` (free-exercise-db seeds + custom inserts)
   //   2. Curated `EXERCISE_LIBRARY` constant (Kyra-priority lifts w/ cues)
   //   3. Planner variants pool (fallback: at least show name + muscles)
+  //   4. nameFallback — try by name in curated library, then Dexie. Used
+  //      for warm-up / cool-down rows which come from the rule-based
+  //      routine generator without a stable library id.
   const exercise = useLiveQuery<LibraryExercise | null | undefined>(
     async () => {
-      if (!libraryId) return null
+      if (!libraryId && !nameFallback) return null
       // 1. Try Dexie (free-exercise-db / custom)
-      const row = await db.exerciseLibrary.get(libraryId)
-      if (row) return row
+      if (libraryId) {
+        const row = await db.exerciseLibrary.get(libraryId)
+        if (row) return row
+      }
       // 2. Try curated library (ex-*)
-      const curated = EXERCISE_LIBRARY.find((e) => e.id === libraryId)
-      if (curated) {
-        return {
-          id: curated.id,
-          name: curated.name,
-          force: null,
-          level: curated.difficulty ?? null,
-          mechanic: null,
-          equipment: curated.equipment.join(', '),
-          primaryMuscles: curated.primary_muscles,
-          secondaryMuscles: curated.secondary_muscles,
-          instructions: curated.instructions,
-          category: null,
-          imageCount: 0,
-          rawId: curated.id,
-        } as LibraryExercise
+      if (libraryId) {
+        const curated = EXERCISE_LIBRARY.find((e) => e.id === libraryId)
+        if (curated) {
+          return {
+            id: curated.id,
+            name: curated.name,
+            force: null,
+            level: curated.difficulty ?? null,
+            mechanic: null,
+            equipment: curated.equipment.join(', '),
+            primaryMuscles: curated.primary_muscles,
+            secondaryMuscles: curated.secondary_muscles,
+            instructions: curated.instructions ?? [],
+            category: null,
+            imageCount: 0,
+            rawId: curated.id,
+          } as LibraryExercise
+        }
       }
       // 3. Try planner variants (variant:*)
-      if (libraryId.startsWith('variant:')) {
+      if (libraryId && libraryId.startsWith('variant:')) {
         const v = resolveVariant(libraryId.slice('variant:'.length))
         if (v) {
           return {
@@ -75,12 +99,58 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
           } as LibraryExercise
         }
       }
+      // 4. nameFallback — used when warm-up / cool-down items pass a display
+      // name without a library_id. Try curated first (richer cues), then
+      // Dexie's free-exercise-db rows, both case-insensitive. If nothing
+      // matches, synthesize a name-only stub so the sheet still shows the
+      // title + the "no description" fallback message.
+      if (nameFallback) {
+        const target = normalizeName(nameFallback)
+        const curatedByName = EXERCISE_LIBRARY.find(
+          (e) => normalizeName(e.name) === target,
+        )
+        if (curatedByName) {
+          return {
+            id: curatedByName.id,
+            name: curatedByName.name,
+            force: null,
+            level: curatedByName.difficulty ?? null,
+            mechanic: null,
+            equipment: curatedByName.equipment.join(', '),
+            primaryMuscles: curatedByName.primary_muscles,
+            secondaryMuscles: curatedByName.secondary_muscles,
+            instructions: curatedByName.instructions ?? [],
+            category: null,
+            imageCount: 0,
+            rawId: curatedByName.id,
+          } as LibraryExercise
+        }
+        const rows = await db.exerciseLibrary.toArray()
+        const dexieByName = rows.find(
+          (r) => normalizeName(r.name) === target,
+        )
+        if (dexieByName) return dexieByName
+        return {
+          id: `name:${target}`,
+          name: nameFallback,
+          force: null,
+          level: null,
+          mechanic: null,
+          equipment: null,
+          primaryMuscles: [],
+          secondaryMuscles: [],
+          instructions: [],
+          category: null,
+          imageCount: 0,
+          rawId: `name:${target}`,
+        } as LibraryExercise
+      }
       return null
     },
-    [libraryId],
+    [libraryId, nameFallback],
   )
 
-  if (libraryId === null) return null
+  if (libraryId === null && !nameFallback) return null
 
   const loading = exercise === undefined
 
@@ -155,9 +225,44 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
               )}
             </div>
 
+            {/* Instructions / How To — promoted to primary content per
+                user feedback ("I want a written description, sometimes the
+                description is enough"). Renders BEFORE the demo so the
+                sheet is useful even on rows with no curated video. */}
+            {exercise.instructions.length > 0 ? (
+              <div className="mb-4">
+                <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2">
+                  How To
+                </div>
+                <ol className="space-y-2">
+                  {exercise.instructions.map((step, i) => (
+                    <li key={i} className="flex gap-3">
+                      <span className="text-xs font-extrabold text-brand mt-0.5 shrink-0 w-5 text-right">
+                        {i + 1}.
+                      </span>
+                      <span className="text-[13px] text-zinc-300 leading-relaxed">
+                        {step}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : (
+              <p
+                data-testid="exercise-info-no-description"
+                className="text-[13px] mb-4 leading-relaxed"
+                style={{ color: 'var(--lumo-text-sec)' }}
+              >
+                No description available — try the YouTube link below for a demo.
+              </p>
+            )}
+
             {/* Curated form demo (YouTube Short from whitelisted creators).
                 If no demo is curated, fall back to the hotlinked first image
-                from free-exercise-db; if neither, show a gentle "no demo" note. */}
+                from free-exercise-db; if neither, show a quiet text-link to
+                a YouTube search. The CTA was demoted from a full-width
+                accent panel to a subtle inline link so the written
+                description above stays the primary content. */}
             {(() => {
               const demo = getDemo(exercise.id)
               const videoId = extractYouTubeVideoId(demo?.demo_url)
@@ -198,24 +303,21 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
               return (
                 <a
                   data-testid="exercise-demo-search"
-                  href={youtubeShortsSearchUrl(exercise.name)}
+                  href={youtubeSearchUrl(exercise.name)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-4 flex items-center justify-center gap-2 w-full active:scale-[0.98] transition-transform"
+                  className="mb-4 inline-flex items-center gap-1.5 active:scale-[0.98] transition-transform"
                   style={{
-                    padding: '14px 16px',
-                    borderRadius: 14,
-                    background: 'color-mix(in srgb, var(--brand) 14%, var(--lumo-overlay))',
-                    border: '1px solid color-mix(in srgb, var(--brand) 40%, transparent)',
-                    color: 'var(--brand)',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    letterSpacing: '-0.005em',
+                    color: 'var(--lumo-text-sec)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textDecoration: 'underline',
+                    textDecorationColor: 'color-mix(in srgb, var(--lumo-text-sec) 40%, transparent)',
+                    textUnderlineOffset: 3,
                   }}
                 >
-                  <Play size={16} />
-                  Watch on YouTube Shorts
+                  <Play size={12} />
+                  Watch a demo on YouTube
                 </a>
               )
             })()}
@@ -274,27 +376,6 @@ export function ExerciseInfoSheet({ libraryId, onClose }: Props) {
                 <div className="text-sm text-zinc-300 capitalize">
                   {exercise.equipment}
                 </div>
-              </div>
-            )}
-
-            {/* Instructions */}
-            {exercise.instructions.length > 0 && (
-              <div className="mb-2">
-                <div className="text-xs font-bold text-brand uppercase tracking-wide mb-2">
-                  How To
-                </div>
-                <ol className="space-y-2">
-                  {exercise.instructions.map((step, i) => (
-                    <li key={i} className="flex gap-3">
-                      <span className="text-xs font-extrabold text-brand mt-0.5 shrink-0 w-5 text-right">
-                        {i + 1}.
-                      </span>
-                      <span className="text-[13px] text-zinc-300 leading-relaxed">
-                        {step}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
               </div>
             )}
           </div>

@@ -14,6 +14,30 @@ vi.mock('../lib/routines', () => ({
   generateRoutine: vi.fn(),
 }))
 
+// Mock the info sheet so we can assert on the props the slot hands it
+// without dragging in Dexie + the curated library lookup. The mock renders
+// a tiny <span data-testid="info-sheet-mock"> only when `nameFallback` is
+// truthy so tests can verify "is this open right now?".
+vi.mock('./ExerciseInfoSheet', () => ({
+  ExerciseInfoSheet: ({
+    libraryId,
+    nameFallback,
+  }: {
+    libraryId: string | null
+    nameFallback?: string
+    onClose: () => void
+  }) => {
+    if (!nameFallback && !libraryId) return null
+    return (
+      <span
+        data-testid="info-sheet-mock"
+        data-library-id={libraryId ?? ''}
+        data-name-fallback={nameFallback ?? ''}
+      />
+    )
+  },
+}))
+
 import { RoutineSlot } from './RoutineSlot'
 import { useRoutine } from '../hooks/useRoutine'
 import { generateRoutine } from '../lib/routines'
@@ -234,6 +258,50 @@ describe('RoutineSlot', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(generateRoutine).not.toHaveBeenCalled()
+  })
+
+  it('renders one info button per warm-up item with stable test ids', () => {
+    vi.mocked(useRoutine).mockReturnValue({ routine: validRoutine, loading: false })
+
+    render(<RoutineSlot session={baseSession} kind="warmup" profile={baseProfile} />)
+
+    // validRoutine has 3 exercises → routine-info-0..2
+    expect(screen.getByTestId('routine-info-0')).toBeInTheDocument()
+    expect(screen.getByTestId('routine-info-1')).toBeInTheDocument()
+    expect(screen.getByTestId('routine-info-2')).toBeInTheDocument()
+    // Sheet not yet mounted
+    expect(screen.queryByTestId('info-sheet-mock')).not.toBeInTheDocument()
+  })
+
+  it('clicking an item info button opens the info sheet with that name as nameFallback', () => {
+    vi.mocked(useRoutine).mockReturnValue({ routine: validRoutine, loading: false })
+
+    render(<RoutineSlot session={baseSession} kind="warmup" profile={baseProfile} />)
+
+    fireEvent.click(screen.getByTestId('routine-info-1'))
+
+    const mock = screen.getByTestId('info-sheet-mock')
+    expect(mock).toBeInTheDocument()
+    expect(mock.getAttribute('data-name-fallback')).toBe('Hip airplane')
+    // Routine items have no library_id — assert it's null/blank
+    expect(mock.getAttribute('data-library-id')).toBe('')
+  })
+
+  it('cardio single-row also renders an info button (testid routine-info-0)', () => {
+    const cardioSingle: Routine = {
+      title: 'Steady Cardio',
+      exercises: [
+        { name: 'Zone 2 Bike', duration_seconds: 600, notes: 'Conversational pace' },
+      ],
+    }
+    vi.mocked(useRoutine).mockReturnValue({ routine: cardioSingle, loading: false })
+
+    render(<RoutineSlot session={baseSession} kind="cardio" profile={baseProfile} />)
+
+    const btn = screen.getByTestId('routine-info-0')
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(screen.getByTestId('info-sheet-mock').getAttribute('data-name-fallback')).toBe('Zone 2 Bike')
   })
 
   it('shows Retry button when generation throws; retry re-calls generateRoutine', async () => {
