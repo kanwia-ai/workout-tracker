@@ -41,11 +41,12 @@ function isValidId(id: string): boolean {
 }
 
 // ─── Search shortcuts ───────────────────────────────────────────────────
-// Opens YouTube search biased toward Shorts-format clips (appends "shorts"
-// to the query) and sorted by view count (sp=CAMSAhAB → order:viewCount,
-// type:video). Deep-links into youtube.com so iOS/Android hands off to the
-// native YouTube app when installed.
-export function youtubeShortsSearchUrl(query: string): string {
-  const q = encodeURIComponent(`${query} form shorts`)
-  return `https://www.youtube.com/results?search_query=${q}&sp=CAMSAhAB`
+// Opens a plain YouTube search for "<exercise> form". Deep-links into
+// youtube.com so iOS/Android hands off to the native YouTube app when
+// installed. We intentionally avoid the sp= filter and the "shorts" suffix
+// because YouTube's results page silently ignores both, leaving users with
+// a confusing mix of unrelated videos.
+export function youtubeSearchUrl(query: string): string {
+  const q = encodeURIComponent(`${query} form`)
+  return `https://www.youtube.com/results?search_query=${q}`
 }

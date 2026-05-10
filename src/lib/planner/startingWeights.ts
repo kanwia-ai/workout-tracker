@@ -31,6 +31,8 @@ type Category =
   | 'glute_bridge_barbell'
   | 'deadlift_barbell'
   | 'rdl_barbell'
+  | 'rdl_db'
+  | 'single_leg_rdl_db'
   | 'trap_bar_deadlift'
   | 'bench_press_barbell'
   | 'overhead_press_barbell'
@@ -40,6 +42,13 @@ type Category =
   | 'db_shoulder_press'
   | 'db_lateral_raise'
   | 'db_curl'
+  | 'db_pullover'
+  | 'cable_pullover'
+  | 'shrug_barbell'
+  | 'shrug_db'
+  | 'tricep_extension_barbell'
+  | 'tricep_extension_db'
+  | 'rear_delt_fly_db'
   | 'cable_row'
   | 'lat_pulldown'
   | 'face_pull'
@@ -76,6 +85,8 @@ const CATEGORIES: Record<Exclude<Category, 'bodyweight'>, CategoryRule> = {
   glute_bridge_barbell: { category: 'glute_bridge_barbell', ratio: 0.6, implement: 'barbell' },
   deadlift_barbell: { category: 'deadlift_barbell', ratio: 0.75, implement: 'barbell' },
   rdl_barbell: { category: 'rdl_barbell', ratio: 0.55, implement: 'barbell' },
+  rdl_db: { category: 'rdl_db', ratio: 0.18, implement: 'dumbbell', perHand: true, capPerHand: 80 },
+  single_leg_rdl_db: { category: 'single_leg_rdl_db', ratio: 0.1, implement: 'dumbbell', perHand: true, capPerHand: 50 },
   trap_bar_deadlift: { category: 'trap_bar_deadlift', ratio: 0.8, implement: 'barbell' },
   bench_press_barbell: { category: 'bench_press_barbell', ratio: 0.45, implement: 'barbell' },
   overhead_press_barbell: { category: 'overhead_press_barbell', ratio: 0.3, implement: 'barbell' },
@@ -85,6 +96,13 @@ const CATEGORIES: Record<Exclude<Category, 'bodyweight'>, CategoryRule> = {
   db_shoulder_press: { category: 'db_shoulder_press', ratio: 0.15, implement: 'dumbbell', perHand: true, capPerHand: 80 },
   db_lateral_raise: { category: 'db_lateral_raise', ratio: 0.04, implement: 'dumbbell', perHand: true, capPerHand: 15 },
   db_curl: { category: 'db_curl', ratio: 0.08, implement: 'dumbbell', perHand: true, capPerHand: 40 },
+  db_pullover: { category: 'db_pullover', ratio: 0.22, implement: 'dumbbell', capPerHand: 80 },
+  cable_pullover: { category: 'cable_pullover', ratio: 0.4, implement: 'cable' },
+  shrug_barbell: { category: 'shrug_barbell', ratio: 0.4, implement: 'barbell' },
+  shrug_db: { category: 'shrug_db', ratio: 0.25, implement: 'dumbbell', perHand: true, capPerHand: 100 },
+  tricep_extension_barbell: { category: 'tricep_extension_barbell', ratio: 0.2, implement: 'barbell' },
+  tricep_extension_db: { category: 'tricep_extension_db', ratio: 0.06, implement: 'dumbbell', perHand: true, capPerHand: 30 },
+  rear_delt_fly_db: { category: 'rear_delt_fly_db', ratio: 0.04, implement: 'dumbbell', perHand: true, capPerHand: 15 },
   cable_row: { category: 'cable_row', ratio: 0.45, implement: 'cable' },
   lat_pulldown: { category: 'lat_pulldown', ratio: 0.55, implement: 'cable' },
   face_pull: { category: 'face_pull', ratio: 0.12, implement: 'cable' },
@@ -133,7 +151,6 @@ const KEYWORD_TABLE: KeywordMatch[] = [
   { all: ['body weight'], category: 'bodyweight' },
   { all: ['(bw)'], category: 'bodyweight' },
   { all: ['stretch'], category: 'bodyweight' },
-  { all: ['pullover'], category: 'bodyweight' },
   { all: ['y raise'], category: 'bodyweight' },
   { all: ['y-raise'], category: 'bodyweight' },
   { all: ['terminal knee extension'], category: 'bodyweight' },
@@ -141,6 +158,15 @@ const KEYWORD_TABLE: KeywordMatch[] = [
   // Hinges / deadlifts — specific first.
   { all: ['trap bar'], category: 'trap_bar_deadlift' },
   { all: ['trap-bar'], category: 'trap_bar_deadlift' },
+  { all: ['single leg', 'romanian'], category: 'single_leg_rdl_db' },
+  { all: ['single-leg', 'romanian'], category: 'single_leg_rdl_db' },
+  { all: ['single leg rdl'], category: 'single_leg_rdl_db' },
+  { all: ['single-leg rdl'], category: 'single_leg_rdl_db' },
+  { all: ['romanian deadlift', 'dumbbell'], category: 'rdl_db' },
+  { all: ['romanian deadlift', 'db'], category: 'rdl_db' },
+  { all: ['rdl', 'dumbbell'], category: 'rdl_db' },
+  { all: ['rdl', 'db'], category: 'rdl_db' },
+  { all: ['db rdl'], category: 'rdl_db' },
   { all: ['romanian deadlift'], category: 'rdl_barbell' },
   { all: ['rdl'], category: 'rdl_barbell' },
   { all: ['deadlift'], category: 'deadlift_barbell' },
@@ -158,6 +184,8 @@ const KEYWORD_TABLE: KeywordMatch[] = [
   { all: ['split squat'], category: 'split_squat_db', exclude: ['bodyweight', '(bw)'] },
   { all: ['reverse lunge'], category: 'split_squat_db' },
   { all: ['forward lunge'], category: 'split_squat_db' },
+  { all: ['lateral lunge'], category: 'split_squat_db' },
+  { all: ['side lunge'], category: 'split_squat_db' },
   { all: ['loaded lunge'], category: 'split_squat_db' },
   { all: ['box squat'], category: 'barbell_back_squat' },
   { all: ['back squat'], category: 'barbell_back_squat' },
@@ -194,13 +222,35 @@ const KEYWORD_TABLE: KeywordMatch[] = [
   { all: ['dumbbell row'], category: 'db_row' },
   { all: ['bent', 'row'], category: 'barbell_row' },
   { all: ['barbell row'], category: 'barbell_row' },
+  { all: ['cable pullover'], category: 'cable_pullover' },
+  { all: ['pullover'], category: 'db_pullover' },
 
   // Isolation / machines.
+  { all: ['rear delt fly'], category: 'rear_delt_fly_db' },
+  { all: ['rear-delt fly'], category: 'rear_delt_fly_db' },
+  { all: ['reverse fly'], category: 'rear_delt_fly_db' },
+  { all: ['reverse flye'], category: 'rear_delt_fly_db' },
+  { all: ['rear delt raise'], category: 'rear_delt_fly_db' },
   { all: ['lateral raise'], category: 'db_lateral_raise' },
   { all: ['lat raise'], category: 'db_lateral_raise' },
+  { all: ['hammer curl'], category: 'db_curl' },
   { all: ['bicep curl'], category: 'db_curl' },
   { all: ['dumbbell curl'], category: 'db_curl' },
   { all: ['db curl'], category: 'db_curl' },
+  { all: ['skullcrusher'], category: 'tricep_extension_barbell' },
+  { all: ['skull crusher'], category: 'tricep_extension_barbell' },
+  { all: ['tricep extension', 'dumbbell'], category: 'tricep_extension_db' },
+  { all: ['tricep extension', 'db'], category: 'tricep_extension_db' },
+  { all: ['triceps extension', 'dumbbell'], category: 'tricep_extension_db' },
+  { all: ['triceps extension', 'db'], category: 'tricep_extension_db' },
+  { all: ['tricep extension'], category: 'tricep_extension_barbell' },
+  { all: ['triceps extension'], category: 'tricep_extension_barbell' },
+  { all: ['lying triceps press'], category: 'tricep_extension_barbell' },
+  { all: ['barbell shrug'], category: 'shrug_barbell' },
+  { all: ['bb shrug'], category: 'shrug_barbell' },
+  { all: ['dumbbell shrug'], category: 'shrug_db' },
+  { all: ['db shrug'], category: 'shrug_db' },
+  { all: ['shrug'], category: 'shrug_db' },
   { all: ['leg press'], category: 'leg_press' },
   { all: ['leg curl'], category: 'leg_curl' },
   { all: ['hamstring curl'], category: 'leg_curl' },

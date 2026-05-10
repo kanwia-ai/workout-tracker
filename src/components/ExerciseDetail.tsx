@@ -1,6 +1,6 @@
 import { ChevronLeft, AlertTriangle, CheckCircle, Info, Play } from 'lucide-react'
 import type { Exercise, KneeSafety } from '../types'
-import { youtubeShortsSearchUrl } from '../lib/youtube'
+import { youtubeSearchUrl } from '../lib/youtube'
 
 // ─── Display helpers ────────────────────────────────────────────────────────
 
@@ -211,12 +211,12 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
           </div>
         </div>
 
-        {/* Watch on YouTube Shorts — opens a view-count-sorted search bent
-            toward Shorts-format demos so the user gets quick high-quality
-            form refs without leaving the flow for long. */}
+        {/* Watch on YouTube — opens a plain "<exercise> form" search so the
+            user gets quick high-quality form refs without leaving the flow
+            for long. */}
         <a
           data-testid="exercise-detail-youtube"
-          href={youtubeShortsSearchUrl(exercise.name)}
+          href={youtubeSearchUrl(exercise.name)}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full active:scale-[0.98] transition-transform"
@@ -234,7 +234,7 @@ export function ExerciseDetail({ exercise, onBack }: ExerciseDetailProps) {
           }}
         >
           <Play size={16} />
-          Watch on YouTube Shorts
+          Watch on YouTube
         </a>
 
         {/* Description */}
