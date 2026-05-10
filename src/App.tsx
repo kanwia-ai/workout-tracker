@@ -439,6 +439,7 @@ function App() {
         replanState={replanState}
         checkinCount={checkinCount}
         cheek={tweaksApi.tweaks.cheek}
+        onSignOut={signOut}
         onRegeneratePlan={() => {
           // Reload the saved profile and re-run plan generation against the
           // current prompt + backend. runGeneration flips isGenerating=true,
@@ -482,7 +483,6 @@ function App() {
         <WorkoutView
           userId={user.id}
           profile={profile}
-          onSignOut={signOut}
           onWorkoutComplete={() => {
             updateStreak()
             setSessionStarted(false)

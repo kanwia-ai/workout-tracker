@@ -51,6 +51,7 @@ function renderWired(
     onReplanClose?: () => void
     onReplanApply?: () => void
     onResetApp?: () => void
+    onSignOut?: () => void
   } = {},
 ) {
   installMatchMediaMock()
@@ -73,6 +74,7 @@ function renderWired(
         onReplanClose={opts.onReplanClose}
         onReplanApply={opts.onReplanApply}
         onResetApp={opts.onResetApp}
+        onSignOut={opts.onSignOut}
       />
     )
   }
@@ -301,6 +303,24 @@ describe('SettingsScreen', () => {
       expect(err).toHaveAttribute('role', 'alert')
       expect(err).toHaveTextContent(/Network hiccup/)
     })
+  })
+
+  it('renders a sign-out button when onSignOut is provided', () => {
+    renderWired({ onSignOut: vi.fn() })
+    expect(screen.getByTestId('settings-sign-out')).toBeInTheDocument()
+    expect(screen.getByText(/account/i)).toBeInTheDocument()
+  })
+
+  it('does not render the Account section when onSignOut is omitted', () => {
+    renderWired()
+    expect(screen.queryByTestId('settings-sign-out')).not.toBeInTheDocument()
+  })
+
+  it('clicking sign-out calls the onSignOut handler', () => {
+    const onSignOut = vi.fn()
+    renderWired({ onSignOut })
+    fireEvent.click(screen.getByTestId('settings-sign-out'))
+    expect(onSignOut).toHaveBeenCalledTimes(1)
   })
 
   // Sanity check that imperative setThemeMode updates the hook state.

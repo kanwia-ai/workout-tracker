@@ -86,6 +86,14 @@ export interface SettingsScreenProps {
    * Settings just confirms intent and calls back.
    */
   onResetApp?: () => void
+  /**
+   * Sign out — calls supabase.auth.signOut. Owner clears profile state
+   * and the App router drops the user back to LoginScreen. Local Dexie
+   * data is preserved (only the session token is invalidated) so the
+   * user can sign back in and pick up where they left off. For a full
+   * wipe, use {@link onResetApp}.
+   */
+  onSignOut?: () => Promise<void> | void
 }
 
 /**
@@ -123,6 +131,7 @@ export function SettingsScreen({
   onReplanApply,
   cheek,
   onResetApp,
+  onSignOut,
 }: SettingsScreenProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [replanConfirmOpen, setReplanConfirmOpen] = useState(false)
@@ -420,6 +429,40 @@ export function SettingsScreen({
             </span>
           </Row>
         </Section>
+
+        {onSignOut && (
+          <Section title="Account">
+            <button
+              type="button"
+              data-testid="settings-sign-out"
+              onClick={() => { void onSignOut() }}
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                background: 'var(--lumo-bg)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 12,
+                color: 'var(--lumo-text)',
+                fontSize: 14,
+                fontWeight: 600,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              Sign out
+            </button>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                lineHeight: 1.45,
+                padding: '8px 4px 0',
+              }}
+            >
+              Ends your session. Your plan and history stay on this device — sign back in to pick up where you left off.
+            </div>
+          </Section>
+        )}
 
         {onResetApp && (
           <Section title="Danger zone">
