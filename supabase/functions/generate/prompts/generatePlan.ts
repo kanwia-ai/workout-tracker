@@ -51,6 +51,13 @@ export interface BuildPlanPromptInput {
   today?: string
 }
 
+// WHY (rule 5.3, "toned" / "lean" string-matches removed): 5-30 rep ranges all
+// build muscle if trained near failure (Schoenfeld 2017). "Toned" and "lean"
+// are body composition outcomes (diet-driven), not training-stimulus
+// categories. The rep range should follow the user's actual goal
+// (build_muscle / get_stronger / etc.), not a body-comp aesthetic.
+// "glutes" stays in the match — but as a PRIORITY MUSCLE, not a unique
+// rep prescription. Its rep range follows the user's actual goal.
 export function buildPlanPrompt(input: BuildPlanPromptInput): string {
   const { profile, exercisePool, weeks } = input
   const today = input.today ?? new Date().toISOString().slice(0, 10)
@@ -139,7 +146,7 @@ Every exercise object MUST include a warmup_sets array (it may be empty, but the
 5.2 Total 5-7 exercises per session. Never fewer than 4, never more than 8.
 5.3 Sets × reps follow the user's primary goal (profile.goal):
        STRENGTH focus (goal contains "strength" / "powerlifting"):  3-5 reps × 3-5 sets, RIR 1-2 on main, 1-3 on accessories
-       HYPERTROPHY focus (goal contains "build_muscle" / "aesthetic" / body-part-specific like "glutes" / "toned" / "lean"):  6-12 reps × 3-4 sets, RIR 1-3
+       HYPERTROPHY focus (goal contains "build_muscle" / "aesthetic"; body-part priorities like "glutes" follow the user's actual goal's rep range — "glutes" is a priority muscle, not a unique rep prescription):  6-12 reps × 3-4 sets, RIR 1-3
        When uncertain, default to hypertrophy. (Note: rep range does NOT determine "toned vs bulky" — body composition is diet-driven; hypertrophy works across ~5-30 reps when sets are taken close to failure.)
 5.4 Rest seconds per role: main compound 180s, accessory 120s, isolation 75s, rehab/mobility 30-45s, core 45-60s.
 5.5 Every library_id MUST exist in the provided pool. Every exercise's name is denormalized from the pool entry (copy the pool row's "name" field verbatim). See rule 0.
@@ -237,9 +244,9 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
   DEADLINE AWARENESS: today's date is ${today}. If specific_target contains a date, month name, or "by [time]" pattern, compute approximate weeks until that deadline from today and apply:
        ≥ 12 weeks  → no urgency; standard progression as spec'd in rules 7-8.
        6-12 weeks  → bias toward compounds + slightly higher volume on muscle_priority groups (push toward MAV, not MEV).
-       2-6 weeks   → emphasize compound full-body sessions; in the per-session rationale, suggest the user pair this with a calorie deficit / cardio (this is a strength program, not a weight-loss tracker).
+       2-6 weeks   → emphasize compound full-body sessions. If the user has a body-composition deadline (e.g. "lose 1 dress size by June"), explicitly acknowledge in the rationale that the program builds and protects muscle but the body-comp outcome is diet-driven. Don't promise the program will deliver the visual goal — name the actual lever (kitchen). The user can layer cardio if they enjoy it, but do NOT prescribe cardio as part of the deadline response.
        < 2 weeks   → in the per-session rationale, surface ONCE per mesocycle: "this is a tight timeline — strength training builds slowly; pair with diet for any weight-loss goal."
-  Body-composition targets ("dress size", "lose X lbs", "bikini body") are weight/shape goals, not strength goals — surface the diet-pairing note in rationale and do NOT promise the program alone will deliver it.
+  Body-composition targets ("dress size", "lose X lbs", "bikini body") are weight/shape goals, not strength goals — surface the diet-pairing note in rationale and do NOT promise the program alone will deliver it. Cardio is optional; do NOT add it to the prescription.
 
 • want_demo_videos: no effect on generation (UI concern only).
 • active_minutes (int, optional): ACTIVE LIFTING MINUTES — the user's work time only, rest between sets NOT counted. When present, use this (NOT time_budget_min) to cap set counts: assume ~60-90 seconds of actual work per set (reps × tempo), and set rest per rule 5.4. Example: active_minutes=45 on a pull day → ~25-30 working sets max across the session. If only time_budget_min is present, subtract ~30% to estimate active work time.

@@ -71,7 +71,10 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
       finishers: [12, 15],
     },
     intensity_bias: 'moderate load, higher volume, RIR 1-3',
-    cardio_policy: 'integrated',
+    // WHY: hypertrophy users don't need scheduled cardio days. Surface cardio
+    // as opt-in, not part of the lifting plan. (Concurrent-training literature
+    // leans against same-session cardio for hypertrophy specifically.)
+    cardio_policy: 'optional',
   },
   lean_and_strong: {
     aesthetic: 'athletic',
@@ -86,15 +89,21 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
   },
   fat_loss: {
     aesthetic: 'general',
-    primary_adaptation: 'work_capacity',
+    primary_adaptation: 'size',
+    // WHY: fat loss is diet-driven. Training during a deficit should protect
+    // strength + muscle via normal hypertrophy programming. "Density / short
+    // rest" is the metabolic-stress myth (Schoenfeld + Helms consensus: full
+    // rest periods produce more volume → more muscle preservation in a
+    // deficit). Mirror build_muscle's rep_scheme_bias and intensity_bias so
+    // the user trains for muscle preservation, not "more sweat per minute".
     rep_scheme_bias: {
-      main_compounds: [6, 8],
+      main_compounds: [5, 8],
       accessories: [8, 12],
-      finishers: [12, 20],
+      finishers: [12, 15],
     },
-    intensity_bias: 'moderate load, density-focused, short rest',
-    // WHY: fat loss is diet-driven. Cardio is a deficit accelerator, not a
-    // requirement. Don't force 3 cardio days on someone whose goal is body comp.
+    intensity_bias: 'moderate load, higher volume, RIR 1-3',
+    // WHY: cardio is a deficit accelerator, not a requirement. Don't force 3
+    // cardio days on someone whose goal is body comp.
     cardio_policy: 'optional',
   },
   mobility: {

@@ -33,7 +33,8 @@ Decision rules (read the per-muscle-group rollup in the user payload BEFORE deci
 
 - A muscle group with MOSTLY EASY ratings (dominant rating = 'easy', no 'failed', tough+ % is low): the user is at or below MEV → ADD 1-2 sets/week to that muscle group, capping at MAV mid (~14 sets/week).
 - A muscle group with BALANCED ratings (dominant = 'solid'): the user is in MAV → MAINTAIN, or +1 set/week if the muscle group is on the user's priority list.
-- A muscle group with TOUGH-OR-WORSE ratings (dominant = 'tough'/'failed', or tough+ % >= 40%): the user is approaching MRV → CUT 2 sets/week on that muscle group.
+- A muscle group dominated by 'tough' ratings with reps cleared (no 'failed', user is hitting their rep targets): the user is exactly where they should be at RIR 1-3 — MAINTAIN or +1 set/week if it's a priority muscle. Do NOT cut volume. WHY: RIR 1-3 (the prescription) feels tough by design. Treating "tough" as an MRV breach over-deloads users who are training correctly.
+- A muscle group dominated by 'failed' ratings (reps not completed, or failed+ % >= 40%): the user is over MRV or under-recovered → CUT 2 sets/week on that muscle group. WHY: only "failed" (reps not completed) signals true overreach. "Tough" with reps cleared = on-target stimulus.
 - Coming back from a deload week (last block ended on deload): rebuild from a slightly-lower volume baseline and let the next block climb +1 set/week.
 
 PER-MUSCLE-GROUP REASONING. Aggregate per muscle group, not per exercise. A user can rate "tough" on a single isolation exercise yet be fine for the muscle group overall — don't punish a whole muscle group on the basis of one exercise. The rollup table in the user payload makes this explicit; trust it for set-count direction.

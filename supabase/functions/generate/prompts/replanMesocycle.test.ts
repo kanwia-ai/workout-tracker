@@ -38,11 +38,18 @@ describe('REPLAN_SYSTEM_PROMPT (audit item #1 — MEV/MAV/MRV)', () => {
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/20-25/)
   })
 
-  it('spells out the decision rules (easy → +sets, tough → -sets)', () => {
+  it('spells out the decision rules (easy → +sets, failed → -sets; tough stays on-target)', () => {
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/MOSTLY EASY/i)
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/ADD 1-2 sets/i)
-    expect(REPLAN_SYSTEM_PROMPT).toMatch(/TOUGH-OR-WORSE/i)
+    // WHY changed: the old rule cut 2 sets/week any time the dominant rating
+    // was 'tough'. RIR 1-3 (the prescription) is supposed to feel tough; cutting
+    // on 'tough' over-deloads users who are training correctly. Set cuts now
+    // trigger ONLY on 'failed' (reps not completed) — true overreach signal.
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/dominated by 'failed' ratings/i)
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/CUT 2 sets/i)
+    // 'tough' with reps cleared = on-target → maintain, not cut
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/dominated by 'tough' ratings with reps cleared/i)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/Do NOT cut volume/i)
   })
 
   it('tells the model to aggregate per muscle group, not per exercise', () => {

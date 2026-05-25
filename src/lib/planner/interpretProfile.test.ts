@@ -144,7 +144,11 @@ describe('interpretProfile — goal interpretation', () => {
   it('balanced aesthetic on fat_loss returns base goal directives unchanged', () => {
     const d = interpretProfile(DESK_WORKER_TONED)
     // No rep-range rewrite from aesthetic — fat_loss base owns the scheme.
-    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([6, 8])
+    // WHY: fat_loss now mirrors build_muscle (5-8 / 8-12 / 12-15). Cutting
+    // means protecting muscle via hypertrophy programming, not chasing
+    // density. Earlier 6-8 / 8-12 / 12-20 ranges leaned on the metabolic-
+    // stress myth (Schoenfeld + Helms consensus).
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([5, 8])
     expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
   })
 
