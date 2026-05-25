@@ -4,6 +4,26 @@ A mobile-first PWA for tracking strength training workouts at the gym, with sess
 
 ![Workout Tracker](screenshot.png)
 
+## Deploying & recovering from incidents
+
+### Trigger a Replit redeploy
+Git push does NOT auto-rebuild. To deploy a new bundle:
+1. Push to `main`
+2. Open the Replit workspace
+3. Click the **Deploy** tab → **Republish** (or "Deploy" if first time)
+4. Wait for the build to finish (~2 min)
+5. Hard refresh https://workout-tracker-kanwia.replit.app/ to bypass PWA cache
+
+### If sign-in is broken
+The app runs in local-first mode — sign-in is for cross-device sync only. If you can't sign in:
+1. The app should still work — your data lives in your browser via IndexedDB
+2. To check whether Supabase is the problem, run: `curl -sS -o /dev/null -w "%{http_code}\n" https://<your-supabase-ref>.supabase.co/auth/v1/health`. Anything except 200 means the backend is down.
+3. If Supabase is suspended (>7 days inactive), restore it in the Supabase dashboard.
+4. If Supabase is fully gone (NXDOMAIN), you need to provision a new project. Run `supabase/migrations/*` against the new project and redeploy `supabase/functions/generate`.
+
+### If onboarding seems to hang on the Confirm screen
+Check browser devtools console. The local Dexie write may have failed (Safari private mode, OPFS quota, etc.). The app now surfaces this — if you see no error, it's something else; file an issue.
+
 ## Features
 
 - **Session timer with lap tracking** -- timestamps each workout phase (warm-up, lifting, cardio, cool-down) like iPhone timer laps, with confirmation before switching phases

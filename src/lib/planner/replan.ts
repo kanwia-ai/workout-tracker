@@ -148,8 +148,9 @@ export async function replanNextBlock(
 
   // Persist the full re-plan result. We don't gate the return on this
   // write — the user should see the rationale modal even if Dexie throws
-  // (e.g. quota exceeded). But we still try, and we log on failure so the
-  // telemetry-adjacent code can flag it.
+  // (e.g. quota exceeded). But we still try, and we log loudly on failure so
+  // it's impossible to miss in devtools (escalated from warn -> error per
+  // the 2026-05-24 silent-failure sweep).
   try {
     const historyId = `replan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     await db.replanHistory.put({
@@ -161,7 +162,7 @@ export async function replanNextBlock(
       synced: false,
     })
   } catch (err) {
-    console.warn('replanNextBlock: failed to persist replan history', err)
+    console.error('replanNextBlock: failed to persist replan history', err)
   }
 
   return result

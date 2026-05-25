@@ -101,9 +101,14 @@ export async function applySwap(
   const updatedSession: PlannedSession = { ...target, exercises: updatedExercises }
   const updatedSessions = sessions.map((s, i) => (i === targetIdx ? updatedSession : s))
 
-  await db.mesocycles.put({
-    ...row,
-    sessions_json: JSON.stringify(updatedSessions),
-    synced: false,
-  })
+  try {
+    await db.mesocycles.put({
+      ...row,
+      sessions_json: JSON.stringify(updatedSessions),
+      synced: false,
+    })
+  } catch (err) {
+    console.error('applySwap: Dexie put failed', { mesoId, sessionId, exerciseIndex, err })
+    throw err
+  }
 }

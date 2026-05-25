@@ -28,7 +28,15 @@ export async function saveCheckin(checkin: SessionCheckin): Promise<void> {
     checkin_json: JSON.stringify({ ...parsed, synced: false }),
     synced: false,
   }
-  await db.sessionCheckins.put(row)
+  // Be loud at the persistence boundary. Callers (WorkoutView) decide
+  // whether to surface — but the console + thrown error makes silent Dexie
+  // failures impossible to miss in devtools.
+  try {
+    await db.sessionCheckins.put(row)
+  } catch (err) {
+    console.error('saveCheckin: Dexie put failed', { session_id: parsed.session_id, err })
+    throw err
+  }
 }
 
 /**

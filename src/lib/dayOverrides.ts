@@ -46,7 +46,12 @@ export async function setOverrideForDate(
     created_at: new Date().toISOString(),
     synced: false,
   }
-  await db.dayOverrides.put(row)
+  try {
+    await db.dayOverrides.put(row)
+  } catch (err) {
+    console.error('setOverrideForDate: Dexie put failed', { id: row.id, err })
+    throw err
+  }
   return row
 }
 
@@ -55,7 +60,12 @@ export async function clearOverrideForDate(
   userId: string,
   dateISO: string,
 ): Promise<void> {
-  await db.dayOverrides.delete(keyFor(userId, dateISO))
+  try {
+    await db.dayOverrides.delete(keyFor(userId, dateISO))
+  } catch (err) {
+    console.error('clearOverrideForDate: Dexie delete failed', { userId, dateISO, err })
+    throw err
+  }
 }
 
 /** Drop overrides older than `cutoffDays` days. Cleanup helper. */
@@ -72,6 +82,11 @@ export async function pruneOldOverrides(
     .toArray()
   const stale = rows.filter((r) => r.date < cutoffISO)
   if (stale.length === 0) return 0
-  await db.dayOverrides.bulkDelete(stale.map((r) => r.id))
+  try {
+    await db.dayOverrides.bulkDelete(stale.map((r) => r.id))
+  } catch (err) {
+    console.error('pruneOldOverrides: Dexie bulkDelete failed', { userId, count: stale.length, err })
+    throw err
+  }
   return stale.length
 }

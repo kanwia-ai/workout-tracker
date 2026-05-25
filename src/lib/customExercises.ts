@@ -53,13 +53,23 @@ export async function saveCustomExercise(
     created_at: new Date().toISOString(),
     synced: false,
   }
-  await db.customExercises.put(row)
+  try {
+    await db.customExercises.put(row)
+  } catch (err) {
+    console.error('saveCustomExercise: Dexie put failed', { id: row.id, err })
+    throw err
+  }
   return row
 }
 
 /** Delete a single custom exercise by id. */
 export async function deleteCustomExercise(id: string): Promise<void> {
-  await db.customExercises.delete(id)
+  try {
+    await db.customExercises.delete(id)
+  } catch (err) {
+    console.error('deleteCustomExercise: Dexie delete failed', { id, err })
+    throw err
+  }
 }
 
 // crypto.randomUUID is available in all modern browsers that Dexie targets,

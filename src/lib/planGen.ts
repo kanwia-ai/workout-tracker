@@ -125,15 +125,20 @@ export async function generatePlanLocal(
 ): Promise<Mesocycle> {
   const { mesocycle } = orchestratePlan(profile, userId, weeks)
 
-  await db.mesocycles.put({
-    id: mesocycle.id,
-    user_id: mesocycle.user_id,
-    generated_at: mesocycle.generated_at,
-    length_weeks: mesocycle.length_weeks,
-    sessions_json: JSON.stringify(mesocycle.sessions),
-    profile_snapshot_json: JSON.stringify(profile),
-    synced: false,
-  })
+  try {
+    await db.mesocycles.put({
+      id: mesocycle.id,
+      user_id: mesocycle.user_id,
+      generated_at: mesocycle.generated_at,
+      length_weeks: mesocycle.length_weeks,
+      sessions_json: JSON.stringify(mesocycle.sessions),
+      profile_snapshot_json: JSON.stringify(profile),
+      synced: false,
+    })
+  } catch (err) {
+    console.error('generatePlanLocal: Dexie put failed', { id: mesocycle.id, err })
+    throw err
+  }
 
   return mesocycle
 }
@@ -180,15 +185,20 @@ export async function generatePlanFromDirectives(
   }
   const mesocycle = result.data
 
-  await db.mesocycles.put({
-    id: mesocycle.id,
-    user_id: mesocycle.user_id,
-    generated_at: mesocycle.generated_at,
-    length_weeks: mesocycle.length_weeks,
-    sessions_json: JSON.stringify(mesocycle.sessions),
-    profile_snapshot_json: JSON.stringify(profile),
-    synced: false,
-  })
+  try {
+    await db.mesocycles.put({
+      id: mesocycle.id,
+      user_id: mesocycle.user_id,
+      generated_at: mesocycle.generated_at,
+      length_weeks: mesocycle.length_weeks,
+      sessions_json: JSON.stringify(mesocycle.sessions),
+      profile_snapshot_json: JSON.stringify(profile),
+      synced: false,
+    })
+  } catch (err) {
+    console.error('generatePlanFromDirectives: Dexie put failed', { id: mesocycle.id, err })
+    throw err
+  }
 
   return mesocycle
 }
@@ -235,15 +245,20 @@ export async function generatePlan(
   }
   const meso = result.data
 
-  await db.mesocycles.put({
-    id: meso.id,
-    user_id: meso.user_id,
-    generated_at: meso.generated_at,
-    length_weeks: meso.length_weeks,
-    sessions_json: JSON.stringify(meso.sessions),
-    profile_snapshot_json: JSON.stringify(profile),
-    synced: false,
-  })
+  try {
+    await db.mesocycles.put({
+      id: meso.id,
+      user_id: meso.user_id,
+      generated_at: meso.generated_at,
+      length_weeks: meso.length_weeks,
+      sessions_json: JSON.stringify(meso.sessions),
+      profile_snapshot_json: JSON.stringify(profile),
+      synced: false,
+    })
+  } catch (err) {
+    console.error('generatePlan: Dexie put failed', { id: meso.id, err })
+    throw err
+  }
 
   return meso
 }

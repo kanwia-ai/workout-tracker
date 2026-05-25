@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, RefreshCw, AlertTriangle, X, ChevronDown, Info } from 'lucide-react'
+import { Loader2, RefreshCw, X, ChevronDown, Info } from 'lucide-react'
 import type { PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import type { RoutineKind } from '../lib/routines'
 import { generateRoutine } from '../lib/routines'
 import { useRoutine } from '../hooks/useRoutine'
 import { ExerciseInfoSheet } from './ExerciseInfoSheet'
+import { Lumo } from './Lumo'
 
 // ─── Defaults & chip menus ────────────────────────────────────────────────
 // These live in-module so the component re-renders never reallocate them and
@@ -106,8 +107,14 @@ export function RoutineSlot({ session, kind, profile }: Props) {
         minutes,
         ...(focusTag ? { focusTag } : {}),
       })
-    } catch {
-      setError(`Failed to build ${KIND_LABELS[kind]}`)
+    } catch (err) {
+      // Capture the underlying error so the user can see the real reason
+      // (network down, edge function 500, validation failure) on long-press /
+      // hover via title attribute. Without this, "Failed to build warmup"
+      // hides the actual cause when Supabase or the edge function is down.
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`RoutineSlot doGenerate(${kind}) failed:`, err)
+      setError(message || `Failed to build ${KIND_LABELS[kind]}`)
     } finally {
       setGenerating(false)
       setPicking(false)
@@ -158,6 +165,15 @@ export function RoutineSlot({ session, kind, profile }: Props) {
   }
 
   if (error) {
+    // Surface the underlying error via title attribute so a long-press / hover
+    // reveals the real cause (e.g. "edge generate_routine network error:
+    // Failed to fetch" — typically Supabase down). The visible copy stays
+    // friendly. Whole error block doubles as a retry tap target so the user
+    // doesn't have to aim at a small button. sad-Lumo signals "I couldn't do
+    // it but I'm not broken" — matches Kyra's note on the mascot doing the
+    // emotional work.
+    const friendly = `couldn't generate ${KIND_LABELS[kind]} — tap to retry`
+    const visibleHeading = `Failed to build ${KIND_LABELS[kind]}`
     return (
       <section
         className="rounded-2xl px-[14px] py-3 mb-[10px]"
@@ -165,20 +181,32 @@ export function RoutineSlot({ session, kind, profile }: Props) {
           background: 'var(--lumo-raised)',
           border: '1px solid rgba(239, 68, 68, 0.4)',
         }}
+        title={error}
+        aria-label={`${visibleHeading}: ${error}`}
       >
-        <div className="flex items-start gap-2 mb-3">
-          <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: '#f87171' }} />
-          <div className="text-sm" style={{ color: '#fca5a5' }}>
-            Failed to build {KIND_LABELS[kind]}
-          </div>
-        </div>
         <button
           type="button"
           onClick={() => doGenerate(DEFAULT_MINUTES[kind])}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm active:scale-95 transition"
-          style={{ background: 'var(--brand)', color: '#fff' }}
+          className="w-full flex items-start gap-3 bg-transparent border-0 p-0 text-left cursor-pointer"
+          title={error}
         >
-          <RefreshCw size={14} /> Retry
+          <span className="shrink-0">
+            <Lumo state="sad" size={36} color={accent} />
+          </span>
+          <span className="flex flex-col gap-1 min-w-0 flex-1">
+            <span className="text-sm font-semibold" style={{ color: '#fca5a5' }}>
+              {visibleHeading}
+            </span>
+            <span className="text-[12px]" style={{ color: 'var(--lumo-text-sec)' }}>
+              {friendly}
+            </span>
+          </span>
+          <span
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold shrink-0"
+            style={{ background: 'var(--brand)', color: '#fff' }}
+          >
+            <RefreshCw size={12} /> Retry
+          </span>
         </button>
       </section>
     )
