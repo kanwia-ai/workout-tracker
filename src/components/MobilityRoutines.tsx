@@ -6,7 +6,40 @@ import {
   pickRoutineForDay,
   type MobilityRoutine,
   type MobilitySection,
+  type RoutinePlacement,
 } from '../data/mobility-routines'
+
+// Tiny chip showing where the routine fits in the day. `cooldown` is the one
+// that matters — it tells the user "don't do these holds right before a lift."
+// `pre_lift` and `any` are shown for symmetry so the user can pick what fits
+// their current slot.
+function PlacementChip({ placement }: { placement?: RoutinePlacement }) {
+  const p = placement ?? 'any'
+  const label =
+    p === 'cooldown' ? 'cooldown / off-day' : p === 'pre_lift' ? 'pre-lift' : 'any time'
+  const color =
+    p === 'cooldown'
+      ? 'var(--accent-mint)'
+      : p === 'pre_lift'
+      ? 'var(--accent-sun)'
+      : 'var(--lumo-text-ter)'
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.02em',
+        color,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+        padding: '2px 7px',
+        borderRadius: 999,
+      }}
+    >
+      {label}
+    </span>
+  )
+}
 
 // A section + the routine chosen for today. The render code below works off
 // this flattened shape so section metadata (emoji/title/description) and the
@@ -117,7 +150,7 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
         </div>
 
         {/* Lumo intro */}
-        <div className="flex items-end gap-2.5 mb-4">
+        <div className="flex items-end gap-2.5 mb-3">
           <Lumo state="curious" size={64} color="var(--accent-plum)" />
           <div
             className="flex-1 relative"
@@ -136,6 +169,24 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
           >
             pick a routine, roll out the kinks.
           </div>
+        </div>
+
+        {/* Static-stretch placement note. Long static holds done right before
+            lifting depress force ~3-5% (Behm 2016, master synthesis R3 P2),
+            so we flag cooldown-tagged routines below and remind the user
+            where this stuff belongs. Kept to one line per design brief. */}
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--lumo-text-ter)',
+            fontStyle: 'italic',
+            fontFamily: "'Fraunces', Georgia, serif",
+            marginBottom: 12,
+            lineHeight: 1.4,
+            paddingLeft: 2,
+          }}
+        >
+          static work belongs in cooldown or on off-days — don't do long holds right before lifting.
         </div>
 
         {/* Routines */}
@@ -169,7 +220,7 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--lumo-text)' }}>
                           {daily.sectionTitle}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center flex-wrap gap-2 mt-0.5">
                           <div
                             className="flex items-center gap-1"
                             style={{ fontSize: 11, color: 'var(--lumo-text-sec)' }}
@@ -180,6 +231,7 @@ export function MobilityRoutines({ onBack, onStartTimer }: MobilityRoutinesProps
                           <span style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
                             {total} exercises
                           </span>
+                          <PlacementChip placement={routine.placement} />
                           {progress > 0 && (
                             <span
                               className="tabular-nums"

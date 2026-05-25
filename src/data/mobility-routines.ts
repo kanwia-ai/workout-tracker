@@ -14,12 +14,21 @@ export interface MobilityExercise {
   cue: string
 }
 
+// When to slot this routine. Static-held stretches done immediately before
+// lifting depress force output ~3-5% (Behm 2016, master synthesis R3 P2), so
+// we tag stretch-heavy routines as `cooldown` and flag them in the UI rather
+// than letting the user drop one onto a pre-lift slot blindly. `any` routines
+// (dynamic flows, active control work) are safe at any point.
+export type RoutinePlacement = 'cooldown' | 'pre_lift' | 'any'
+
 export interface MobilityRoutine {
   id: string
   title: string
   duration: string
   description: string
   minutes: number
+  /** Defaults to 'any' if omitted. */
+  placement?: RoutinePlacement
   exercises: MobilityExercise[]
 }
 
@@ -36,13 +45,14 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
     id: 'hip-mobility',
     title: 'Hip Mobility',
     emoji: '\u{1F9D8}',
-    description: 'Open up tight hips from sitting all day. Great before leg day or as a standalone routine. Targets hip flexors, adductors, external rotators, and glute activation.',
+    description: 'Open up tight hips from sitting all day. Great as a standalone routine or on a recovery day. Targets hip flexors, adductors, external rotators, and glutes.',
     routines: [
       {
         id: 'hip-90-90-flow',
         title: '90/90 flow',
         duration: '10-12 min',
         minutes: 11,
+        placement: 'cooldown',
         description: 'A seated 90/90 progression that opens internal and external hip rotation, then finishes with a gentle flexor stretch.',
         exercises: [
           { name: '90/90 Hip Stretch', duration: '45s each side', seconds: 45, cue: 'Sit tall, both legs at 90 degrees. Breathe into the stretch.' },
@@ -58,7 +68,8 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'deep squat series',
         duration: '8-10 min',
         minutes: 9,
-        description: 'Builds comfort in the bottom of a squat. Good before lower-body lifts when ankles and adductors feel locked up.',
+        placement: 'any',
+        description: 'Builds comfort in the bottom of a squat. Good before lower-body lifts when ankles and adductors feel locked up — keep holds short (≤15s) on a pre-lift slot.',
         exercises: [
           { name: 'Deep Squat Hang', duration: '45s', seconds: 45, cue: 'Heels down, elbows inside knees, pry gently. Hold a post if you need balance.' },
           { name: 'Cossack Squat', duration: '6 each side', cue: 'Shift weight side to side. Keep the straight leg long, toes up.' },
@@ -72,6 +83,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'hip flexor reset',
         duration: '7-9 min',
         minutes: 8,
+        placement: 'cooldown',
         description: 'Desk-worker special: lengthens the front of the hip and wakes the glutes so extension feels free again.',
         exercises: [
           { name: 'Couch Stretch', duration: '45s each side', seconds: 45, cue: 'Back foot up against wall or couch, front foot planted. Squeeze the back glute hard.' },
@@ -87,6 +99,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'rotation & control',
         duration: '9-11 min',
         minutes: 10,
+        placement: 'any',
         description: 'Active control work for the hip joint. Less stretching, more ownership of the end ranges you do have.',
         exercises: [
           { name: 'Hip CARs (Controlled Articular Rotation)', duration: '4 each direction per leg', cue: 'On all fours or standing. Slowest-possible circle through full range.' },
@@ -110,6 +123,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'thoracic unlock',
         duration: '9-11 min',
         minutes: 10,
+        placement: 'any',
         description: 'Targets the upper-back rotation and extension that collapses after a long desk day.',
         exercises: [
           { name: 'Cat-Cow (slow)', duration: '10 slow cycles', cue: 'Hold each position 3 seconds. Move through the entire spine.' },
@@ -125,6 +139,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'low-back decompress',
         duration: '8-10 min',
         minutes: 9,
+        placement: 'cooldown',
         description: 'Low-back soothing flow. Good after deadlifts, long flights, or a bad sleep.',
         exercises: [
           { name: 'Knees-to-Chest Hug', duration: '30s', seconds: 30, cue: 'Lie on back, hug both knees to chest, rock gently side to side.' },
@@ -140,6 +155,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'desk-worker reset',
         duration: '7-9 min',
         minutes: 8,
+        placement: 'any',
         description: 'Undoes the seated slouch: extends the mid-back, decompresses the low back, recruits deep core.',
         exercises: [
           { name: 'Prone Press-Up', duration: '10 slow reps', cue: 'Hips stay down, press chest up gently. Exhale at the top.' },
@@ -155,6 +171,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'full segmental flow',
         duration: '10-12 min',
         minutes: 11,
+        placement: 'any',
         description: 'A longer sequence that moves the entire spine: flexion, extension, rotation, side-bending.',
         exercises: [
           { name: 'Cat-Cow (slow)', duration: '10 slow cycles', cue: 'Hold each position 3 seconds. Move through the entire spine.' },
@@ -179,6 +196,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'full-body stretch',
         duration: '9-11 min',
         minutes: 10,
+        placement: 'cooldown',
         description: 'Classic static stretch session that hits every major region. Great wind-down before bed.',
         exercises: [
           { name: 'Downward Dog', duration: '30s', seconds: 30, cue: 'Inverted V, push hips up and back, pedal feet.' },
@@ -195,6 +213,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'movement prep',
         duration: '7-9 min',
         minutes: 8,
+        placement: 'pre_lift',
         description: 'Dynamic warm-up that raises temperature and greases major joints. Use before lifting, running, or sports.',
         exercises: [
           { name: 'Inchworm Walkout', duration: '6 reps', cue: 'Hinge, walk hands to plank, hold 1s, walk feet in. Ribs over hips.' },
@@ -210,6 +229,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'upper-body open-up',
         duration: '8-10 min',
         minutes: 9,
+        placement: 'any',
         description: 'Shoulders, chest, neck, and upper back. Especially good for trap tension and forward-head posture.',
         exercises: [
           { name: 'Doorway Chest Stretch', duration: '30s each side', seconds: 30, cue: 'Arm on doorframe at 90 degrees, step through. Tall posture.' },
@@ -226,6 +246,7 @@ export const MOBILITY_SECTIONS: MobilitySection[] = [
         title: 'lower-body lengthen',
         duration: '9-11 min',
         minutes: 10,
+        placement: 'cooldown',
         description: 'Posterior chain and legs — hamstrings, calves, glutes, quads. Great after a run or a heavy squat day.',
         exercises: [
           { name: 'Downward Dog', duration: '30s', seconds: 30, cue: 'Inverted V, push hips up and back, pedal feet to stretch calves.' },

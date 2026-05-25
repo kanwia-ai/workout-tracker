@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Plus, Trash2, Trophy, ArrowLeft, Target } from 'lucide-react'
-import { CARDIO_TYPES, loadGoals, addGoal, updateGoalProgress, deleteGoal, generateId, getMilestones, getCardioLabel, loadCardioLogs, getTotalMinutesForType } from '../data/cardio'
-import type { UserGoal, CardioType } from '../types'
+import { CARDIO_TYPES, loadGoals, addGoal, deleteGoal, generateId, getCardioLabel, loadCardioLogs, getWeeklyProgressForGoal } from '../data/cardio'
+import type { UserGoal, CardioType, CardioLog } from '../types'
 
 interface CardioGoalsProps {
   userId: string
@@ -23,26 +23,24 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
   const [targetValue, setTargetValue] = useState('')
   const [unit, setUnit] = useState<'minutes' | 'sessions'>('minutes')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // Re-read cardio logs on each render so the weekly-progress badge stays in
+  // sync with logs added on other tabs. Lightweight (localStorage read).
+  const logs = useMemo<CardioLog[]>(() => loadCardioLogs(), [goals])
 
   const handleCreateGoal = () => {
     const target = parseInt(targetValue, 10)
     if (isNaN(target) || target < 1) return
 
-    // Calculate current progress from existing logs
-    const logs = loadCardioLogs()
-    let currentValue = 0
-    if (unit === 'minutes') {
-      currentValue = getTotalMinutesForType(logs, goalType)
-    } else {
-      currentValue = logs.filter(l => l.type === goalType).length
-    }
-
+    // current_value is retained on the type for backward compat but is no
+    // longer the source of truth — the card shows THIS WEEK's progress vs the
+    // goal as a weekly target (adherence model). Seed with 0 so we never
+    // surface a misleading "you're already at 200 minutes!" on goal creation.
     const goal: UserGoal = {
       id: generateId(),
       user_id: userId,
       goal_type: goalType,
       target_value: target,
-      current_value: currentValue,
+      current_value: 0,
       unit,
       created_at: new Date().toISOString(),
     }
@@ -53,42 +51,11 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
     setTargetValue('')
   }
 
-  const handleRefreshProgress = (goal: UserGoal) => {
-    const logs = loadCardioLogs()
-    let currentValue = 0
-    if (goal.unit === 'minutes') {
-      currentValue = getTotalMinutesForType(logs, goal.goal_type as CardioType)
-    } else {
-      currentValue = logs.filter(l => l.type === goal.goal_type).length
-    }
-    const updated = updateGoalProgress(goal.id, currentValue)
-    setGoals(updated)
-  }
-
   const handleDelete = (goalId: string) => {
     const updated = deleteGoal(goalId)
     setGoals(updated)
     setConfirmDeleteId(null)
   }
-
-  // Refresh all goals on mount
-  const refreshAll = () => {
-    const logs = loadCardioLogs()
-    let updated = loadGoals()
-    for (const goal of updated) {
-      let currentValue = 0
-      if (goal.unit === 'minutes') {
-        currentValue = getTotalMinutesForType(logs, goal.goal_type as CardioType)
-      } else {
-        currentValue = logs.filter(l => l.type === goal.goal_type).length
-      }
-      updated = updateGoalProgress(goal.id, currentValue)
-    }
-    setGoals(updated)
-  }
-
-  // Refresh on first render
-  useState(() => { refreshAll() })
 
   return (
     <div className="space-y-3">
@@ -238,7 +205,7 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
           </div>
 
           <div style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
-            e.g. "60 minutes on Stair Master" or "10 sessions of Treadmill"
+            weekly target — e.g. "60 minutes on Stair Master / week" or "3 sessions of Treadmill / week"
           </div>
 
           <button
@@ -287,20 +254,27 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
               fontStyle: 'italic',
             }}
           >
-            set a cardio goal to track your progress
+            set a weekly cardio target to track adherence
           </div>
         </div>
       )}
 
       {goals.map(goal => {
+        // Adherence model: target is the WEEKLY goal, progress is what the
+        // user logged THIS WEEK. Trophy appears only when the user hit the
+        // plan they set — same pattern as HomeScreen's AdherenceBadge.
+        const weeklyProgress = getWeeklyProgressForGoal(
+          logs,
+          goal.goal_type as CardioType,
+          goal.unit as 'minutes' | 'sessions',
+        )
         const pct = goal.target_value > 0
-          ? Math.min(100, (goal.current_value / goal.target_value) * 100)
+          ? Math.min(100, (weeklyProgress / goal.target_value) * 100)
           : 0
-        const complete = pct >= 100
-        const milestones = getMilestones(goal.current_value, goal.target_value)
+        const hitGoalThisWeek = weeklyProgress >= goal.target_value && goal.target_value > 0
         const label = getCardioLabel(goal.goal_type as CardioType)
         const typeInfo = CARDIO_TYPES.find(t => t.value === goal.goal_type)
-        const progressColor = complete ? 'var(--accent-mint)' : 'var(--accent-sun)'
+        const progressColor = hitGoalThisWeek ? 'var(--accent-mint)' : 'var(--accent-sun)'
 
         return (
           <div
@@ -308,7 +282,7 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
             className="space-y-3"
             style={{
               background: 'var(--lumo-raised)',
-              border: complete
+              border: hitGoalThisWeek
                 ? '1px solid color-mix(in srgb, var(--accent-mint) 40%, transparent)'
                 : '1px solid var(--lumo-border)',
               borderRadius: 20,
@@ -320,30 +294,24 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
                 <span className="text-xl">{typeInfo?.emoji || '💪'}</span>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--lumo-text)' }}>
-                    {goal.target_value} {goal.unit} of {label}
+                    {goal.target_value} {goal.unit} of {label} / week
                   </div>
-                  <div className="tabular-nums" style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}>
-                    {goal.current_value} / {goal.target_value} {goal.unit}
+                  <div
+                    className="tabular-nums flex items-center gap-1"
+                    style={{ fontSize: 11, color: 'var(--lumo-text-ter)' }}
+                  >
+                    {weeklyProgress} / {goal.target_value} {goal.unit} this week
+                    {hitGoalThisWeek && (
+                      <Trophy
+                        size={11}
+                        style={{ color: 'var(--accent-mint)' }}
+                        aria-label="hit your goal this week"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleRefreshProgress(goal)}
-                  className="active:scale-95 transition"
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 10,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: 'var(--lumo-text-sec)',
-                    background: 'var(--lumo-overlay)',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Refresh
-                </button>
                 {confirmDeleteId === goal.id ? (
                   <div className="flex gap-1">
                     <button
@@ -412,40 +380,28 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
               />
             </div>
 
-            {/* Percentage label */}
+            {/* Percentage label — this week vs the weekly target. No
+                cumulative-milestone trophies; the old 25/50/75/100% chain
+                rewarded "more = better" minute totals (same anti-pattern as
+                the day-streak we replaced on HomeScreen). Single trophy on
+                the count line indicates hitting the plan this week. */}
             <div className="flex items-center justify-between">
               <span
                 className="tabular-nums"
                 style={{ fontSize: 12, fontWeight: 700, color: progressColor }}
               >
-                {Math.round(pct)}%
+                {Math.round(pct)}% this week
               </span>
-
-              {/* Milestones */}
-              <div className="flex gap-1.5">
-                {[25, 50, 75, 100].map(m => {
-                  const milestoneValue = Math.round((m / 100) * goal.target_value)
-                  const hit = milestones.includes(milestoneValue)
-                  return (
-                    <div
-                      key={m}
-                      className="flex items-center gap-0.5"
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: hit ? 'var(--accent-mint)' : 'var(--lumo-text-ter)',
-                      }}
-                    >
-                      {hit && <Trophy size={10} />}
-                      {m}%
-                    </div>
-                  )
-                })}
-              </div>
+              <span
+                style={{ fontSize: 10, color: 'var(--lumo-text-ter)' }}
+              >
+                resets each Monday
+              </span>
             </div>
 
-            {/* Celebration */}
-            {complete && (
+            {/* Adherence celebration — only fires when the user actually hit
+                the weekly plan they set, not on arbitrary cumulative totals. */}
+            {hitGoalThisWeek && (
               <div
                 className="text-center"
                 style={{
@@ -456,7 +412,7 @@ export function CardioGoals({ userId, onBack }: CardioGoalsProps) {
                 }}
               >
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-mint)' }}>
-                  Goal Complete!
+                  Hit your weekly goal
                 </div>
               </div>
             )}

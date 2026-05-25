@@ -121,3 +121,40 @@ export function getMilestones(current: number, target: number): number[] {
     .map(m => Math.round(m * target))
     .filter(m => current >= m)
 }
+
+/** Start-of-week Monday at local midnight. Matches HomeScreen's weekStart. */
+export function getWeekStart(date: Date = new Date()): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  // getDay(): Sun=0, Mon=1, ..., Sat=6. Shift Sunday to 7 so Monday=1 lands at offset 0.
+  const dow = d.getDay() === 0 ? 7 : d.getDay()
+  d.setDate(d.getDate() - (dow - 1))
+  return d
+}
+
+/**
+ * Compute this-week progress for a goal. Treats the goal's target as a WEEKLY
+ * target (adherence model) rather than cumulative all-time — celebrating hitting
+ * the plan this week, not piling up arbitrary minute totals.
+ */
+export function getWeeklyProgressForGoal(
+  logs: CardioLog[],
+  type: CardioType,
+  unit: 'minutes' | 'sessions',
+  now: Date = new Date(),
+): number {
+  const weekStartMs = getWeekStart(now).getTime()
+  // End of week = start of next Monday; inclusive of the whole current week.
+  const weekEndMs = weekStartMs + 7 * 24 * 60 * 60 * 1000
+  const thisWeek = logs.filter(l => {
+    if (l.type !== type) return false
+    // date is YYYY-MM-DD; parse as local-midnight to avoid TZ drift across days.
+    const [y, m, d] = l.date.split('-').map(Number)
+    if (!y || !m || !d) return false
+    const ts = new Date(y, m - 1, d).getTime()
+    return ts >= weekStartMs && ts < weekEndMs
+  })
+  if (unit === 'minutes') {
+    return thisWeek.reduce((sum, l) => sum + l.duration_minutes, 0)
+  }
+  return thisWeek.length
+}

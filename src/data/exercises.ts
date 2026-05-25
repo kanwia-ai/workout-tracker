@@ -54,7 +54,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-single-leg-hip-thrust',
     name: 'Single-Leg Hip Thrust',
-    description: 'Unilateral hip thrust that fixes glute imbalances and increases activation per side.',
+    description: 'Unilateral hip thrust that addresses side-to-side glute imbalances.',
     instructions: [
       'Set up like a hip thrust, but extend one leg straight out.',
       'Drive through the planted foot.',
@@ -140,12 +140,12 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety_notes: 'No knee loading. Excellent for PT rehab.',
     laterality: 'unilateral',
     cues: ['Don\'t rotate your pelvis', 'Feel it in the gluteus medius (side of the hip)', 'Slow and controlled'],
-    source: 'Physical therapy / glute activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-banded-lateral-walk',
     name: 'Banded Lateral Walk',
-    description: 'Activates glute medius and minimus with every step. Great warm-up or finisher.',
+    description: 'Targets glute medius and minimus with every step. Great warm-up or finisher.',
     instructions: [
       'Place mini band above knees (or ankles for more challenge).',
       'Get into a quarter squat position.',
@@ -162,7 +162,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     laterality: 'bilateral',
     cues: ['Stay in quarter squat', 'Push knees out against band', 'Controlled steps — no wobbling'],
-    source: 'Physical therapy / glute activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-hip-abduction',
@@ -557,7 +557,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-reverse-lunge-elevated',
     name: 'Front Foot Elevated Reverse Lunge',
-    description: 'Elevated front foot increases glute activation and ROM while keeping the movement knee-friendly.',
+    description: 'Elevated front foot lengthens the working leg and adds ROM while keeping the movement knee-friendly.',
     instructions: [
       'Stand with front foot on a low platform or step.',
       'Step the other foot back into a lunge.',
@@ -1256,7 +1256,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-plank',
     name: 'Plank',
-    description: 'The foundational anti-extension core exercise. Builds endurance in the anterior core.',
+    description: 'A staple anti-extension core hold. Builds endurance in the anterior core.',
     instructions: [
       'Start in a forearm plank position.',
       'Body forms a straight line from head to heels.',
@@ -1815,7 +1815,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-banded-monster-walk',
     name: 'Banded Monster Walk',
-    description: 'Glute medius activation walking forward and diagonally with a mini band.',
+    description: 'Targets glute medius walking forward and diagonally with a mini band.',
     instructions: [
       'Place mini band above knees.',
       'Quarter squat position.',
@@ -1831,12 +1831,12 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     laterality: 'bilateral',
     cues: ['Stay low', 'Push against the band', 'Controlled steps'],
-    source: 'Physical therapy / glute activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-glute-bridge-bodyweight',
     name: 'Bodyweight Glute Bridge',
-    description: 'Unweighted glute bridge. Perfect for activation and rehab.',
+    description: 'Unweighted glute bridge. A staple for warmups, rehab, and at-home work.',
     instructions: [
       'Lie on your back, knees bent, feet flat on the floor.',
       'Drive through heels, lift hips to the ceiling.',
@@ -1850,10 +1850,10 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     body_region: 'lower_body',
     difficulty: 'beginner',
     knee_safety: 'knee_safe',
-    knee_safety_notes: 'Zero knee stress. The foundational glute exercise.',
+    knee_safety_notes: 'Zero knee stress. A staple bodyweight glute movement.',
     laterality: 'bilateral',
     cues: ['Squeeze glutes at top', 'Drive through heels', 'Don\'t hyperextend your back'],
-    source: 'Physical therapy / glute activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-single-leg-glute-bridge',
@@ -1874,7 +1874,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     laterality: 'unilateral',
     cues: ['Keep hips level', 'Drive through heel', 'Extend the non-working leg'],
-    source: 'Physical therapy / glute activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-foam-roll-quads',
@@ -2063,7 +2063,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     body_region: 'lower_body',
     difficulty: 'beginner',
     knee_safety: 'knee_safe',
-    knee_safety_notes: 'Very low impact. Walking is one of the best exercises for meniscus health.',
+    knee_safety_notes: 'Very low impact. Walking is well-tolerated for meniscus recovery.',
     laterality: 'bilateral',
     cues: ['Don\'t hold the rails', 'Stand tall', 'Swing your arms naturally'],
     source: 'Cardio training',
@@ -2118,7 +2118,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-banded-squat',
     name: 'Banded Bodyweight Squat',
-    description: 'Bodyweight squat with a mini band above the knees for glute medius activation.',
+    description: 'Bodyweight squat with a mini band above the knees that targets the glute medius.',
     instructions: [
       'Place mini band above knees.',
       'Squat to parallel, pushing knees out against the band.',
@@ -2134,7 +2134,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety_notes: 'Don\'t go past parallel. The band helps keep knees tracking correctly.',
     laterality: 'bilateral',
     cues: ['Push knees out against band', 'Squat to parallel only', 'Drive through heels'],
-    source: 'Physical therapy / activation',
+    source: 'Physical therapy / glute prep',
   },
   {
     id: 'ex-copenhagen-plank',

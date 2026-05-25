@@ -31,7 +31,7 @@ Check browser devtools console. The local Dexie write may have failed (Safari pr
 - **Weight logging** -- log weight per exercise with last-session reference and personal record tracking
 - **Weekly schedule** -- 5-day training split (4 gym + 1 at-home) with rest days, tap any day to preview
 - **Exercise capture from screenshots** -- upload 1–3 screenshots of a workout (gym board, planner, social post) and Claude vision extracts the exercise names, sets, reps, and notes server-side via the `extract_exercises` edge-function op
-- **Adaptive warm-ups/cool-downs** (planned) -- warm-up and cool-down routines that match the day's muscle focus, with knee-safety flags
+- **Adaptive warm-ups/cool-downs** -- warm-up and cool-down routines that match the day's muscle focus, with knee-safety flags
 
 ## Tech Stack
 
