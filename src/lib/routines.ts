@@ -47,10 +47,11 @@ export interface GenerateRoutineInput {
 export async function generateRoutine(input: GenerateRoutineInput): Promise<Routine> {
   const { session, kind, profile, minutes, focusTag } = input
 
-  // Opt-in local path: same env flag as generatePlan. Skips the edge function
-  // entirely and composes the routine from the clinical-planner layer +
-  // deterministic cooldown/cardio tables. Zero API cost.
-  const useLocal = import.meta.env.VITE_USE_LOCAL_PLANNER === 'true'
+  // WHY: Default to local generation so warmup/cardio/cooldown work when
+  // Supabase or VITE_USE_LOCAL_PLANNER env var is missing. The edge path is
+  // opt-in via VITE_USE_LOCAL_PLANNER=false. Matches generatePlan in
+  // planGen.ts:206 — the app is local-first in production now.
+  const useLocal = import.meta.env.VITE_USE_LOCAL_PLANNER !== 'false'
 
   let routine: Routine
   if (useLocal) {

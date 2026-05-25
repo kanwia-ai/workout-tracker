@@ -13,6 +13,10 @@ import { useAuth } from './hooks/useAuth'
 import { useTweaks } from './hooks/useTweaks'
 import { WorkoutView } from './components/WorkoutView'
 import { HomeScreen } from './components/HomeScreen'
+// LoginScreen is now opt-in — rendered as a modal from SettingsScreen
+// when the user taps "Sign in to sync". The app itself no longer gates on
+// auth; we render onboarding/workout for every user, local or cloud.
+// See useAuth — it always returns a non-null `user`.
 import { LoginScreen } from './components/LoginScreen'
 import { ExerciseBrowser } from './components/ExerciseBrowser'
 import { MobilityRoutines } from './components/MobilityRoutines'
@@ -30,6 +34,7 @@ import type { ProgrammingDirectives } from './types/directives'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profileRepo'
 import { wipeUserData } from './lib/db'
+import { BackendStatusBanner } from './components/BackendStatusBanner'
 import { generatePlan } from './lib/planGen'
 import type { TimerState } from './types'
 import type { ExtractedExercise } from './lib/gemini'
@@ -119,6 +124,8 @@ function App() {
     loading,
     hasProfile,
     setHasProfile,
+    profileError,
+    clearProfileError,
     signInWithMagicLink,
     signOut,
     updateStreak,
@@ -160,6 +167,14 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [pendingProfile, setPendingProfile] = useState<UserProgramProfile | null>(null)
+  // Error from onboarding's saveProfileLocal — surfaced as a banner inside
+  // the onboarding flow so the user doesn't silently lose their answers.
+  // Reuses the same friendly-error helper as runGeneration for consistency.
+  const [onboardingError, setOnboardingError] = useState<string | null>(null)
+  // Tracks whether the Sign-in modal is open from Settings. We render
+  // LoginScreen on top of Settings — closing returns to Settings, and a
+  // successful sign-in unmounts the modal via the auth state change.
+  const [signInModalOpen, setSignInModalOpen] = useState(false)
   // Generation token — captured at `runGeneration` call time. If the user
   // signs out or switches accounts mid-generation, the stale promise's
   // setters are dropped so they can't clobber the new session's state.
@@ -274,10 +289,6 @@ function App() {
     )
   }
 
-  if (!user) {
-    return <LoginScreen onSignIn={signInWithMagicLink} />
-  }
-
   // Plan generation in progress — short-circuit regardless of `hasProfile`
   // so the HomeScreen "Rebuild my plan" retry also shows the loader. Without
   // this, a retry from the plan-less empty state would silently keep
@@ -320,26 +331,82 @@ function App() {
     // here, no generation is in flight and no error is pending, so fall
     // through to onboarding.
     return (
-      <OnboardingFlow
-        onComplete={async (p: UserProgramProfile) => {
-          try {
-            await saveProfileLocal(user.id, p)
-          } catch (err) {
-            console.error('saveProfileLocal failed', err)
-            return
-          }
-          // Fire-and-forget cloud sync — local save is the source of
-          // truth for the next render, and syncProfileUp leaves the
-          // row dirty on failure so we'll retry next session.
-          void syncProfileUp(user.id).catch((err) => {
-            console.error('syncProfileUp failed', err)
-          })
-          // Kick off plan generation. On success this flips
-          // hasProfile=true; on failure it surfaces the error screen
-          // above with a retry button.
-          await runGeneration(p, user.id)
-        }}
-      />
+      <>
+        {onboardingError && (
+          <div
+            role="alert"
+            data-testid="onboarding-error-banner"
+            style={{
+              position: 'fixed',
+              top: 12,
+              left: 12,
+              right: 12,
+              zIndex: 2000,
+              padding: '12px 16px',
+              borderRadius: 12,
+              background: 'color-mix(in srgb, #ef4444 18%, var(--lumo-raised))',
+              border: '1px solid color-mix(in srgb, #ef4444 45%, transparent)',
+              color: 'var(--lumo-text)',
+              fontSize: 13,
+              lineHeight: 1.45,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0, color: '#ef4444' }} />
+            <span style={{ flex: 1 }}>{onboardingError}</span>
+            <button
+              type="button"
+              onClick={() => setOnboardingError(null)}
+              aria-label="Dismiss error"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--lumo-text-sec)',
+                fontSize: 18,
+                cursor: 'pointer',
+                padding: 4,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <OnboardingFlow
+          onComplete={async (p: UserProgramProfile) => {
+            setOnboardingError(null)
+            try {
+              await saveProfileLocal(user.id, p)
+            } catch (err) {
+              console.error('saveProfileLocal failed', err)
+              // Surface to the user via the banner above instead of
+              // silently swallowing the failure — losing your onboarding
+              // answers without warning is the worst possible UX.
+              setOnboardingError(
+                `Couldn't save your profile locally: ${
+                  err instanceof Error ? err.message : 'unknown error'
+                }. Try again, or use Settings → Start fresh to reset.`,
+              )
+              return
+            }
+            // Fire-and-forget cloud sync — local save is the source of
+            // truth for the next render, and syncProfileUp leaves the
+            // row dirty on failure so we'll retry next session.
+            // Local-only users have no Supabase auth, so this would 401;
+            // skip the cloud push entirely.
+            if (!user.isLocal) {
+              void syncProfileUp(user.id).catch((err) => {
+                console.error('syncProfileUp failed', err)
+              })
+            }
+            // Kick off plan generation. On success this flips
+            // hasProfile=true; on failure it surfaces the error screen
+            // above with a retry button.
+            await runGeneration(p, user.id)
+          }}
+        />
+      </>
     )
   }
 
@@ -417,50 +484,143 @@ function App() {
 
   if (settingsOpen) {
     return (
-      <SettingsScreen
-        tweaks={tweaksApi.tweaks}
-        setTweaks={tweaksApi.setTweaks}
-        themeMode={tweaksApi.themeMode}
-        setThemeMode={tweaksApi.setThemeMode}
-        onClose={() => setSettingsOpen(false)}
-        isGenerating={isGenerating}
-        onReplanNextBlock={handleReplanNextBlock}
-        onReplanApply={handleReplanApply}
-        onReplanClose={handleReplanClose}
-        onResetApp={async () => {
-          try {
-            await wipeUserData()
-          } finally {
-            window.localStorage.clear()
-            window.sessionStorage.clear()
-            window.location.reload()
-          }
-        }}
-        replanState={replanState}
-        checkinCount={checkinCount}
-        cheek={tweaksApi.tweaks.cheek}
-        onSignOut={signOut}
-        onRegeneratePlan={() => {
-          // Reload the saved profile and re-run plan generation against the
-          // current prompt + backend. runGeneration flips isGenerating=true,
-          // which causes App.tsx's top-level guard to render GeneratingPlan
-          // above the settings overlay — so Settings closes implicitly.
-          void loadProfileLocal(user.id).then((p) => {
-            if (!p) {
-              console.warn(
-                'Regenerate plan: no profile found for user — skipping.',
-              )
-              return
+      <>
+        <SettingsScreen
+          tweaks={tweaksApi.tweaks}
+          setTweaks={tweaksApi.setTweaks}
+          themeMode={tweaksApi.themeMode}
+          setThemeMode={tweaksApi.setThemeMode}
+          onClose={() => setSettingsOpen(false)}
+          isGenerating={isGenerating}
+          onReplanNextBlock={handleReplanNextBlock}
+          onReplanApply={handleReplanApply}
+          onReplanClose={handleReplanClose}
+          onResetApp={async () => {
+            try {
+              await wipeUserData()
+            } finally {
+              window.localStorage.clear()
+              window.sessionStorage.clear()
+              window.location.reload()
             }
-            return runGeneration(p, user.id)
-          })
-        }}
-      />
+          }}
+          replanState={replanState}
+          checkinCount={checkinCount}
+          cheek={tweaksApi.tweaks.cheek}
+          isLocalUser={user.isLocal}
+          onSignIn={() => setSignInModalOpen(true)}
+          onSignOut={signOut}
+          onRegeneratePlan={() => {
+            // Reload the saved profile and re-run plan generation against the
+            // current prompt + backend. runGeneration flips isGenerating=true,
+            // which causes App.tsx's top-level guard to render GeneratingPlan
+            // above the settings overlay — so Settings closes implicitly.
+            void loadProfileLocal(user.id).then((p) => {
+              if (!p) {
+                console.warn(
+                  'Regenerate plan: no profile found for user — skipping.',
+                )
+                return
+              }
+              return runGeneration(p, user.id)
+            })
+          }}
+        />
+        {signInModalOpen && (
+          <div
+            data-testid="signin-modal-backdrop"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.6)',
+              zIndex: 1500,
+              display: 'flex',
+              alignItems: 'stretch',
+              justifyContent: 'center',
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSignInModalOpen(false)
+            }}
+          >
+            <div style={{ width: '100%', position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setSignInModalOpen(false)}
+                data-testid="signin-modal-close"
+                aria-label="Close sign-in"
+                style={{
+                  position: 'fixed',
+                  top: 16,
+                  right: 16,
+                  zIndex: 1600,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: 'var(--lumo-raised)',
+                  border: '1px solid var(--lumo-border)',
+                  color: 'var(--lumo-text)',
+                  cursor: 'pointer',
+                  fontSize: 18,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ×
+              </button>
+              <LoginScreen onSignIn={signInWithMagicLink} />
+            </div>
+          </div>
+        )}
+      </>
     )
   }
 
   return (
     <>
+      <BackendStatusBanner />
+      {profileError && (
+        <div
+          role="status"
+          data-testid="profile-error-banner"
+          style={{
+            position: 'fixed',
+            top: 8,
+            left: 8,
+            right: 8,
+            zIndex: 2000,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: 'color-mix(in srgb, var(--lumo-warn, #f59e0b) 22%, var(--lumo-raised))',
+            border: '1px solid color-mix(in srgb, var(--lumo-warn, #f59e0b) 45%, transparent)',
+            color: 'var(--lumo-text)',
+            fontSize: 12,
+            lineHeight: 1.4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{profileError}</span>
+          <button
+            type="button"
+            onClick={clearProfileError}
+            aria-label="Dismiss"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--lumo-text-sec)',
+              cursor: 'pointer',
+              fontSize: 16,
+              padding: 2,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       {view === 'workout' && !sessionStarted && (
         <HomeScreen
           userId={user.id}

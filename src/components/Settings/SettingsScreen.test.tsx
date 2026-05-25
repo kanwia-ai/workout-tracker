@@ -52,6 +52,8 @@ function renderWired(
     onReplanApply?: () => void
     onResetApp?: () => void
     onSignOut?: () => void
+    isLocalUser?: boolean
+    onSignIn?: () => void
   } = {},
 ) {
   installMatchMediaMock()
@@ -75,6 +77,8 @@ function renderWired(
         onReplanApply={opts.onReplanApply}
         onResetApp={opts.onResetApp}
         onSignOut={opts.onSignOut}
+        isLocalUser={opts.isLocalUser}
+        onSignIn={opts.onSignIn}
       />
     )
   }
@@ -305,22 +309,45 @@ describe('SettingsScreen', () => {
     })
   })
 
-  it('renders a sign-out button when onSignOut is provided', () => {
-    renderWired({ onSignOut: vi.fn() })
+  it('renders a sign-out button when onSignOut is provided and user is cloud-authed', () => {
+    renderWired({ onSignOut: vi.fn(), isLocalUser: false })
     expect(screen.getByTestId('settings-sign-out')).toBeInTheDocument()
     expect(screen.getByText(/account/i)).toBeInTheDocument()
   })
 
-  it('does not render the Account section when onSignOut is omitted', () => {
+  it('does not render the Account section when neither onSignOut nor onSignIn is provided', () => {
     renderWired()
     expect(screen.queryByTestId('settings-sign-out')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-sign-in')).not.toBeInTheDocument()
   })
 
   it('clicking sign-out calls the onSignOut handler', () => {
     const onSignOut = vi.fn()
-    renderWired({ onSignOut })
+    renderWired({ onSignOut, isLocalUser: false })
     fireEvent.click(screen.getByTestId('settings-sign-out'))
     expect(onSignOut).toHaveBeenCalledTimes(1)
+  })
+
+  describe('Account section — local user', () => {
+    it('renders a "Sign in to sync" button instead of Sign-out when isLocalUser=true', () => {
+      renderWired({ isLocalUser: true, onSignIn: vi.fn(), onSignOut: vi.fn() })
+      expect(screen.getByTestId('settings-sign-in')).toBeInTheDocument()
+      expect(screen.queryByTestId('settings-sign-out')).not.toBeInTheDocument()
+    })
+
+    it('disables the Sign-in button with offline copy when VITE_SUPABASE_URL is unset', () => {
+      vi.stubEnv('VITE_SUPABASE_URL', '')
+      try {
+        renderWired({ isLocalUser: true, onSignIn: vi.fn() })
+        const btn = screen.getByTestId('settings-sign-in')
+        expect(btn).toBeDisabled()
+        expect(screen.getByTestId('settings-sign-in-note')).toHaveTextContent(
+          /sync unavailable — backend offline/i,
+        )
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
   })
 
   // Sanity check that imperative setThemeMode updates the hook state.
