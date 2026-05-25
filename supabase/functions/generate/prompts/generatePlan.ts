@@ -169,9 +169,10 @@ Use MEV→MAV range. Novice caps at MEV+2. Intermediate starts MEV, builds towar
 
 7.1 Week 1: RIR 2-3 (break-in, never max-effort).
 7.2 Middle weeks: RIR 1-2.
-7.3 Late weeks (advanced only): RIR 0-1 on final accumulation week.
+7.3 Late weeks (advanced only, training_age_months ≥ 36): on the FINAL accumulation week (week 5+), the LAST set of compound MAIN LIFTS may be prescribed at RIR 1 — never RIR 0. Accessories and isolations stay at RIR 1-2 in this window. WHY (Helms 2018 / RP consensus): RIR 1-2 produces equivalent hypertrophy to RIR 0 with significantly less recovery cost; RIR 0 (true failure) on programmed sets accumulates fatigue faster than adaptation, blunting week-over-week progression and raising injury risk.
+7.3.1 HARD RULE: NEVER prescribe RIR 0 anywhere in the program. True failure is a user-initiated decision for a specific peaking attempt — not something the planner schedules. If the model is tempted to write rir: 0, write rir: 1 instead.
 7.4 Final week = DELOAD: cut working sets ~50%, drop load 10-20%, OR raise RIR by 2. Keep frequency the same.
-7.5 Compound lifts live at RIR 1-3; isolations may touch RIR 0-2.
+7.5 Compound lifts live at RIR 1-3; isolations may touch RIR 1-2 (never 0).
 
 ═══ 8. PROGRESSION MODEL ═══
 
@@ -259,8 +260,8 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
      < 30   → no change.
      30-45  → cap RIR floor at 1 on main compounds (no near-failure work without an experienced lifter).
      45-60  → same as 30-45, PLUS pad warm-ups by 1 extra mobility move per session.
-     60+    → cap RIR at 2 on ALL sets, AND replace any plyometric or jumping movement with a low-impact equivalent from the pool.
-• weight_kg (float, optional): if > 120 kg (~265 lb), substitute every plyometric, deep-squat, or high-impact movement with a low-impact pool equivalent. Prefer machine + cable variants over barbell free-weight where the pool offers it. Cap reps on standing single-leg work at 8 (joint stress). Do NOT exclude lifts entirely — the user is here to train.
+     60+    → same RIR prescription as the general population (1-3) UNLESS the user has flagged a contraindication (cardiovascular condition, joint issue, recent injury via the injuries array). The "protected by age" framing is a stereotype: Fragala 2019 (NSCA Position Statement on Resistance Training for Older Adults) explicitly supports near-failure training (RIR 1-2) for hypertrophy in healthy older adults. Treat training_age_months and injury history as the actual gating signals, NOT chronological age. The only age-driven override that remains is: replace plyometric or jumping movements with a low-impact equivalent from the pool.
+• weight_kg (float, optional): if > 120 kg (~265 lb), substitute every plyometric, deep-squat, or high-impact movement with a low-impact pool equivalent. Prefer machine + cable variants over barbell free-weight where the pool offers it. Do NOT exclude lifts entirely — the user is here to train. // REMOVED: weight-based rep cap on single-leg work. No research basis. If joint stress is a concern, surface it via injury flags (knee, ankle, hip) — those are the actual signals.
 • height_cm (float, optional): NOT currently active. Reserved for future range-of-motion (ROM) scaling — ignore for now.
 • units: UI display preference only — no effect on generation.
 

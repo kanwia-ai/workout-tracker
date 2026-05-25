@@ -38,7 +38,8 @@ const OPTIONS: {
   {
     id: 'fat_loss',
     title: 'Fat loss',
-    blurb: 'Protect strength in a deficit, add density',
+    blurb:
+      'Build/protect muscle in a deficit. Body composition is diet-driven; training preserves the muscle that gives you shape. No cardio prescribed — layer it in only if you enjoy it.',
   },
   {
     id: 'mobility',

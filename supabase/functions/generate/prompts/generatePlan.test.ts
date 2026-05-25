@@ -218,16 +218,48 @@ describe('buildPlanPrompt (v3)', () => {
     expect(p).toMatch(/Do NOT exclude lifts entirely/)
   })
 
+  it('weight_kg overlay does NOT cap reps on standing single-leg work (no research basis)', () => {
+    const p = buildPlanPrompt({
+      profile: { ...PROFILE, weight_kg: 130 },
+      exercisePool: POOL,
+      weeks: 6,
+    })
+    // The old "cap reps on standing single-leg work at 8 (joint stress)" rule
+    // had no research backing and was removed. Joint stress is gated via the
+    // injury flags, not bodyweight alone.
+    expect(p).not.toMatch(/single-leg work at 8/)
+    expect(p).not.toMatch(/Cap reps on standing single-leg/)
+  })
+
+  // ── RIR 0 hard ban (section 7) ───────────────────────────────────────────
+  it('forbids RIR 0 anywhere in the program (Helms 2018 / RP consensus)', () => {
+    // Advanced "late weeks" cap RIR at 1, not 0. True failure is a
+    // user-initiated peaking decision, not a planner-scheduled prescription.
+    expect(prompt).toMatch(/NEVER prescribe RIR 0 anywhere in the program/)
+    expect(prompt).not.toMatch(/RIR 0-1 on final accumulation week/)
+    expect(prompt).toMatch(/training_age_months ≥ 36/)
+    expect(prompt).toMatch(/LAST set of compound MAIN LIFTS may be prescribed at RIR 1/)
+    expect(prompt).toMatch(/isolations may touch RIR 1-2 \(never 0\)/)
+  })
+
   // ── Age overlay (rule 13) ────────────────────────────────────────────────
-  it('with age=65, contains the RIR cap + low-impact substitution instruction', () => {
+  it('with age=65, drops the blanket RIR cap (Fragala 2019) and keeps low-impact substitution', () => {
     const p = buildPlanPrompt({
       profile: { ...PROFILE, age: 65 },
       exercisePool: POOL,
       weeks: 6,
     })
     expect(p).toMatch(/age \(int, optional\)/)
-    expect(p).toMatch(/60\+\s*→\s*cap RIR at 2 on ALL sets/)
-    expect(p).toMatch(/replace any plyometric or jumping movement with a low-impact equivalent/)
+    // Per Fragala 2019 (NSCA Position Statement on Resistance Training for
+    // Older Adults), healthy 60+ trainees tolerate near-failure (RIR 1-2)
+    // for hypertrophy. The blanket "cap RIR at 2 on ALL sets" rule was a
+    // stereotype, not research — gone.
+    expect(p).not.toMatch(/60\+\s*→\s*cap RIR at 2 on ALL sets/)
+    expect(p).toMatch(/60\+\s*→\s*same RIR prescription as the general population/)
+    expect(p).toMatch(/Fragala 2019/)
+    expect(p).toMatch(/training_age_months and injury history as the actual gating signals/)
+    // The low-impact substitution does remain for 60+.
+    expect(p).toMatch(/replace plyometric or jumping movements with a low-impact equivalent/)
   })
 
   // ── Deadline awareness (rule 13 / specific_target) ───────────────────────

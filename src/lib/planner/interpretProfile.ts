@@ -115,7 +115,11 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
       finishers: [12, 20],
     },
     intensity_bias: 'ROM-first, light load, quality over intensity',
-    cardio_policy: 'integrated',
+    // WHY: 'integrated' forces scheduled cardio days into the lifting plan.
+    // Cardio is a separate goal. mobility users want mobility,
+    // general_fitness users want a sensible default — surface cardio as
+    // opt-in for both, not as part of the prescribed lifting plan.
+    cardio_policy: 'optional',
   },
   general_fitness: {
     aesthetic: 'general',
@@ -126,7 +130,11 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
       finishers: [10, 15],
     },
     intensity_bias: 'balanced compound + accessory work',
-    cardio_policy: 'integrated',
+    // WHY: 'integrated' forces scheduled cardio days into the lifting plan.
+    // Cardio is a separate goal. mobility users want mobility,
+    // general_fitness users want a sensible default — surface cardio as
+    // opt-in for both, not as part of the prescribed lifting plan.
+    cardio_policy: 'optional',
   },
 }
 
