@@ -150,8 +150,8 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Back$/i }))
     fireEvent.click(screen.getByTestId('step-muscle-priority-next'))
 
-    // aesthetic
-    fireEvent.click(screen.getByRole('radio', { name: /athletic/i }))
+    // aesthetic — pick "Get stronger" (research-honest training emphasis)
+    fireEvent.click(screen.getByRole('radio', { name: /get stronger/i }))
     fireEvent.click(screen.getByTestId('step-aesthetic-next'))
 
     // specific target
@@ -209,7 +209,7 @@ describe('OnboardingFlow', () => {
     const [profile] = onComplete.mock.calls[0]
     expect(profile.primary_goal).toBe('lean_and_strong')
     expect(profile.muscle_priority).toEqual(['glutes', 'back'])
-    expect(profile.aesthetic_preference).toBe('athletic')
+    expect(profile.aesthetic_preference).toBe('get_stronger')
     expect(profile.specific_target).toBe('first pull-up')
     expect(profile.weight_kg).toBe(65)
     expect(profile.exercise_dislikes).toEqual(['burpees'])

@@ -66,7 +66,7 @@ describe('UserProgramProfileSchema', () => {
       posture_notes: '',
       primary_goal: 'build_muscle',
       muscle_priority: ['glutes', 'back'],
-      aesthetic_preference: 'strong_defined',
+      aesthetic_preference: 'get_stronger',
       specific_target: 'first pull-up',
       exercise_dislikes: ['burpees', 'running'],
       want_demo_videos: true,

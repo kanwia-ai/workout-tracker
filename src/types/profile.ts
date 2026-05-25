@@ -20,15 +20,16 @@ export const PrimaryGoal = z.enum([
 ])
 export type PrimaryGoal = z.infer<typeof PrimaryGoal>
 
-// AestheticPreference — what "good" looks like to the user. Optional; feeds
-// muscle-priority weighting in Pass 3 but never overrides safety rules.
-// `muscle_size_bulk` added 2026-04 for "muscle bear" users — prioritize
-// hypertrophy-heavy, compound-dominant work with arm + shoulder emphasis.
+// AestheticPreference — training emphasis lever (strength vs. size).
+// 2026-05: rewritten to drop the gym-bro myth taxonomy ("toned_lean",
+// "muscle_size_bulk", "strong_defined", "athletic"). Per docs/research/
+// 01-strength-hypertrophy.md Principle 3, rep ranges don't determine
+// "toned vs bulky" — body composition is a diet outcome, not a programming
+// variable. The only research-backed lever from this step is whether to
+// bias toward strength expression (CNS / force production) or hypertrophy.
 export const AestheticPreference = z.enum([
-  'toned_lean',
-  'strong_defined',
-  'athletic',
-  'muscle_size_bulk',
+  'build_muscle',
+  'get_stronger',
   'balanced',
   'none',
 ])

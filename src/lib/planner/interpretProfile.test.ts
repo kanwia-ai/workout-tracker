@@ -38,7 +38,7 @@ const HYPERTROPHY_BEGINNER: UserProgramProfile = {
   time_budget_min: 75,
   active_minutes: 75,
   sex: 'male',
-  aesthetic_preference: 'muscle_size_bulk',
+  aesthetic_preference: 'build_muscle',
   posture_notes: '',
   injuries: [],
 }
@@ -69,7 +69,10 @@ const DESK_WORKER_TONED: UserProgramProfile = {
   time_budget_min: 45,
   active_minutes: 45,
   sex: 'female',
-  aesthetic_preference: 'toned_lean',
+  // Renamed-but-kept fixture: a desk worker with fat-loss primary goal. The
+  // aesthetic-preference enum no longer carries a "toned_lean" myth value;
+  // the closest research-honest analogue is "balanced" (default rep ranges).
+  aesthetic_preference: 'balanced',
   posture_notes: 'office desk job, chronic lower back soreness, rounded shoulders',
   injuries: [
     { part: 'lower_back', severity: 'chronic' },
@@ -119,17 +122,48 @@ describe('interpretProfile — goal interpretation', () => {
     expect(d.goal.cardio_policy).toBe('separated')
   })
 
-  it('muscle_size_bulk aesthetic overrides to hypertrophy even on build_muscle goal', () => {
+  // DELETED (2026-05): two tests that asserted the gym-bro myth taxonomy:
+  //   • "muscle_size_bulk aesthetic overrides to hypertrophy even on build_muscle goal"
+  //   • "toned_lean aesthetic bumps rep ranges higher on fat_loss"
+  // Both asserted that the aesthetic-preference rewriter pushed rep ranges
+  // up/down based on a "look" (toned vs bulky), encoding the high-reps-tone
+  // myth. Per docs/research/01-strength-hypertrophy.md Principle 3, rep
+  // range does NOT determine body composition; only training emphasis
+  // (strength vs hypertrophy) is a research-backed lever for this step.
+  // Replaced below with research-honest assertions.
+
+  it('build_muscle aesthetic leaves the base goal directives untouched (no myth rewrite)', () => {
     const d = interpretProfile(HYPERTROPHY_BEGINNER)
+    // Base build_muscle goal already encodes hypertrophy programming.
     expect(d.goal.aesthetic).toBe('hypertrophy')
     expect(d.goal.primary_adaptation).toBe('size')
-    // Hypertrophy compound range
-    expect(d.goal.rep_scheme_bias.main_compounds[0]).toBeGreaterThanOrEqual(5)
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([5, 8])
+    expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
   })
 
-  it('toned_lean aesthetic bumps rep ranges higher on fat_loss', () => {
+  it('balanced aesthetic on fat_loss returns base goal directives unchanged', () => {
     const d = interpretProfile(DESK_WORKER_TONED)
-    expect(d.goal.rep_scheme_bias.accessories[1]).toBeGreaterThanOrEqual(12)
+    // No rep-range rewrite from aesthetic — fat_loss base owns the scheme.
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([6, 8])
+    expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
+  })
+
+  it('fat_loss goal uses optional cardio policy (diet-driven, no forced cardio days)', () => {
+    const d = interpretProfile(DESK_WORKER_TONED)
+    expect(d.goal.cardio_policy).toBe('optional')
+    // 'optional' surfaces cardio as opt-in; no scheduled cardio days.
+    expect(d.week_shape.cardio_days).toEqual(['none'])
+  })
+
+  it('get_stronger aesthetic on a hypertrophy base pushes rep ranges DOWN for force production', () => {
+    const profile: UserProgramProfile = {
+      ...HYPERTROPHY_BEGINNER,
+      aesthetic_preference: 'get_stronger',
+    }
+    const d = interpretProfile(profile)
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([3, 6])
+    expect(d.goal.rep_scheme_bias.accessories).toEqual([6, 10])
+    expect(d.goal.rep_scheme_bias.finishers).toEqual([8, 12])
   })
 
   it('get_stronger → strength_power with 3-5 main range', () => {

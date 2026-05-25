@@ -60,7 +60,10 @@ export const GoalDirectivesSchema = z.object({
   primary_adaptation: z.enum(['strength_power', 'size', 'work_capacity', 'mixed']),
   rep_scheme_bias: RepSchemeBiasSchema,
   intensity_bias: z.string(),
-  cardio_policy: z.enum(['minimal', 'separated', 'integrated', 'aggressive']),
+  // 'optional' = surface cardio as an opt-in card; do NOT schedule cardio days.
+  // Used for body-comp / fat-loss goals where cardio is a deficit accelerator,
+  // not a programming requirement.
+  cardio_policy: z.enum(['minimal', 'separated', 'integrated', 'aggressive', 'optional']),
 })
 export type GoalDirectives = z.infer<typeof GoalDirectivesSchema>
 

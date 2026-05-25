@@ -17,9 +17,9 @@ describe('StepAesthetic', () => {
     render(
       <StepAesthetic onNext={onNext} onSkip={() => undefined} />,
     )
-    fireEvent.click(screen.getByRole('radio', { name: /strong & defined/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /get stronger/i }))
     fireEvent.click(screen.getByTestId('step-aesthetic-next'))
-    expect(onNext).toHaveBeenCalledWith('strong_defined')
+    expect(onNext).toHaveBeenCalledWith('get_stronger')
   })
 
   it('surfaces a skip button', () => {

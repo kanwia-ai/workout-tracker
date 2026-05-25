@@ -267,7 +267,7 @@ const goalDirectivesSchemaMirror = {
     intensity_bias: { type: 'string' },
     cardio_policy: {
       type: 'string',
-      enum: ['minimal', 'separated', 'integrated', 'aggressive'],
+      enum: ['minimal', 'separated', 'integrated', 'aggressive', 'optional'],
     },
   },
   required: ['aesthetic', 'primary_adaptation', 'rep_scheme_bias', 'intensity_bias', 'cardio_policy'],

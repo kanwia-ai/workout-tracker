@@ -1,6 +1,13 @@
-// StepAesthetic — OPTIONAL. What "good" looks like. 5 cards + "no preference".
-// Added 2026-04: `muscle_size_bulk` card for users who want muscle size /
-// width (not definition). Lumo winks on this step.
+// StepAesthetic — OPTIONAL. Research-honest training-emphasis selector.
+//
+// Body composition is diet-driven, not rep-range-driven. The old cards
+// ("Toned & lean" = high reps, "Muscle size" = different reps) encoded the
+// gym-bro myth that rep ranges sculpt the body. Per docs/research/
+// 01-strength-hypertrophy.md (Principle 3): hypertrophy works across
+// ~30-85% 1RM when sets are taken close to failure; rep range does NOT
+// determine "toned vs bulky". The only research-backed lever from this
+// step is whether to bias the program toward strength expression or
+// hypertrophy on the main compounds.
 
 import { useMemo, useState } from 'react'
 import { StepChrome } from './StepChrome'
@@ -16,29 +23,19 @@ interface Props {
 
 const CARDS: { id: AestheticPreference; title: string; blurb: string }[] = [
   {
-    id: 'toned_lean',
-    title: 'Toned & lean',
-    blurb: 'Definition, low bodyfat vibe',
+    id: 'build_muscle',
+    title: 'Add muscle',
+    blurb: 'Hypertrophy focus. Higher set volumes, 6-15 reps near failure.',
   },
   {
-    id: 'strong_defined',
-    title: 'Strong & defined',
-    blurb: 'Muscular, built, confident',
-  },
-  {
-    id: 'muscle_size_bulk',
-    title: 'Muscle size',
-    blurb: 'Wide, thick, bear-mode — size over definition',
-  },
-  {
-    id: 'athletic',
-    title: 'Athletic',
-    blurb: 'Fast, agile, capable',
+    id: 'get_stronger',
+    title: 'Get stronger',
+    blurb: 'Lower reps, heavier loads, longer rest. Builds force production.',
   },
   {
     id: 'balanced',
-    title: 'Balanced',
-    blurb: 'Nothing specific — proportionate',
+    title: 'Mix of both',
+    blurb: 'Strength on main lifts, hypertrophy on accessories.',
   },
 ]
 
@@ -54,10 +51,10 @@ export function StepAesthetic({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: 
       lumoState="wink"
       bubbleText={bubble}
       title="What look are you chasing?"
-      subtitle="Shapes the muscle bias — not your worth. Skip if you don't care."
+      subtitle="How should the program weight strength vs. size? (Body composition is diet — not rep ranges.)"
       onSkip={onSkip}
     >
-      <div className="grid grid-cols-2 gap-3 mb-4" role="radiogroup" aria-label="Aesthetic preference">
+      <div className="grid grid-cols-2 gap-3 mb-4" role="radiogroup" aria-label="Training emphasis">
         {CARDS.map((c) => {
           const isOn = selected === c.id
           return (
@@ -87,6 +84,22 @@ export function StepAesthetic({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: 
           )
         })}
       </div>
+
+      <div
+        className="p-3 rounded-2xl mb-4 text-xs"
+        style={{
+          background: 'var(--lumo-raised)',
+          border: '2px solid var(--lumo-border)',
+          color: 'var(--lumo-text-sec)',
+        }}
+        data-testid="step-aesthetic-myth-note"
+      >
+        <span className="font-bold" style={{ color: 'var(--lumo-text)' }}>Note:</span>{' '}
+        Common myth: high reps don't "tone" or "lean you out." Lean comes from
+        a calorie deficit + protected muscle. Pick the training emphasis —
+        your kitchen handles the rest.
+      </div>
+
       <button
         type="button"
         onClick={() => onNext(selected ?? 'none')}

@@ -29,7 +29,7 @@ const PROFILE = {
   posture_notes: 'desk worker',
   primary_goal: 'build_muscle',
   muscle_priority: ['glutes', 'hamstrings'],
-  aesthetic_preference: 'toned_lean',
+  aesthetic_preference: 'build_muscle',
   exercise_dislikes: ['burpees'],
   specific_target: 'first pull-up',
 }

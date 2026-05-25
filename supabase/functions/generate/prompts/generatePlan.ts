@@ -139,9 +139,8 @@ Every exercise object MUST include a warmup_sets array (it may be empty, but the
 5.2 Total 5-7 exercises per session. Never fewer than 4, never more than 8.
 5.3 Sets × reps follow the user's primary goal (profile.goal):
        STRENGTH focus (goal contains "strength" / "powerlifting"):  3-5 reps × 3-5 sets, RIR 1-2 on main, 1-3 on accessories
-       HYPERTROPHY focus (goal contains "build_muscle" / "aesthetic" / body-part-specific like "glutes"):  6-12 reps × 3-4 sets, RIR 1-3
-       ENDURANCE focus (goal contains "endurance" / "toned"):  12-20 reps × 2-3 sets, RIR 2-3
-       When uncertain, default to hypertrophy.
+       HYPERTROPHY focus (goal contains "build_muscle" / "aesthetic" / body-part-specific like "glutes" / "toned" / "lean"):  6-12 reps × 3-4 sets, RIR 1-3
+       When uncertain, default to hypertrophy. (Note: rep range does NOT determine "toned vs bulky" — body composition is diet-driven; hypertrophy works across ~5-30 reps when sets are taken close to failure.)
 5.4 Rest seconds per role: main compound 180s, accessory 120s, isolation 75s, rehab/mobility 30-45s, core 45-60s.
 5.5 Every library_id MUST exist in the provided pool. Every exercise's name is denormalized from the pool entry (copy the pool row's "name" field verbatim). See rule 0.
 
@@ -227,12 +226,10 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
 
 • primary_goals (ordered list of 1-2): dominant first. When both "get_stronger" AND "build_muscle" appear, treat as 60% hypertrophy / 40% strength — 3-4 sets of 6-10 reps on main compounds at RIR 1-2, plus 3-4 sets of 8-12 on accessories. When "lean_and_strong" is combined with anything, bias toward compound work + mixed rep ranges. When "mobility" appears as a second goal, pad warmups and insert 1 mobility/rehab exercise per session. When only one goal is present, apply its rep-range bucket as spec'd in rule 5.3.
 • muscle_priority (ordered list): prioritize these muscles. Give them more sets (toward MAV, not MEV), better position early in the session, and the compound lift slot when relevant.
-• aesthetic_preference:
-     "toned_lean"       → full-body compound dominance + higher reps (8-15)
-     "strong_defined"   → PPL-biased, compound-heavy, RIR 1-2 on main work
-     "muscle_size_bulk" → HYPERTROPHY-HEAVY. Compound-dominant. Add arm + shoulder emphasis for a "wide" silhouette (extra 2-4 weekly sets on side/rear delts, biceps, triceps). Rep ranges 6-12, RIR 1-2, volume toward MAV. User wants size, not definition.
-     "athletic"         → keep some plyo/power if cleared + movement variety
-     "balanced"         → even
+• aesthetic_preference (training-emphasis lever; body composition is diet, not rep ranges):
+     "build_muscle"     → balanced default; rep ranges per goal rules above.
+     "get_stronger"     → Bias toward 3-6 rep ranges on main compounds; 90s+ rest; RIR 1-2 (heavy).
+     "balanced"         → balanced default; rep ranges per goal rules above.
      "none"             → ignore
 • exercise_dislikes (multi-select): EXCLUDE entirely. Never emit any exercise matching a dislike tag.
 • specific_target (free text, e.g. "first pull-up", "lose 1 dress size by end of May"): bias selection toward progressive loading of that goal — e.g. pull-up progressions in every upper session.

@@ -40,7 +40,7 @@ const TEST_PROFILE: UserProgramProfile = {
   time_budget_min: 60,
   active_minutes: 60,
   sex: 'female',
-  aesthetic_preference: 'athletic',
+  aesthetic_preference: 'get_stronger',
   posture_notes: 'desk worker',
   first_name: 'Kyra',
   injuries: [

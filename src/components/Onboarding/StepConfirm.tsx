@@ -47,11 +47,9 @@ const SEX_LABELS: Record<UserProgramProfile['sex'], string> = {
 }
 
 const AESTHETIC_LABELS: Record<AestheticPreference, string> = {
-  toned_lean: 'Toned & lean',
-  strong_defined: 'Strong & defined',
-  athletic: 'Athletic',
-  muscle_size_bulk: 'Muscle size (bear-mode)',
-  balanced: 'Balanced',
+  build_muscle: 'Add muscle',
+  get_stronger: 'Get stronger',
+  balanced: 'Mix of both',
   none: 'No preference',
 }
 

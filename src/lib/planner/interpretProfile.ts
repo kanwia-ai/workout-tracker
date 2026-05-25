@@ -93,7 +93,9 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
       finishers: [12, 20],
     },
     intensity_bias: 'moderate load, density-focused, short rest',
-    cardio_policy: 'aggressive',
+    // WHY: fat loss is diet-driven. Cardio is a deficit accelerator, not a
+    // requirement. Don't force 3 cardio days on someone whose goal is body comp.
+    cardio_policy: 'optional',
   },
   mobility: {
     aesthetic: 'general',
@@ -119,44 +121,28 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
   },
 }
 
+// WHY: research shows hypertrophy works across 5-30 rep ranges (Schoenfeld
+// et al. 2017 meta; docs/research/01-strength-hypertrophy.md Principle 3).
+// The ONLY research-backed reason to bias reps lower from the base goal is
+// for strength expression (CNS adaptation + force production at >=60% 1RM,
+// 1-6 reps). All "look" outcomes (toned, lean, defined, bulky) are diet-
+// driven, not rep-range-driven. So this refiner only acts on the
+// strength-vs-hypertrophy lever; "build_muscle" and "balanced" return the
+// base goal untouched.
 function refineGoalWithAesthetic(
   base: GoalDirectives,
   pref: AestheticPreference | undefined,
 ): GoalDirectives {
   if (!pref || pref === 'none') return base
-  if (pref === 'muscle_size_bulk') {
-    return {
-      ...base,
-      aesthetic: 'hypertrophy',
-      primary_adaptation: 'size',
-      rep_scheme_bias: {
-        main_compounds: [5, 8],
-        accessories: [8, 12],
-        finishers: [12, 15],
-      },
-      intensity_bias: 'compound-heavy hypertrophy, RIR 1-2',
-    }
-  }
-  if (pref === 'athletic') {
-    return {
-      ...base,
-      aesthetic: 'athletic',
-      primary_adaptation: 'strength_power',
-      rep_scheme_bias: {
-        main_compounds: [3, 6],
-        accessories: [6, 10],
-        finishers: [10, 15],
-      },
-      intensity_bias: base.intensity_bias,
-    }
-  }
-  if (pref === 'toned_lean') {
+  if (pref === 'build_muscle') return base
+  if (pref === 'balanced') return base
+  if (pref === 'get_stronger') {
     return {
       ...base,
       rep_scheme_bias: {
-        main_compounds: [6, 10] as [number, number],
-        accessories: [10, 15] as [number, number],
-        finishers: [12, 20] as [number, number],
+        main_compounds: [3, 6] as [number, number],
+        accessories: [6, 10] as [number, number],
+        finishers: [8, 12] as [number, number],
       },
     }
   }
@@ -208,6 +194,9 @@ function deriveWeekShape(
       case 'separated':
         return ['rest_day']
       case 'minimal':
+        return ['none']
+      case 'optional':
+        // No scheduled cardio days — UI surfaces cardio as an opt-in card.
         return ['none']
     }
   })()
