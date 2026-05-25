@@ -48,6 +48,51 @@ describe('profileRepo', () => {
     expect(row?.synced).toBe(false)
   })
 
+  // ─── Legacy aesthetic_preference migration ─────────────────────────
+  // On 2026-05-24 the aesthetic_preference enum collapsed from 5 myth-laden
+  // values to 4 research-honest ones. Without a pre-parse migration every
+  // stored profile bricks the user's app on load. These tests pin that down.
+  describe('legacy aesthetic_preference migration', () => {
+    async function writeRawProfile(userId: string, raw: Record<string, unknown>) {
+      await db.userProgramProfiles.put({
+        user_id: userId,
+        profile_json: JSON.stringify(raw),
+        updated_at: new Date().toISOString(),
+        synced: true,
+      })
+    }
+
+    it('migrates toned_lean → build_muscle on load', async () => {
+      await writeRawProfile('user-legacy', { ...VALID_PROFILE, aesthetic_preference: 'toned_lean' })
+      const loaded = await loadProfileLocal('user-legacy')
+      expect(loaded?.aesthetic_preference).toBe('build_muscle')
+    })
+
+    it('migrates muscle_size_bulk → build_muscle', async () => {
+      await writeRawProfile('user-legacy', { ...VALID_PROFILE, aesthetic_preference: 'muscle_size_bulk' })
+      const loaded = await loadProfileLocal('user-legacy')
+      expect(loaded?.aesthetic_preference).toBe('build_muscle')
+    })
+
+    it('migrates strong_defined → get_stronger', async () => {
+      await writeRawProfile('user-legacy', { ...VALID_PROFILE, aesthetic_preference: 'strong_defined' })
+      const loaded = await loadProfileLocal('user-legacy')
+      expect(loaded?.aesthetic_preference).toBe('get_stronger')
+    })
+
+    it('migrates athletic → balanced', async () => {
+      await writeRawProfile('user-legacy', { ...VALID_PROFILE, aesthetic_preference: 'athletic' })
+      const loaded = await loadProfileLocal('user-legacy')
+      expect(loaded?.aesthetic_preference).toBe('balanced')
+    })
+
+    it('leaves already-current values alone', async () => {
+      await writeRawProfile('user-current', { ...VALID_PROFILE, aesthetic_preference: 'build_muscle' })
+      const loaded = await loadProfileLocal('user-current')
+      expect(loaded?.aesthetic_preference).toBe('build_muscle')
+    })
+  })
+
   describe('syncProfileUp', () => {
     it('upserts dirty row to supabase and marks local synced', async () => {
       await saveProfileLocal('user-1', VALID_PROFILE)

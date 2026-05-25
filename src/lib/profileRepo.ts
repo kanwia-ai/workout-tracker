@@ -18,6 +18,38 @@ import { supabase } from './supabase'
  * `time_budget_min` into `active_minutes` when the new field is missing so
  * the planner prompt has a number to cap sets by either way.
  */
+/**
+ * Pre-parse migration for stored profiles. Runs on raw JSON BEFORE Zod
+ * validation so stored values that have since left the enum don't throw
+ * and brick the user's app.
+ *
+ * 2026-05-24 — `aesthetic_preference` enum collapsed from the 5-value
+ * myth-laden set (`toned_lean`, `muscle_size_bulk`, `strong_defined`,
+ * `athletic`, `balanced`) to a 4-value research-honest set
+ * (`build_muscle`, `get_stronger`, `balanced`, `none`). Old values map:
+ *   - `toned_lean` → `build_muscle`   (user wanted hypertrophy; "tone" is diet)
+ *   - `muscle_size_bulk` → `build_muscle`
+ *   - `strong_defined` → `get_stronger`
+ *   - `athletic` → `balanced`
+ * Without this, every existing user's profile fails Zod parse on next load.
+ */
+function migrateLegacyProfile(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object') return raw
+  const obj = raw as Record<string, unknown>
+  const pref = obj.aesthetic_preference
+  if (typeof pref !== 'string') return obj
+  const remap: Record<string, string> = {
+    toned_lean: 'build_muscle',
+    muscle_size_bulk: 'build_muscle',
+    strong_defined: 'get_stronger',
+    athletic: 'balanced',
+  }
+  if (pref in remap) {
+    return { ...obj, aesthetic_preference: remap[pref] }
+  }
+  return obj
+}
+
 function ensurePrimaryGoal(profile: UserProgramProfile): UserProgramProfile {
   const withPrimary: UserProgramProfile = profile.primary_goal
     ? profile
@@ -78,7 +110,7 @@ export async function loadProfileLocal(userId: string): Promise<UserProgramProfi
   const row = await db.userProgramProfiles.get(userId)
   if (!row) return null
   return ensurePrimaryGoal(
-    UserProgramProfileSchema.parse(JSON.parse(row.profile_json)),
+    UserProgramProfileSchema.parse(migrateLegacyProfile(JSON.parse(row.profile_json))),
   )
 }
 
@@ -114,7 +146,7 @@ export async function pullProfileFromCloud(userId: string): Promise<UserProgramP
   if (localRow && !localRow.synced) {
     // Local has unsynced edits — don't clobber.
     return ensurePrimaryGoal(
-      UserProgramProfileSchema.parse(JSON.parse(localRow.profile_json)),
+      UserProgramProfileSchema.parse(migrateLegacyProfile(JSON.parse(localRow.profile_json))),
     )
   }
 
@@ -126,7 +158,7 @@ export async function pullProfileFromCloud(userId: string): Promise<UserProgramP
   if (error) throw error
   if (!data) return null
 
-  const profile = ensurePrimaryGoal(UserProgramProfileSchema.parse(data.profile))
+  const profile = ensurePrimaryGoal(UserProgramProfileSchema.parse(migrateLegacyProfile(data.profile)))
   // Single write: validated profile + synced flag in one put.
   await db.userProgramProfiles.put({
     user_id: userId,
