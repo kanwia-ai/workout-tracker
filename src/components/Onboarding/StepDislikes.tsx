@@ -18,7 +18,7 @@ const LABELS: Record<ExerciseDislikeValue, string> = {
   running: 'Running',
   jumping: 'Jumping / plyos',
   overhead_pressing: 'Overhead pressing',
-  high_rep_cardio: 'High-rep cardio',
+  cardio_machines: 'Cardio machines',
   hex_bar: 'Hex bar / trap bar',
   battle_ropes: 'Battle ropes',
   bike_sprints: 'Bike sprints',

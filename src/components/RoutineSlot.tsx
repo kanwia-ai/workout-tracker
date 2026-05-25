@@ -25,7 +25,7 @@ const MINUTE_CHIPS: Record<RoutineKind, number[]> = {
 }
 
 const FOCUS_CHIPS: Record<RoutineKind, string[]> = {
-  warmup: ['Mobility', 'Activation', 'Movement prep'],
+  warmup: ['Mobility', 'Prep set', 'Movement prep'],
   cooldown: ['Stretching', 'Breath'],
   cardio: ['Zone 2', 'Intervals'],
 }

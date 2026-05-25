@@ -142,7 +142,7 @@ describe('OnboardingFlow', () => {
       target: { value: 'Kyra' },
     })
     fireEvent.click(screen.getByTestId('step-name-next'))
-    fireEvent.click(screen.getByRole('checkbox', { name: /lean & strong/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /strong \+ lean/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
 
     // muscle priority — pick glutes then back (order = priority rank)
@@ -201,7 +201,7 @@ describe('OnboardingFlow', () => {
     // confirm
     expectStep('confirm')
     const confirmPanel = screen.getByTestId('onboarding-step-confirm')
-    expect(within(confirmPanel).getByText(/lean & strong/i)).toBeInTheDocument()
+    expect(within(confirmPanel).getByText(/strong \+ lean/i)).toBeInTheDocument()
     expect(within(confirmPanel).getByText(/first pull-up/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Save and generate/i }))
 

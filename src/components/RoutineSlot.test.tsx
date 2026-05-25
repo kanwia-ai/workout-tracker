@@ -195,7 +195,7 @@ describe('RoutineSlot', () => {
     expect(screen.getByRole('button', { name: '20 min' })).toBeInTheDocument()
     // Focus chips for warmup
     expect(screen.getByRole('button', { name: 'Mobility' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Activation' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Prep set' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Movement prep' })).toBeInTheDocument()
   })
 
@@ -234,7 +234,7 @@ describe('RoutineSlot', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /regenerate/i }))
     fireEvent.click(screen.getByRole('button', { name: '15 min' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Activation' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Prep set' }))
     fireEvent.click(screen.getByRole('button', { name: /^yes/i }))
 
     await waitFor(() => {
@@ -243,7 +243,7 @@ describe('RoutineSlot', () => {
         kind: 'warmup',
         profile: baseProfile,
         minutes: 15,
-        focusTag: 'Activation',
+        focusTag: 'Prep set',
       })
     })
   })

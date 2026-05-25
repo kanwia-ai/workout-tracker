@@ -48,7 +48,7 @@ export const ExerciseDislike = z.enum([
   'running',
   'jumping',
   'overhead_pressing',
-  'high_rep_cardio',
+  'cardio_machines',
   'hex_bar',
   'battle_ropes',
   'bike_sprints',
@@ -61,12 +61,14 @@ export type ExerciseDislike = z.infer<typeof ExerciseDislike>
 export const Equipment = z.enum(['full_gym', 'home_weights', 'bands_only', 'bodyweight_only', 'cable_machine', 'barbell'])
 // 'chronic' covers ongoing conditions that shape programming but aren't acute (e.g., chronic lower back pain).
 export const Severity = z.enum(['avoid', 'modify', 'chronic', 'ok'])
+export type Severity = z.infer<typeof Severity>
 export const BodyPart = z.enum([
   'left_meniscus', 'right_meniscus', 'left_knee', 'right_knee',
   'lower_back', 'upper_back', 'hip_flexors',
   'left_shoulder', 'right_shoulder', 'left_trap', 'right_trap',
   'wrist', 'ankle', 'neck', 'elbow', 'other',
 ])
+export type BodyPart = z.infer<typeof BodyPart>
 export const Sex = z.enum(['female', 'male', 'prefer_not_to_say'])
 
 export const InjurySchema = z.object({

@@ -118,14 +118,22 @@ function timeOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
 
 export function HomeScreen({
   userId,
-  profile,
+  profile: _profile,
   onOpenSettings,
   onStartSession,
   onRetryGeneration,
 }: HomeScreenProps) {
+  // _profile (DisplayProfile.streak) is no longer surfaced — the day-streak
+  // counter was replaced with an adherence (sessions completed / scheduled
+  // this week) badge that doesn't reward overriding scheduled rest days.
   const { plan, loading } = usePlan(userId)
   const [prCount, setPrCount] = useState(0)
-  const [weekVolumeLb, setWeekVolumeLb] = useState(0)
+  // Total hard sets completed this week. Replaces the old `setsDone × 10 lb`
+  // fabricated tonnage — that magic constant trained users to optimize a
+  // meaningless number. Hard sets is the actual hypertrophy lever per the
+  // research (R1 P1). TODO: upgrade to per-muscle hard sets per week once we
+  // can cheaply attribute completed sets to muscle groups (R1 P2 MEV/MAV/MRV).
+  const [weekHardSets, setWeekHardSets] = useState(0)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
   const [programProfile, setProgramProfile] = useState<UserProgramProfile | null>(null)
 
@@ -248,18 +256,18 @@ export function HomeScreen({
 
         const weekStartTs = weekStart.getTime()
         let completed = 0
-        let volLb = 0
+        let hardSets = 0
         for (const s of history as Array<Record<string, unknown>>) {
           const endedAt = s.ended_at as string | undefined
           const setsDone = (s.completed_sets as number | undefined) ?? 0
           const endTs = endedAt ? Date.parse(endedAt) : 0
           if (endTs >= weekStartTs) {
             completed++
-            volLb += setsDone * 10
+            hardSets += setsDone
           }
         }
         setSessionsCompleted(completed)
-        setWeekVolumeLb(volLb)
+        setWeekHardSets(hardSets)
       } catch {
         // Swallow — dashboard stats aren't load-bearing
       }
@@ -316,7 +324,10 @@ export function HomeScreen({
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <StreakBadge count={profile?.streak ?? 0} />
+            <AdherenceBadge
+              completed={sessionsCompleted}
+              scheduled={weekSessions.length}
+            />
             <button
               onClick={onOpenSettings}
               aria-label="Settings"
@@ -421,9 +432,8 @@ export function HomeScreen({
                 accent="var(--accent-mint)"
               />
               <StatChip
-                label="volume"
-                value={weekVolumeLb > 0 ? weekVolumeLb.toLocaleString() : '0'}
-                unit="lb"
+                label="hard sets"
+                value={weekHardSets > 0 ? weekHardSets.toLocaleString() : '0'}
                 accent="var(--accent-sun)"
               />
               <StatChip
@@ -459,9 +469,20 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-// ─── StreakBadge ────────────────────────────────────────────────────────────
-function StreakBadge({ count }: { count: number }) {
-  if (count <= 0) return null
+// ─── AdherenceBadge ─────────────────────────────────────────────────────────
+// Replaces the old day-streak counter. Day-streak iconography rewards
+// consecutive-day training, but the program prescribes rest days — a user
+// who follows the plan correctly would "break their streak" by resting.
+// Adherence (sessions completed / sessions scheduled this week) rewards
+// following the prescription, not overriding it.
+function AdherenceBadge({
+  completed,
+  scheduled,
+}: {
+  completed: number
+  scheduled: number
+}) {
+  if (scheduled <= 0) return null
   return (
     <div
       className="inline-flex items-center gap-1"
@@ -471,15 +492,15 @@ function StreakBadge({ count }: { count: number }) {
         background: 'color-mix(in srgb, var(--brand) 12%, transparent)',
         border: '1px solid color-mix(in srgb, var(--brand) 30%, transparent)',
       }}
-      title={`${count}-day streak`}
-      aria-label={`${count}-day streak`}
+      title={`${completed}/${scheduled} sessions this week`}
+      aria-label={`${completed} of ${scheduled} sessions this week`}
     >
       <Flame size={14} style={{ color: 'var(--brand)' }} />
       <span
         className="tabular-nums"
         style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}
       >
-        {count}
+        {completed}/{scheduled}
       </span>
     </div>
   )
@@ -1155,7 +1176,7 @@ function RestCard({
   onBuildWorkout?: () => void
 }) {
   const [line] = useState(() =>
-    pickCopy('preamble_morning', cheekLevel, { current: null }, {
+    pickCopy('restDay', cheekLevel, { current: null }, {
       name: firstName || 'friend',
     }),
   )
@@ -1195,7 +1216,7 @@ function RestCard({
         <button
           type="button"
           onClick={onBuildWorkout}
-          aria-label="Build me a workout anyway"
+          aria-label="Add a light session"
           className="active:scale-[0.98] transition"
           style={{
             display: 'flex',
@@ -1213,7 +1234,7 @@ function RestCard({
             cursor: 'pointer',
           }}
         >
-          feeling it? build me one anyway
+          actually want to lift? add a light session
           <ArrowRight size={14} />
         </button>
       )}

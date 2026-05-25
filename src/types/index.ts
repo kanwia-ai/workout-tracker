@@ -19,7 +19,27 @@ export interface Exercise {
   video_url?: string
   image_url?: string
   created_by?: string
+  /**
+   * Hard injury gates. If the user has ANY injury matching `injury` at a
+   * severity >= `min_severity`, this exercise is filtered out of pools and
+   * the library browser. Use for movements that DIRECTLY violate a research
+   * rule (e.g. loaded spinal flexion-rotation for any lower-back flag).
+   *
+   * Severity order (low → high): 'ok' < 'modify' < 'chronic' < 'avoid'.
+   * 'min_severity: modify' fires for modify / chronic / avoid (any non-ok flag).
+   */
+  contraindications?: { injury: InjuryBodyPart; min_severity: InjurySeverity }[]
 }
+
+// Re-exported subset of profile injury types so exercise data files don't
+// need a deep import path. Keep these in sync with `types/profile.ts` —
+// the zod schemas there are the source of truth.
+export type InjuryBodyPart =
+  | 'left_meniscus' | 'right_meniscus' | 'left_knee' | 'right_knee'
+  | 'lower_back' | 'upper_back' | 'hip_flexors'
+  | 'left_shoulder' | 'right_shoulder' | 'left_trap' | 'right_trap'
+  | 'wrist' | 'ankle' | 'neck' | 'elbow' | 'other'
+export type InjurySeverity = 'avoid' | 'modify' | 'chronic' | 'ok'
 
 export interface WorkoutExercise {
   id: string

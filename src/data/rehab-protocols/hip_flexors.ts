@@ -11,7 +11,7 @@ export const hipFlexorsProtocol: Protocol = {
   id: 'hip_flexors',
   title: 'Hip flexor tightness / psoas dominance pattern',
   summary:
-    'Lengthen anterior hip, activate glute max to reciprocally inhibit, train dead bug for psoas dissociation. Addresses lower-crossed syndrome root cause.',
+    'Lengthen anterior hip, activate glute max to reciprocally inhibit, train dead bug for psoas dissociation. Addresses the common desk posture pattern (tight hip flexors, weak glutes).',
 
   citations: [
     {
@@ -25,7 +25,7 @@ export const hipFlexorsProtocol: Protocol = {
       authors: 'Janda V',
       year: 1987,
       title: 'Muscles and motor control in cervicogenic disorders: assessment and management',
-      note: 'Original lower-crossed syndrome description — tight hip flexors + inhibited glutes.',
+      note: 'Original description of the common desk posture pattern (tight hip flexors, weak glutes).',
     },
     {
       authors: 'Neumann DA',

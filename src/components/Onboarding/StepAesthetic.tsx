@@ -50,8 +50,8 @@ export function StepAesthetic({ value, onNext, onSkip, cheek = DEFAULT_CHEEK }: 
     <StepChrome
       lumoState="wink"
       bubbleText={bubble}
-      title="What look are you chasing?"
-      subtitle="How should the program weight strength vs. size? (Body composition is diet — not rep ranges.)"
+      title="How should we weight the program?"
+      subtitle="Strength bias, hypertrophy bias, or both. (Body composition is diet — not rep ranges.)"
       onSkip={onSkip}
     >
       <div className="grid grid-cols-2 gap-3 mb-4" role="radiogroup" aria-label="Training emphasis">

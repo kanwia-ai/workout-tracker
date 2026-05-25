@@ -26,7 +26,7 @@ export const upperBackProtocol: Protocol = {
       year: 2010,
       title: 'Assessment and Treatment of Muscle Imbalance: The Janda Approach',
       journal: 'Human Kinetics',
-      note: 'Upper-crossed syndrome model + intervention hierarchy.',
+      note: 'Common desk posture pattern (tight chest/upper traps, weak rhomboids/deep neck flexors) + intervention hierarchy.',
     },
     {
       authors: 'Cools AM, Dewitte V, Lanszweert F et al.',

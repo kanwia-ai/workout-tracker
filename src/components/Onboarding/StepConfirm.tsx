@@ -15,7 +15,7 @@ interface Props {
 const PRIMARY_GOAL_LABELS: Record<PrimaryGoal, string> = {
   build_muscle: 'Build muscle',
   get_stronger: 'Get stronger',
-  lean_and_strong: 'Lean & strong',
+  lean_and_strong: 'Strong + lean (hybrid)',
   fat_loss: 'Fat loss',
   mobility: 'Mobility / rehab',
   athletic: 'Athletic',
@@ -58,7 +58,7 @@ const DISLIKE_LABELS: Record<ExerciseDislike, string> = {
   running: 'running',
   jumping: 'jumping',
   overhead_pressing: 'overhead pressing',
-  high_rep_cardio: 'high-rep cardio',
+  cardio_machines: 'cardio machines',
   hex_bar: 'hex bar',
   battle_ropes: 'battle ropes',
   bike_sprints: 'bike sprints',
@@ -155,7 +155,7 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK }: Props) {
         <Row label="Goal">{goalLabel}</Row>
         {draft.aesthetic_preference &&
           draft.aesthetic_preference !== 'none' && (
-            <Row label="Aesthetic">
+            <Row label="Emphasis">
               {AESTHETIC_LABELS[draft.aesthetic_preference]}
             </Row>
           )}

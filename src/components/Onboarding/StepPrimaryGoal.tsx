@@ -31,8 +31,9 @@ const OPTIONS: {
   },
   {
     id: 'lean_and_strong',
-    title: 'Lean & strong',
-    blurb: 'Hybrid — muscle + strength, mixed reps',
+    title: 'Strong + lean (hybrid)',
+    blurb:
+      'Strength-leaning programming on main lifts, hypertrophy-style accessories. Body composition is still diet.',
   },
   {
     id: 'fat_loss',

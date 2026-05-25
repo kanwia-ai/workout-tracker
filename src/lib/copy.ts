@@ -46,6 +46,13 @@ type CopyShape = {
   readonly preamble_morning: readonly string[];
   readonly preamble_afternoon: readonly string[];
   readonly preamble_evening: readonly string[];
+  /**
+   * Scheduled rest-day greetings shown on the RestCard. Distinct from
+   * preamble_* pools so we don't accidentally nudge the user OFF a planned
+   * rest day with active-workout copy. Celebrate rest; recovery IS part of
+   * the prescription. 6-10+ per tier.
+   */
+  readonly restDay: readonly string[];
   readonly restStart: readonly string[];
   readonly restSkipEarly: readonly string[];
   /**
@@ -472,6 +479,17 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'Wind down after.',
       'Ready when you are.',
     ],
+    // Tier 0: dry scheduled-rest-day acknowledgements (8 entries).
+    restDay: [
+      'rest day. tissue rebuilds while you sit.',
+      'adaptation happens between sessions.',
+      'no lift today — that is the plan.',
+      'recovery is part of the program.',
+      'scheduled rest. nothing owed.',
+      'off day. logged.',
+      'rest day. plan continues tomorrow.',
+      'no session today.',
+    ],
     restStart: [
       'resting.',
       'hold.',
@@ -753,6 +771,17 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "Hi {name}. Let's end the day strong.",
       'Evening. Easy start.',
       'Hey {name}. Ready when you are.',
+    ],
+    // Tier 1: friendly scheduled-rest-day lines (8 entries).
+    restDay: [
+      'rest day, {name}. tissue rebuilds while you chill.',
+      'no lift today — that\'s the plan, not a missed day.',
+      'recovery is when the work lands. enjoy it.',
+      'scheduled rest, {name}. trust the plan.',
+      'off day. legs say thank you.',
+      'taking the day off — that\'s the program working.',
+      'nothing to earn back. rest IS the work.',
+      'hi {name}. rest day. sleep in if you can.',
     ],
     restStart: [
       "rest. shake it out.",
@@ -1085,6 +1114,20 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "evening {name}. short, sweet, mean.",
       "hi. tea after. lifts now.",
       "evening {name}. we lift, then we flop.",
+    ],
+    // Tier 2: cheeky scheduled-rest-day lines (10 entries). Celebrate rest;
+    // don't nudge them off the plan.
+    restDay: [
+      "rest day {name}. tissue rebuilds while you sit. science.",
+      "no lift today and that's on purpose.",
+      "scheduled rest. recovery is the program, not a vacation from it.",
+      "off day {name}. do nothing on purpose.",
+      "rest day. don't undo it. menace.",
+      "lumo is napping. you should too.",
+      "adaptation happens between sessions. let it cook.",
+      "no session today {name}. plan continues tomorrow.",
+      "rest day. legs are quietly getting stronger.",
+      "today's prescription: nothing. take it.",
     ],
     restStart: [
       "45s. shake it out. no scrolling.",
