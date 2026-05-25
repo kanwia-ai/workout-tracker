@@ -120,6 +120,12 @@ export const RootCauseFlagSchema = z.object({
   avoid_under_load: z.array(z.string()),
   do_not_ban: z.array(z.string()),       // e.g. ["squat", "deadlift"]
   why_not_banned: z.string(),
+  // Optional session-type scope. When omitted/null the flag applies to every
+  // session in the week (current behavior — most root-cause work, e.g. desk
+  // worker daily correctives, is session-agnostic). Patterns that should only
+  // surface on specific session types (e.g. an upper-cross flag only routing
+  // face_pulls onto upper days) can opt in by listing them.
+  applies_to_session_type: z.array(SessionTypeSchema).nullable().optional(),
 })
 export type RootCauseFlag = z.infer<typeof RootCauseFlagSchema>
 

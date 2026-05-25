@@ -187,7 +187,7 @@ interface MergedSessionContext {
   modifications_note: string
 }
 
-function mergeDirectivesForSession(
+export function mergeDirectivesForSession(
   sessionType: SessionType,
   weekNumber: number,
   directives: ProgrammingDirectives,
@@ -290,6 +290,45 @@ function mergeDirectivesForSession(
 
     if (modifications.length > 0) {
       modNotes.push(`${inj.source}: ${modifications.join('; ')}`)
+    }
+  }
+
+  // ── Root-cause integration ───────────────────────────────────────────────
+  // WHY: Root-cause patterns (desk worker + chronic LBP, etc.) need to
+  // surface their priority work WITHOUT being filtered out by the same
+  // injury that triggered them. The `do_not_ban` allowlist is the key —
+  // chronic LBP triggers the protocol but should NOT remove deadlift/
+  // squat/RDL from a user whose root cause is desk posture (those
+  // movements ARE the rehab). Stems are matched as substrings so loose
+  // labels like 'deadlift' cover every loaded variant ID.
+  const doNotBanStems: string[] = []
+  for (const flag of directives.root_causes) {
+    const scope = flag.applies_to_session_type
+    // null/undefined → applies to every session (session-agnostic correctives).
+    // Otherwise: only fire when the current session is in the explicit list.
+    if (scope && scope.length > 0 && !scope.includes(sessionType)) continue
+    for (const pw of flag.priority_work) {
+      // No ACCESSORY_VARIANTS gate here — root-cause IDs are loose labels
+      // (e.g. 'glute_med_isolation') that may not map 1:1 to a registered
+      // variant. `pickAccessories` already skips unresolvable IDs, so we
+      // preserve the priority hint in the merged context while staying
+      // robust to incomplete variant coverage.
+      if (!priorityAcc.includes(pw)) priorityAcc.push(pw)
+    }
+    for (const stem of flag.do_not_ban) {
+      if (!doNotBanStems.includes(stem)) doNotBanStems.push(stem)
+    }
+  }
+  // Apply the allowlist: any banned variant whose id contains a
+  // do_not_ban stem (case-insensitive substring) is rescued. This is what
+  // makes chronic-LBP-on-a-desk-worker still able to deadlift — the
+  // posterior-chain pattern IS the corrective, not the contraindication.
+  if (doNotBanStems.length > 0) {
+    for (const variantId of [...banned]) {
+      const lower = variantId.toLowerCase()
+      if (doNotBanStems.some((stem) => lower.includes(stem.toLowerCase()))) {
+        banned.delete(variantId)
+      }
     }
   }
 

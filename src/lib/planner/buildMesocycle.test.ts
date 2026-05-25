@@ -2,12 +2,18 @@ import { describe, it, expect } from 'vitest'
 import {
   buildMesocycle,
   buildSession,
+  mergeDirectivesForSession,
   mesocycleLengthFor,
   resolveStage,
 } from './buildMesocycle'
 import { interpretProfile } from './interpretProfile'
 import { getProtocol } from '../../data/rehab-protocols'
 import type { UserProgramProfile } from '../../types/profile'
+import type {
+  ProgrammingDirectives,
+  RootCauseFlag,
+  InjuryDirective,
+} from '../../types/directives'
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 const KYRA_PROFILE: UserProgramProfile = {
@@ -651,5 +657,225 @@ describe('seed suggested_weight_lbs stays flat across weeks', () => {
       comparedAtLeastOne,
       'expected at least one exercise present in weeks 1-3 with a seed',
     ).toBe(true)
+  })
+})
+
+// ─── Root-cause integration in buildMesocycle ──────────────────────────────
+// interpretProfile emits rich RootCauseFlag entries (desk worker + chronic
+// LBP → priority_work: glute_med_isolation etc., do_not_ban: deadlift/squat/
+// rdl). These were previously ignored by the planner. The merge step must:
+//   1. Surface priority_work into priority_accessories on matching sessions.
+//   2. Apply do_not_ban as a substring allowlist that rescues banned IDs.
+//   3. Deduplicate against chronic-severity + per_session_type priority work.
+
+// Helper — synthesize an InjuryDirective without going through interpretProfile,
+// so the test can pin a specific banned-variant scenario.
+function fakeInjury(overrides: Partial<InjuryDirective>): InjuryDirective {
+  return {
+    source: 'lower_back',
+    matched_protocol: 'lower_back',
+    severity: 'acute',
+    stage_weeks: 0,
+    unilateral_side: null,
+    rationale: 'test fixture',
+    global_avoid: [],
+    per_session_type: {},
+    progression_arc: [],
+    recovery_target: 'test',
+    ...overrides,
+  }
+}
+
+// Helper — synthesize a RootCauseFlag.
+function fakeRootCause(overrides: Partial<RootCauseFlag>): RootCauseFlag {
+  return {
+    observation: 'test root cause',
+    likely_cause: 'test',
+    priority_work: [],
+    avoid_under_load: [],
+    do_not_ban: [],
+    why_not_banned: 'test',
+    ...overrides,
+  }
+}
+
+// Minimal directives skeleton; only the fields the merge consults are filled.
+function minimalDirectives(args: {
+  injuries: InjuryDirective[]
+  root_causes: RootCauseFlag[]
+}): ProgrammingDirectives {
+  const baseGoal = interpretProfile(NO_INJURY_PROFILE).goal
+  return {
+    goal: baseGoal,
+    week_shape: {
+      sessions_per_week: 4,
+      template: ['lower_squat_focus', 'upper_push', 'lower_hinge_focus', 'upper_pull'],
+      session_spacing: 'upper_lower',
+      cardio_days: ['none'],
+    },
+    injury_directives: args.injuries,
+    root_causes: args.root_causes,
+    progression: {
+      wk1_2: 'accumulation',
+      wk3_4: 'intensification',
+      wk5: 'peak',
+      wk6: 'deload',
+    },
+    target_lifting_minutes: 60,
+    source: 'rules',
+    unhandled_inputs: [],
+  }
+}
+
+describe('mergeDirectivesForSession — root_causes integration', () => {
+  it('desk worker + chronic LBP → glute_med_isolation appears in priority_accessories on a lower-body session', () => {
+    // Real path: KYRA_PROFILE has chronic LBP + desk posture note, which
+    // interpretProfile emits as the quad/hip-flexor-dominance root cause.
+    const directives = interpretProfile(KYRA_PROFILE)
+    const ctx = mergeDirectivesForSession('lower_squat_focus', 1, directives)
+    expect(ctx.priority_accessories).toContain('glute_med_isolation')
+    // The other root_cause IDs should make it through as well — none of them
+    // are filtered against ACCESSORY_VARIANTS (they're loose labels).
+    expect(ctx.priority_accessories).toEqual(
+      expect.arrayContaining([
+        'glute_med_isolation',
+        'hip_hinge_patterning_light',
+        'couch_stretch_daily',
+        'thoracic_mobility',
+      ]),
+    )
+  })
+
+  it('desk worker + chronic LBP → deadlift remains available even if a lower-back injury would normally restrict it', () => {
+    // Construct a directives bundle where the lower_back protocol IS in its
+    // acute window (banning 'loaded_deadlift', 'loaded_back_squat', …) AND
+    // a chronic-LBP root cause flag is also present. The allowlist must
+    // override the bans.
+    const directives = minimalDirectives({
+      injuries: [
+        fakeInjury({
+          source: 'lower_back',
+          severity: 'acute',         // → adds hard_ban_patterns to banned
+          stage_weeks: 0,
+        }),
+      ],
+      root_causes: [
+        fakeRootCause({
+          observation: 'chronic LBP + desk worker',
+          priority_work: ['glute_med_isolation', 'hip_hinge_patterning_light'],
+          do_not_ban: ['deadlift', 'squat', 'rdl'],
+          why_not_banned: 'posterior-chain training IS the rehab',
+        }),
+      ],
+    })
+
+    // Pre-allowlist, the lower_back acute block would push 'loaded_deadlift'
+    // and 'loaded_back_squat' into banned. We assert those have been rescued
+    // by the do_not_ban allowlist (substring match on 'deadlift' / 'squat').
+    const ctx = mergeDirectivesForSession('lower_hinge_focus', 1, directives)
+    for (const banned of ctx.banned_variants) {
+      expect(
+        banned.toLowerCase(),
+        `do_not_ban allowlist should have rescued "${banned}"`,
+      ).not.toContain('deadlift')
+      expect(banned.toLowerCase()).not.toContain('squat')
+    }
+    // And concretely: the literal hard-ban IDs the lower_back protocol
+    // adds for acute severity should now be absent.
+    expect(ctx.banned_variants.has('loaded_deadlift')).toBe(false)
+    expect(ctx.banned_variants.has('loaded_back_squat')).toBe(false)
+  })
+
+  it('root_causes priority_work doesn\'t duplicate per_session_type priority_work entries', () => {
+    // Construct a scenario where root_cause priority_work overlaps an entry
+    // produced by per_session_type. lower_back per_session_type for
+    // lower_squat_focus emits 'glute_med_activation' as priority_work; have
+    // the root cause hand the same ID up so we can verify dedup.
+    const directives = minimalDirectives({
+      injuries: [
+        fakeInjury({
+          source: 'lower_back',
+          severity: 'chronic',  // chronic → priority_work via chronic branch
+          stage_weeks: 52,
+        }),
+      ],
+      root_causes: [
+        fakeRootCause({
+          observation: 'overlap test',
+          // Mix one ID that ALSO comes from per_session_type
+          // ('glute_med_activation') with new IDs.
+          priority_work: [
+            'glute_med_activation',     // collides with per_session_type
+            'glute_med_isolation',      // unique to root_cause
+            'couch_stretch_daily',      // unique to root_cause
+          ],
+          do_not_ban: [],
+        }),
+      ],
+    })
+    const ctx = mergeDirectivesForSession('lower_squat_focus', 1, directives)
+    // Sanity: per_session_type-fed 'glute_med_activation' is present once,
+    // not twice, after the root-cause merge.
+    const occurrences = ctx.priority_accessories.filter(
+      (id) => id === 'glute_med_activation',
+    ).length
+    expect(occurrences).toBe(1)
+    // The full array has no duplicates anywhere.
+    expect(new Set(ctx.priority_accessories).size).toBe(
+      ctx.priority_accessories.length,
+    )
+  })
+
+  it('chronic-severity + root_cause priority_work compose without clobbering each other', () => {
+    // The chronic-severity branch (added in commit 676d699) routes the
+    // protocol's chronic.priority_work into priority_accessories via the
+    // ACCESSORY_VARIANTS filter. The root_cause branch routes its own
+    // priority_work in WITHOUT that filter. Both paths must add to the same
+    // list and must dedupe. Use the real KYRA_PROFILE so we exercise the
+    // actual protocol data, then verify both signals appear.
+    const directives = interpretProfile(KYRA_PROFILE)
+    const ctx = mergeDirectivesForSession('lower_squat_focus', 1, directives)
+    // From chronic-severity branch (meniscus chronic-stage or lower_back
+    // chronic priority_work that resolves through ACCESSORY_VARIANTS — at
+    // minimum, a hip-abduction or clamshell variant ends up here via
+    // per_session_accessories or per_session_type priority_work).
+    const hasInjuryDrivenAccessory = ctx.priority_accessories.some(
+      (id) =>
+        id.includes('hip_abduction') ||
+        id.includes('clamshell') ||
+        id.includes('glute_max') ||
+        id === 'glute_med_activation',
+    )
+    expect(
+      hasInjuryDrivenAccessory,
+      'expected at least one injury/protocol-driven priority accessory',
+    ).toBe(true)
+    // From root_cause branch (desk + chronic LBP pattern).
+    expect(ctx.priority_accessories).toContain('glute_med_isolation')
+    // Composition guarantee: no duplicates from either branch stomping the
+    // other. Using a Set comparison catches accidental double-pushes.
+    expect(new Set(ctx.priority_accessories).size).toBe(
+      ctx.priority_accessories.length,
+    )
+  })
+
+  it('applies_to_session_type=[upper_push] restricts root_cause to that session only', () => {
+    // Verify the new optional scope: a flag tagged to upper_push must NOT
+    // affect lower_squat_focus, but MUST affect upper_push.
+    const directives = minimalDirectives({
+      injuries: [],
+      root_causes: [
+        fakeRootCause({
+          observation: 'upper-only flag',
+          priority_work: ['face_pulls_high_volume'],
+          do_not_ban: [],
+          applies_to_session_type: ['upper_push'],
+        }),
+      ],
+    })
+    const upper = mergeDirectivesForSession('upper_push', 1, directives)
+    const lower = mergeDirectivesForSession('lower_squat_focus', 1, directives)
+    expect(upper.priority_accessories).toContain('face_pulls_high_volume')
+    expect(lower.priority_accessories).not.toContain('face_pulls_high_volume')
   })
 })
