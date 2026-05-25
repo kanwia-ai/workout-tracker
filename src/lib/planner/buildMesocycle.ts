@@ -230,6 +230,22 @@ function mergeDirectivesForSession(
       }
     }
 
+    // Chronic management — weave in root-cause work WITHOUT blanket-banning
+    // stimulus exercises. Chronic = ongoing condition driven by a motor-control
+    // or strength deficit (e.g. chronic LBP ← weak glutes + tight hip flexors).
+    // The fix is to address the deficit, not avoid the pattern. We pull the
+    // protocol's chronic.priority_work into priority accessories so the planner
+    // routes them in front of generic accessories on every session that loads
+    // the affected region. `do_not_ban` is intentionally NOT consulted here:
+    // chronic never adds to `banned`, so squat/deadlift/etc. remain available.
+    if (inj.severity === 'chronic' && protocol.by_severity.chronic) {
+      for (const pw of protocol.by_severity.chronic.priority_work) {
+        if (ACCESSORY_VARIANTS[pw] && !priorityAcc.includes(pw)) {
+          priorityAcc.push(pw)
+        }
+      }
+    }
+
     // Per-session_type directives
     const perSession = protocol.per_session_type[sessionType]
     if (perSession) {
@@ -338,11 +354,20 @@ function pickRepScheme(
   }
   if (role === 'accessory') {
     const [lo, hi] = goal.rep_scheme_bias.accessories
-    return { reps: `${lo}-${hi}`, rir: 2, rest: 90 }
+    // WHY rest=120: align with engine standard rest tables (compound 180s,
+    // accessory 120s, isolation 75s) and the LLM prompt's rule 5.4. Longer
+    // rest preserves volume-load (R1 P12, R3 P4 — Pelland 2025).
+    return { reps: `${lo}-${hi}`, rir: 2, rest: 120 }
   }
   if (role === 'isolation') {
     const [lo, hi] = goal.rep_scheme_bias.finishers
-    return { reps: `${lo}-${hi}`, rir: 1, rest: 60 }
+    // WHY rest=75: align with the engine's standard rest tables
+    // (compound 180s, accessory 120s, isolation 75s) and the LLM prompt's
+    // rule 5.4 in generatePlan.ts. The legacy 60s finisher rest came from
+    // the "metabolic finisher / short rest = more fat burn" myth; Pelland
+    // 2025 + Schoenfeld 2016 show shorter rest reduces total volume-load
+    // without measurable hypertrophy/density benefit.
+    return { reps: `${lo}-${hi}`, rir: 1, rest: 75 }
   }
   if (role === 'mobility' || role === 'rehab') {
     return { reps: '10-15', rir: 2, rest: 45 }

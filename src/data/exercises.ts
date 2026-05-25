@@ -8,7 +8,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-glute-bridge',
     name: 'Barbell Glute Bridge',
-    description: 'Hip extension movement that isolates the glutes without loading the knees. The gold standard for glute max activation.',
+    description: 'Hip extension movement that isolates the glutes without loading the knees. Targets glute max.',
     instructions: [
       'Sit on the floor with upper back against a bench, barbell across hips.',
       'Feet flat on floor, hip-width apart, shins vertical at the top.',
@@ -122,7 +122,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-banded-clamshell',
     name: 'Banded Clamshell',
-    description: 'Targets glute medius — the side-butt muscle that creates the round shape and stabilizes the pelvis.',
+    description: 'Targets the gluteus medius (the muscle that abducts the hip) and stabilizes the pelvis.',
     instructions: [
       'Lie on your side with a mini band above knees.',
       'Knees bent at 45 degrees, feet together.',
@@ -139,7 +139,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     knee_safety_notes: 'No knee loading. Excellent for PT rehab.',
     laterality: 'unilateral',
-    cues: ['Don\'t rotate your pelvis', 'Feel it in the side of your butt', 'Slow and controlled'],
+    cues: ['Don\'t rotate your pelvis', 'Feel it in the gluteus medius (side of the hip)', 'Slow and controlled'],
     source: 'Physical therapy / glute activation',
   },
   {
@@ -189,7 +189,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-hip-adduction',
     name: 'Hip Adduction Machine',
-    description: 'Targets inner thighs (adductors). Often overlooked but important for knee stability.',
+    description: 'Targets the hip adductors. Often overlooked but useful for hip and knee stability.',
     instructions: [
       'Sit in the machine with pads on inner thighs.',
       'Squeeze legs together against the pads.',
@@ -237,7 +237,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-tke',
     name: 'Terminal Knee Extension (TKE)',
-    description: 'The #1 exercise for VMO (inner quad) activation and meniscus rehab. Uses a band to strengthen the last 30 degrees of knee extension.',
+    description: 'Strengthens the last 30 degrees of knee extension using band resistance. Common staple in meniscus and patellofemoral rehab.',
     instructions: [
       'Loop a resistance band behind one knee, anchored low.',
       'Stand on that leg with a slight bend in the knee.',
@@ -254,7 +254,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     knee_safety_notes: 'Specifically prescribed for meniscus rehab. Only works the last 30 degrees of extension.',
     laterality: 'unilateral',
-    cues: ['Band behind the knee', 'Lock out against resistance', 'Feel the VMO (inner quad) fire'],
+    cues: ['Band behind the knee', 'Lock out against resistance', 'Feel the quad working at the top'],
     source: 'Physical therapy / meniscus rehabilitation',
   },
   {
@@ -654,7 +654,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-lat-pulldown',
     name: 'Lat Pulldown',
-    description: 'Fundamental back exercise that builds the lats for that V-taper look.',
+    description: 'Vertical pull that targets the lats. Foundational back-building movement.',
     instructions: [
       'Sit at the lat pulldown machine, thighs under the pad.',
       'Grip the bar slightly wider than shoulder-width.',
@@ -676,7 +676,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-lat-pulldown-wide',
     name: 'Lat Pulldown (Wide Grip)',
-    description: 'Wider grip emphasizes the outer lats for width.',
+    description: 'Wider grip biases the upper/outer lats. Same vertical pull, different angle.',
     instructions: [
       'Use a wide grip on the lat pulldown bar.',
       'Pull down to upper chest level.',
@@ -762,7 +762,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-face-pull',
     name: 'Face Pull',
-    description: 'Essential shoulder health exercise. Targets rear delts and rotator cuff. Everyone should do these.',
+    description: 'Targets the rear delts and external rotators. Common staple for desk-worker shoulder patterns and any program with high pressing volume.',
     instructions: [
       'Set a cable at face height with rope attachment.',
       'Pull the rope toward your face, separating the ends.',
@@ -868,7 +868,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     difficulty: 'beginner',
     knee_safety: 'knee_safe',
     laterality: 'bilateral',
-    cues: ['Pause on the floor — dead stop', 'Don\'t bounce', 'Go slow for more chest activation'],
+    cues: ['Pause on the floor — dead stop', 'Don\'t bounce', 'Control the descent (2-3s)'],
     source: 'General strength training',
   },
   {
@@ -1023,7 +1023,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-lateral-raise',
     name: 'Lateral Raise',
-    description: 'Isolation for the side delts. Builds shoulder width and the capped-shoulder look.',
+    description: 'Isolation for the lateral deltoid. Adds direct volume to side-delt-biased work.',
     instructions: [
       'Hold dumbbells at your sides.',
       'Raise arms out to the sides until parallel with the floor.',
@@ -1340,7 +1340,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-pallof-press',
     name: 'Pallof Press',
-    description: 'The gold standard anti-rotation core exercise. Resist the cable pulling you sideways.',
+    description: 'Anti-rotation core exercise. Resist the cable pulling you sideways.',
     instructions: [
       'Stand sideways to a cable machine, handle at chest level.',
       'Hold the handle at your chest with both hands.',
@@ -1379,6 +1379,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     laterality: 'unilateral',
     cues: ['Don\'t pull on your neck', 'Slow and controlled', 'Fully extend the straight leg'],
     source: 'General strength training',
+    // Loaded/dynamic flexion + rotation is the worst-case disc mechanic.
+    // Per docs/research/00-MASTER-SYNTHESIS.md (R5 P5/P9): never program
+    // crunches / sit-ups / bicycle-crunch / Russian twists for any
+    // lower-back flag except 'ok'. Use Pallof press or side plank instead.
+    contraindications: [{ injury: 'lower_back', min_severity: 'modify' }],
   },
   {
     id: 'ex-russian-twist',
@@ -1399,6 +1404,10 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     laterality: 'bilateral',
     cues: ['Lean back at 45 degrees', 'Rotate from the torso, not just arms', 'Control the twist'],
     source: 'General strength training',
+    // Loaded flexion-rotation is the worst-case disc mechanic. See R5 P5/P9
+    // in docs/research/00-MASTER-SYNTHESIS.md — never program for any
+    // lower-back flag except 'ok'. Use Pallof press or side plank instead.
+    contraindications: [{ injury: 'lower_back', min_severity: 'modify' }],
   },
   {
     id: 'ex-leg-raise',
@@ -1419,6 +1428,11 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     laterality: 'bilateral',
     cues: ['Lower back stays on floor', 'Go slow on the way down', 'Bend knees to make it easier'],
     source: 'General strength training',
+    // Hip-flexor-dominant supine leg raises with an unanchored pelvis put
+    // a flexion-mechanic load on the lumbar disc (R5 P5 / master synthesis
+    // "what NOT to codify"). The cue "press low back to floor" admits the
+    // dangerous default. Gate behind any lower-back flag.
+    contraindications: [{ injury: 'lower_back', min_severity: 'modify' }],
   },
   {
     id: 'ex-toe-touches',
@@ -1685,7 +1699,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-sumo-deadlift',
     name: 'Sumo Deadlift',
-    description: 'Wide-stance deadlift that targets inner thighs and glutes more than conventional.',
+    description: 'Wide stance + more vertical torso emphasizes glutes and hip adductors more than conventional. Same hinge mechanics, different lever.',
     instructions: [
       'Wide stance, toes pointed out.',
       'Grip the bar between your legs.',
@@ -1779,7 +1793,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-banded-tke',
     name: 'Banded TKE (Terminal Knee Extension)',
-    description: 'Rehab staple for VMO activation. Essential after meniscus injury.',
+    description: 'Rehab staple that targets the quads in the last 30 degrees of knee extension. Common after meniscus injury.',
     instructions: [
       'Loop band behind knee, anchored low.',
       'Stand on the banded leg with slight knee bend.',
@@ -1795,7 +1809,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     knee_safety: 'knee_safe',
     knee_safety_notes: 'Specifically designed for knee rehab. Works only the safe range of motion.',
     laterality: 'unilateral',
-    cues: ['Band behind the knee', 'Lock out completely', 'Feel the VMO (inner quad) working'],
+    cues: ['Band behind the knee', 'Lock out completely', 'Feel the quad working at the top'],
     source: 'Physical therapy / meniscus rehabilitation',
   },
   {
@@ -1865,7 +1879,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-foam-roll-quads',
     name: 'Foam Roll Quads',
-    description: 'Self-myofascial release for tight quads. Helps with knee pain.',
+    description: 'Self-massage on the quads. Can produce short-term ROM gains useful before mobility work or as a comfort tool. Doesn\'t fix knee pain — see a PT if knee pain persists.',
     instructions: [
       'Lie face down with foam roller under your thighs.',
       'Roll from hip to just above the knee.',
@@ -1885,7 +1899,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-foam-roll-it-band',
     name: 'Foam Roll IT Band',
-    description: 'Releases the iliotibial band that runs along the outside of the thigh.',
+    description: 'Self-massage along the IT band region. The band itself is fascia — you can\'t permanently lengthen it with a roller. Useful as a comfort/perceived-tightness tool, not a structural fix. Address IT band irritation via glute med strengthening and stride mechanics.',
     instructions: [
       'Lie on your side with roller under outer thigh.',
       'Roll from hip to just above the knee.',
@@ -1899,7 +1913,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     difficulty: 'beginner',
     knee_safety: 'knee_safe',
     laterality: 'unilateral',
-    cues: ['This will be uncomfortable — that\'s normal', 'Don\'t roll over the knee', 'Pause on sore spots'],
+    cues: ['If it\'s sharply painful, ease off — you\'re not changing the band, just irritating tissue.', 'Don\'t roll over the knee', 'Pause on sore spots'],
     source: 'Physical therapy / mobility',
   },
   {

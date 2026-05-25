@@ -307,6 +307,31 @@ const WARMUP_CATALOG: Record<string, CatalogEntry> = {
   },
 }
 
+// ─── Static-stretch substitution ───────────────────────────────────────────
+// WHY: Static stretching >30s pre-lift acutely depresses peak force ~3.7-5%
+// (Behm & Chaouachi 2011, Behm 2016). Dynamic ROM work doesn't. Static work
+// stays in cooldown / mobility-only contexts. We substitute any static-stretch
+// id pulled from a protocol's warmup_focus with a dynamic equivalent that
+// targets the same region; if none exists, drop it (cooldown will pick it up).
+//
+// Substitution map: protocol-emitted id → dynamic warmup id already in the
+// catalog. `null` means "drop entirely from warmup" (no dynamic substitute
+// available — schedule in cooldown / standalone mobility block instead).
+const STATIC_STRETCH_SUBSTITUTIONS: Record<string, string | null> = {
+  couch_stretch: 'hip_airplane',                       // hip-flexor lengthening → dynamic hip ER/IR
+  couch_stretch_60s: 'hip_airplane',
+  couch_stretch_60s_per_side: 'hip_airplane',
+  couch_stretch_daily: 'hip_airplane',
+  hip_flexor_stretch: 'hip_airplane',
+  hip_flexor_stretch_kneeling: 'hip_airplane',
+  hip_flexor_kneeling_stretch: 'hip_airplane',
+  hip_flexor_pnf_stretch: 'hip_airplane',
+  supine_hip_flexor_stretch: 'hip_airplane',
+  supported_hip_flexor_stretch: 'hip_airplane',
+  soleus_stretch: 'ankle_dorsiflexion_mobility',       // static calf → dynamic ankle DF
+  '90_90_hip_stretch': '90_90_hip',                    // re-label as mobility, not "stretch"
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 function lookupWarmup(name: string): CatalogEntry {
   const direct = WARMUP_CATALOG[name]
@@ -446,6 +471,25 @@ export function generateWarmup(input: GenerateWarmupInput): StructuredWarmup {
   // Collect (id, optional stage-emitted override) pairs from every injury.
   const collected = new Map<string, WarmupElement | undefined>()
 
+  // Substitute static-stretch ids with dynamic equivalents (or drop) before
+  // they enter the collection map. Preserves any stage-emitted override
+  // (duration_sec/cue/etc.) on the substituted id so the dynamic move
+  // inherits the protocol-prescribed dose where it makes sense.
+  const addWithSubstitution = (id: string, override: WarmupElement | undefined): void => {
+    if (id in STATIC_STRETCH_SUBSTITUTIONS) {
+      const sub = STATIC_STRETCH_SUBSTITUTIONS[id]
+      if (sub === null) return  // drop — no dynamic equivalent, handled in cooldown
+      // Drop override.duration_sec — static-hold durations don't translate to
+      // dynamic reps. Let the catalog default for the substitute take over.
+      const subOverride = override
+        ? { ...override, name: sub, duration_sec: undefined, reps: undefined }
+        : undefined
+      if (!collected.has(sub)) collected.set(sub, subOverride)
+      return
+    }
+    if (!collected.has(id)) collected.set(id, override)
+  }
+
   for (const inj of directives.injury_directives) {
     if (!inj.matched_protocol) continue
     const protocol = getProtocol(inj.matched_protocol)
@@ -456,16 +500,18 @@ export function generateWarmup(input: GenerateWarmupInput): StructuredWarmup {
       const stage = resolveStage(protocol, week_number, inj.stage_weeks)
       if (stage) {
         for (const el of stage.warmup_protocol) {
-          if (!collected.has(el.name)) collected.set(el.name, el)
+          addWithSubstitution(el.name, el)
         }
       }
     }
 
-    // 2. per_session_type warmup_focus (string ids)
+    // 2. per_session_type warmup_focus (string ids) — fires for ALL severities
+    //    (chronic, ok, rehab, acute). This is how chronic injuries weave in
+    //    their session-specific prep without being gated on stage progression.
     const perSession = protocol.per_session_type[session_type]
     if (perSession) {
       for (const id of perSession.warmup_focus) {
-        if (!collected.has(id)) collected.set(id, undefined)
+        addWithSubstitution(id, undefined)
       }
     }
   }
