@@ -27,6 +27,12 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         cleanupOutdatedCaches: true,
+        // The KB ships ~107 markdown entries inlined into the bundle via
+        // import.meta.glob({ eager: true }) so the LLM nuance layer can
+        // retrieve from it offline. That pushes the main JS chunk to ~3 MB,
+        // over the 2 MiB workbox default. Bump the cap so the PWA precaches
+        // the full bundle (the file is still gzipped on the wire).
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
       },
       manifest: {
         name: 'Workout Tracker',

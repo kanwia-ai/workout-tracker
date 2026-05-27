@@ -8,11 +8,12 @@
 // verbatim — only the provider swapped.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import Anthropic from 'npm:@anthropic-ai/sdk@0.90.0'
-import { enrichExerciseSchema, extractExercisesSchema, mesocycleSchema, pingSchema, replanMesocycleSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
+import { annotatePlanSchema, enrichExerciseSchema, extractExercisesSchema, mesocycleSchema, pingSchema, replanMesocycleSchema, routineSchema, swapExerciseSchema } from './schemas.ts'
 import { buildPlanPrompt, type ExercisePoolEntry } from './prompts/generatePlan.ts'
 import { buildSwapPrompt, isSwapReason, SWAP_REASONS } from './prompts/swapExercise.ts'
 import { buildRoutinePrompt, type RoutineKind } from './prompts/generateRoutine.ts'
 import { buildReplanPrompt, REPLAN_SYSTEM_PROMPT } from './prompts/replanMesocycle.ts'
+import { ANNOTATE_SYSTEM_PROMPT, buildAnnotatePrompt, type AnnotatePlanPayload } from './prompts/annotatePlan.ts'
 
 const ROUTINE_KINDS: readonly RoutineKind[] = ['warmup', 'cooldown', 'cardio']
 function isRoutineKind(v: unknown): v is RoutineKind {
@@ -47,6 +48,12 @@ const LLM_OPS = new Set([
   // deploy of this edge function when ready. Until then, client calls 400
   // with "unknown op".
   'replan_mesocycle',
+  // NOT LIVE YET: `annotate_plan` is the LLM nuance layer — it grafts
+  // KB-grounded coaching rationale onto a deterministic plan. Sonnet-tier
+  // is enough (bounded structured output, no creative planning). Client
+  // calls degrade gracefully when this op isn't deployed yet (the nuance
+  // layer logs + returns the plan unchanged on edge failure).
+  'annotate_plan',
 ])
 
 // Claude model ID. Opus 4.7 is the current highest-quality model. If cost
@@ -916,6 +923,99 @@ ${profile ? JSON.stringify(profile, null, 2) : '(no profile provided)'}`
     // other LLM op uses Sonnet or the v3 Opus prompt at a shorter budget.
     //
     // NOT LIVE YET (2026-04-22): code-only until Kyra deploys.
+    // ─── annotate_plan ──────────────────────────────────────────────────
+    // LLM nuance layer. Takes the deterministic plan + profile + recent
+    // check-ins + a pre-retrieved cut of the workout-tracker knowledge
+    // base, and asks Claude (Sonnet — structured output, no creative
+    // planning) to graft KB-grounded coaching rationale onto the block,
+    // sessions, and exercises.
+    //
+    // The op is fail-soft on the client: if this returns 500 or 502, the
+    // client's annotateWithNuance() catches the error and returns the
+    // plan UNCHANGED. The engine path keeps working without this op.
+    //
+    // NOT LIVE YET: code-only until the edge function is redeployed.
+    if (body.op === 'annotate_plan') {
+      const payload = (body.payload ?? {}) as Partial<AnnotatePlanPayload> & {
+        plan?: unknown
+        profile?: unknown
+        recentCheckins?: unknown
+        kbExcerpts?: unknown
+        session_ids?: unknown
+        exercise_keys?: unknown
+      }
+      if (!payload.plan || typeof payload.plan !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.plan is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!payload.profile || typeof payload.profile !== 'object') {
+        return new Response(
+          JSON.stringify({ error: 'payload.profile is required and must be an object' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!Array.isArray(payload.kbExcerpts)) {
+        return new Response(
+          JSON.stringify({ error: 'payload.kbExcerpts is required and must be an array' }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+      if (!Array.isArray(payload.session_ids) || !Array.isArray(payload.exercise_keys)) {
+        return new Response(
+          JSON.stringify({
+            error: 'payload.session_ids and payload.exercise_keys are required arrays',
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      // Same 500KB guard as generate_plan — the KB excerpt list + plan
+      // serialization grows with block length, and we don't want a runaway
+      // payload to rack up token cost.
+      const payloadJson = JSON.stringify({
+        plan: payload.plan,
+        kbExcerpts: payload.kbExcerpts,
+      })
+      if (payloadJson.length > MAX_POOL_JSON_BYTES) {
+        return new Response(
+          JSON.stringify({
+            error: `payload exceeds ${MAX_POOL_JSON_BYTES} bytes (got ${payloadJson.length}); trim KB or shorten plan client-side`,
+          }),
+          { status: 400, headers: JSON_HEADERS },
+        )
+      }
+
+      try {
+        const prompt = buildAnnotatePrompt(payload as AnnotatePlanPayload)
+        const text = await callClaudeAsTool({
+          client,
+          systemPrompt: ANNOTATE_SYSTEM_PROMPT,
+          userPrompt: prompt,
+          toolName: 'emit_annotation',
+          toolDescription:
+            'Emit the LLM nuance annotation — block-level rationale + per-session rationale map + per-exercise rationale map, with KB entry citations.',
+          inputSchema: annotatePlanSchema,
+          cacheSystem: true,
+          // Annotation output is bounded — block rationale ≤ 800 chars,
+          // each session ≤ 280, each exercise ≤ 240. Even a 24-session
+          // block with annotations on every exercise tops out around
+          // 8-10k tokens of output. 8192 is a comfortable cap.
+          maxTokens: 8192,
+          // Sonnet is sufficient: structured output against fixed KB
+          // citations, no creative planning. Opus would burn cost.
+          model: CLAUDE_MODEL_SONNET,
+        })
+        return new Response(text, { headers: JSON_HEADERS })
+      } catch (err) {
+        return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
+          status: 502,
+          headers: JSON_HEADERS,
+        })
+      }
+    }
+
     if (body.op === 'replan_mesocycle') {
       const payload = (body.payload ?? {}) as {
         profile?: unknown

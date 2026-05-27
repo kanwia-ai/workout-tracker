@@ -379,6 +379,18 @@ export function HomeScreen({
           firstName={firstName}
         />
 
+        {/* Block-level rationale from the LLM nuance layer — shown once
+            per new mesocycle. Tracked via a per-meso localStorage flag so
+            it doesn't nag on every visit. Renders nothing when the
+            engine ran without the nuance layer (rationale undefined). */}
+        {plan?.rationale && (
+          <BlockRationaleCard
+            mesocycleId={plan.id}
+            rationale={plan.rationale}
+            specificTarget={plan.specific_target_acknowledgment}
+          />
+        )}
+
         {planIsEmpty ? (
           <PlanMissingCard onRetry={onRetryGeneration} />
         ) : (
@@ -1242,6 +1254,124 @@ function PlanMissingCard({ onRetry }: { onRetry?: () => void }) {
           <ArrowRight size={14} />
         </button>
       )}
+    </div>
+  )
+}
+
+// ─── BlockRationaleCard ─────────────────────────────────────────────────────
+// Shown once per new mesocycle when the LLM nuance layer attached a
+// block-level rationale. Once the user has "acknowledged" the rationale
+// (or dismissed it explicitly), we set a per-meso flag in localStorage so
+// it doesn't reappear on subsequent home-screen visits.
+//
+// Why the localStorage gate (vs. always-on or always-off): the rationale
+// has context value when you start a new block — it explains "here's why
+// this six weeks looks the way it does." After that, it's noise. A blunt
+// "show once" matches how a coach actually communicates this stuff.
+const BLOCK_ACK_KEY_PREFIX = 'workout-tracker:block-rationale-ack:'
+
+function loadBlockAck(mesocycleId: string): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    return window.localStorage.getItem(BLOCK_ACK_KEY_PREFIX + mesocycleId) === 'true'
+  } catch {
+    return true
+  }
+}
+
+function setBlockAck(mesocycleId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(BLOCK_ACK_KEY_PREFIX + mesocycleId, 'true')
+  } catch {
+    // ignore quota / privacy mode
+  }
+}
+
+function BlockRationaleCard({
+  mesocycleId,
+  rationale,
+  specificTarget,
+}: {
+  mesocycleId: string
+  rationale: string
+  specificTarget?: string
+}) {
+  const [acked, setAcked] = useState<boolean>(() => loadBlockAck(mesocycleId))
+  if (acked) return null
+  return (
+    <div
+      data-testid="block-rationale-card"
+      style={{
+        marginTop: 16,
+        marginBottom: 4,
+        background: 'var(--lumo-raised)',
+        border: '1px solid var(--lumo-border)',
+        padding: 16,
+        borderRadius: 18,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: 'var(--lumo-text-ter)',
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+        }}
+      >
+        about this block
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: 'var(--lumo-text)',
+          fontFamily: "'Fraunces', Georgia, serif",
+          fontStyle: 'italic',
+          lineHeight: 1.5,
+        }}
+      >
+        {rationale}
+      </div>
+      {specificTarget && (
+        <div
+          style={{
+            fontSize: 13,
+            color: 'var(--lumo-text-sec)',
+            fontFamily: "'Fraunces', Georgia, serif",
+            fontStyle: 'italic',
+            lineHeight: 1.5,
+            paddingTop: 6,
+            borderTop: '1px solid var(--lumo-border)',
+          }}
+        >
+          {specificTarget}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setBlockAck(mesocycleId)
+          setAcked(true)
+        }}
+        style={{
+          alignSelf: 'flex-end',
+          fontSize: 11,
+          color: 'var(--accent-plum)',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+          padding: 4,
+        }}
+      >
+        got it
+      </button>
     </div>
   )
 }

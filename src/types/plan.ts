@@ -46,6 +46,20 @@ export const PlannedExerciseSchema = z.object({
    * this value on first render so accessories don't display as "—".
    */
   suggested_weight_lbs: z.number().positive().optional(),
+  /**
+   * Per-exercise "why this for you" note produced by the LLM nuance layer.
+   * Optional — populated only when retrieval finds a KB entry with something
+   * specific to say about this exercise (cueing, mind-muscle quirk, injury
+   * compatibility). Generic accessories typically have no rationale.
+   * Capped short on purpose; the goal is one coach-voice sentence.
+   */
+  rationale: z.string().max(240).optional(),
+  /**
+   * Ids of the KB entries the nuance layer cited when authoring `rationale`.
+   * Kept structurally separate from the prose so a future UI can render the
+   * citation chips without parsing the rationale string.
+   */
+  cited_entries: z.array(z.string()).optional(),
 })
 
 export const PlannedSessionSchema = z.object({
@@ -67,6 +81,14 @@ export const PlannedSessionSchema = z.object({
   rationale: z.string().max(280),                // ≤280 chars, one short sentence
   status: SessionStatus,
   intended_date: z.string().optional(),   // hint only — YYYY-MM-DD or ISO, not validated strictly
+  /**
+   * Ids of the KB entries the LLM nuance layer cited when authoring the
+   * session-level rationale. When the LLM annotates a plan, it overwrites
+   * the engine's structural `rationale` with a coach-voice paragraph and
+   * populates this array with the entries that backed the claims.
+   * Kept optional so engine-only plans (LLM unavailable) stay schema-valid.
+   */
+  cited_entries: z.array(z.string()).optional(),
 })
 
 export const MesocycleSchema = z.object({
@@ -76,6 +98,27 @@ export const MesocycleSchema = z.object({
   length_weeks: z.number().int().min(3).max(12),
   sessions: z.array(PlannedSessionSchema).min(1),
   profile_snapshot: z.unknown(),   // copy of UserProgramProfile at gen time
+  /**
+   * Block-level "why this block looks the way it does" paragraph from the
+   * LLM nuance layer. Optional — engine-only plans won't have it. When set,
+   * the HomeScreen surfaces it once per new block (gated on a "rationale
+   * acknowledged" flag in localStorage) so the user sees it without it
+   * nagging on every visit.
+   */
+  rationale: z.string().max(800).optional(),
+  /**
+   * Specific-target acknowledgment — the LLM's explicit response to the
+   * user's `profile.specific_target` field (e.g. "lose 1 dress size by
+   * June"). Names the actual lever (diet for body comp; programming for
+   * strength) and frames the deadline realistically. Surfaced on the
+   * onboarding StepConfirm completion screen + Settings detail view.
+   */
+  specific_target_acknowledgment: z.string().max(600).optional(),
+  /**
+   * Ids of KB entries the LLM cited when authoring the block-level
+   * rationale + specific-target acknowledgment.
+   */
+  cited_entries: z.array(z.string()).optional(),
 })
 
 export type Mesocycle = z.infer<typeof MesocycleSchema>

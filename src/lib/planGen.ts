@@ -4,6 +4,8 @@ import { MesocycleSchema, type Mesocycle } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import { orchestratePlan } from './planner/orchestrate'
 import { buildMesocycle } from './planner/buildMesocycle'
+import { annotateWithNuance } from './planner/nuanceLayer'
+import { listCheckinsForUser } from './checkins'
 import type { ProgrammingDirectives } from '../types/directives'
 
 // ─── Phase-2 migration helpers ──────────────────────────────────────────────
@@ -125,22 +127,40 @@ export async function generatePlanLocal(
 ): Promise<Mesocycle> {
   const { mesocycle } = orchestratePlan(profile, userId, weeks)
 
+  // ── LLM nuance pass ──
+  // After the engine produces a structurally-valid plan, run the nuance
+  // layer to graft KB-cited coaching rationale onto the block / sessions /
+  // exercises. The layer is fail-soft: any error returns the plan
+  // unchanged, the engine's structural rationales stay in place, and the
+  // app continues to work offline. See src/lib/planner/nuanceLayer.ts for
+  // the failure-mode contract.
+  //
+  // History lookup is a fresh Dexie read — first-block users get [], which
+  // the layer accepts as "no replan signal."
+  let recentCheckins: Awaited<ReturnType<typeof listCheckinsForUser>> = []
+  try {
+    recentCheckins = await listCheckinsForUser(userId)
+  } catch (err) {
+    console.warn('generatePlanLocal: failed to load checkins for nuance layer', err)
+  }
+  const annotated = await annotateWithNuance(mesocycle, profile, recentCheckins)
+
   try {
     await db.mesocycles.put({
-      id: mesocycle.id,
-      user_id: mesocycle.user_id,
-      generated_at: mesocycle.generated_at,
-      length_weeks: mesocycle.length_weeks,
-      sessions_json: JSON.stringify(mesocycle.sessions),
+      id: annotated.id,
+      user_id: annotated.user_id,
+      generated_at: annotated.generated_at,
+      length_weeks: annotated.length_weeks,
+      sessions_json: JSON.stringify(annotated.sessions),
       profile_snapshot_json: JSON.stringify(profile),
       synced: false,
     })
   } catch (err) {
-    console.error('generatePlanLocal: Dexie put failed', { id: mesocycle.id, err })
+    console.error('generatePlanLocal: Dexie put failed', { id: annotated.id, err })
     throw err
   }
 
-  return mesocycle
+  return annotated
 }
 
 /**
@@ -185,22 +205,34 @@ export async function generatePlanFromDirectives(
   }
   const mesocycle = result.data
 
+  // Nuance pass — mirrors generatePlanLocal. The end-of-block replan path
+  // benefits even more from this because the LLM can reference recent
+  // checkins to frame "here's why this block looks different from the
+  // last one." Same fail-soft contract.
+  let recentCheckins: Awaited<ReturnType<typeof listCheckinsForUser>> = []
+  try {
+    recentCheckins = await listCheckinsForUser(userId)
+  } catch (err) {
+    console.warn('generatePlanFromDirectives: failed to load checkins for nuance layer', err)
+  }
+  const annotated = await annotateWithNuance(mesocycle, profile, recentCheckins)
+
   try {
     await db.mesocycles.put({
-      id: mesocycle.id,
-      user_id: mesocycle.user_id,
-      generated_at: mesocycle.generated_at,
-      length_weeks: mesocycle.length_weeks,
-      sessions_json: JSON.stringify(mesocycle.sessions),
+      id: annotated.id,
+      user_id: annotated.user_id,
+      generated_at: annotated.generated_at,
+      length_weeks: annotated.length_weeks,
+      sessions_json: JSON.stringify(annotated.sessions),
       profile_snapshot_json: JSON.stringify(profile),
       synced: false,
     })
   } catch (err) {
-    console.error('generatePlanFromDirectives: Dexie put failed', { id: mesocycle.id, err })
+    console.error('generatePlanFromDirectives: Dexie put failed', { id: annotated.id, err })
     throw err
   }
 
-  return mesocycle
+  return annotated
 }
 
 export async function generatePlan(

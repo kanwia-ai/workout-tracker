@@ -25,6 +25,13 @@ interface Props {
   // routine generator). When `libraryId` doesn't resolve, the sheet tries
   // a case-insensitive name match against the curated library + Dexie.
   nameFallback?: string
+  // Optional "why this for you" note authored by the LLM nuance layer
+  // (PlannedExercise.rationale on the planned session). When present,
+  // surfaced at the top of the sheet as the primary coaching context
+  // ABOVE the canned how-to instructions. Only filled when the KB had
+  // something specific to say about this exercise for this user — generic
+  // accessories have no rationale.
+  rationale?: string
 }
 
 // Normalize an exercise name for fuzzy matching. Lowercases, strips
@@ -38,7 +45,7 @@ function normalizeName(s: string): string {
     .trim()
 }
 
-export function ExerciseInfoSheet({ libraryId, onClose, nameFallback }: Props) {
+export function ExerciseInfoSheet({ libraryId, onClose, nameFallback, rationale }: Props) {
   // Reactive fetch from Dexie. `useLiveQuery` returns `undefined` while the
   // query is pending and `null`/row once resolved. Keyed on libraryId +
   // nameFallback so the effect re-fires when the caller switches exercises
@@ -224,6 +231,42 @@ export function ExerciseInfoSheet({ libraryId, onClose, nameFallback }: Props) {
                 </span>
               )}
             </div>
+
+            {/* "Why this for you" — LLM nuance rationale, when present.
+                Sits above the canned How-To so the user sees the
+                personalized framing first. Italic Fraunces matches the
+                Lumo bubble voice elsewhere in the app. */}
+            {rationale && (
+              <div
+                data-testid="exercise-info-rationale"
+                className="mb-4 p-3 rounded-xl"
+                style={{
+                  background: 'var(--lumo-bg)',
+                  border: '1px solid var(--lumo-border)',
+                }}
+              >
+                <div
+                  className="text-[10px] font-bold uppercase mb-1.5"
+                  style={{
+                    color: 'var(--accent-plum)',
+                    letterSpacing: '0.14em',
+                  }}
+                >
+                  why this for you
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Fraunces', Georgia, serif",
+                    fontStyle: 'italic',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    color: 'var(--lumo-text)',
+                  }}
+                >
+                  {rationale}
+                </div>
+              </div>
+            )}
 
             {/* Instructions / How To — promoted to primary content per
                 user feedback ("I want a written description, sometimes the

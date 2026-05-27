@@ -1537,7 +1537,21 @@ export function WorkoutView({
         />
       )}
 
-      <ExerciseInfoSheet libraryId={infoLibraryId} onClose={() => setInfoLibraryId(null)} />
+      <ExerciseInfoSheet
+        libraryId={infoLibraryId}
+        onClose={() => setInfoLibraryId(null)}
+        // Surface the LLM nuance layer's per-exercise rationale at the
+        // top of the info sheet when present. Looked up from the
+        // selected session's exercise list by library_id so the
+        // rationale stays paired with this session's prescription (the
+        // same exercise on a different session may have different
+        // coaching context). Falls back gracefully to undefined.
+        rationale={
+          infoLibraryId
+            ? selectedSession?.exercises.find((e) => e.library_id === infoLibraryId)?.rationale
+            : undefined
+        }
+      />
 
       {prPayload && (
         <PRCelebration

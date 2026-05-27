@@ -59,9 +59,17 @@ export const plannedExerciseSchema = {
       maxItems: 6,
     },
     suggested_weight_lbs: { type: 'number', minimum: 0 },
+    // ─── LLM nuance layer fields (optional, added by annotate_plan) ───
+    // Per-exercise "why this for you" sentence + the KB entry ids that
+    // backed any substantive claim. Engine output won't have these; the
+    // annotate_plan op fills them in if the KB has something specific to
+    // say about this exercise for this user. See client mirror at
+    // src/types/plan.ts (PlannedExerciseSchema.rationale + cited_entries).
+    rationale: { type: 'string', maxLength: 240 },
+    cited_entries: { type: 'array', items: { type: 'string' } },
   },
   required: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'warmup_sets'],
-  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets', 'suggested_weight_lbs'],
+  propertyOrdering: ['library_id', 'name', 'sets', 'reps', 'rir', 'rest_seconds', 'role', 'notes', 'warmup_sets', 'suggested_weight_lbs', 'rationale', 'cited_entries'],
 } as const
 
 const plannedSessionSchema = {
@@ -87,9 +95,16 @@ const plannedSessionSchema = {
     rationale: { type: 'string', maxLength: 280 },
     status: { type: 'string', enum: SESSION_STATUS_ENUM },
     intended_date: { type: 'string' },
+    // ─── LLM nuance layer fields (optional, added by annotate_plan) ───
+    // KB entry ids that backed the session.rationale paragraph the LLM
+    // produced. The rationale field itself is shared with the engine —
+    // the LLM overwrites the structural rationale with a coach-voice
+    // version when annotate_plan succeeds. See client mirror at
+    // src/types/plan.ts (PlannedSessionSchema.cited_entries).
+    cited_entries: { type: 'array', items: { type: 'string' } },
   },
   required: ['id', 'week_number', 'ordinal', 'focus', 'title', 'subtitle', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status'],
-  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'subtitle', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date'],
+  propertyOrdering: ['id', 'week_number', 'ordinal', 'focus', 'subtitle', 'title', 'estimated_minutes', 'exercises', 'day_of_week', 'rationale', 'status', 'intended_date', 'cited_entries'],
 } as const
 
 // Mesocycle — the server fills in user_id, generated_at, and profile_snapshot
@@ -457,6 +472,61 @@ export const replanMesocycleSchema = {
   },
   required: ['directives', 'rationale_for_user', 'adjustments_summary'],
   propertyOrdering: ['directives', 'rationale_for_user', 'adjustments_summary'],
+} as const
+
+// ─── Annotate-plan response (LLM nuance layer) ────────────────────────────
+// Output of the `annotate_plan` op. Block-level rationale + per-session
+// rationale map + per-exercise rationale map. Every field is optional so
+// the LLM can omit fields when it can't ground the claim in a KB entry.
+//
+// Client-side mirror lives at src/lib/planner/nuanceLayer.ts
+// (AnnotationResponseSchema). Update both together.
+//
+// Records keyed by string have to be modeled as a JSON Schema object with
+// additionalProperties for Anthropic's tool input_schema. Each value is the
+// (rationale, cited_entries) tuple.
+const annotateBlockSchema = {
+  type: 'object',
+  properties: {
+    rationale: { type: 'string', maxLength: 800 },
+    specific_target_acknowledgment: { type: 'string', maxLength: 600 },
+    cited_entries: { type: 'array', items: { type: 'string' } },
+  },
+  propertyOrdering: ['rationale', 'specific_target_acknowledgment', 'cited_entries'],
+} as const
+
+const annotateSessionSchema = {
+  type: 'object',
+  properties: {
+    rationale: { type: 'string', maxLength: 280 },
+    cited_entries: { type: 'array', items: { type: 'string' } },
+  },
+  propertyOrdering: ['rationale', 'cited_entries'],
+} as const
+
+const annotateExerciseSchema = {
+  type: 'object',
+  properties: {
+    rationale: { type: 'string', maxLength: 240 },
+    cited_entries: { type: 'array', items: { type: 'string' } },
+  },
+  propertyOrdering: ['rationale', 'cited_entries'],
+} as const
+
+export const annotatePlanSchema = {
+  type: 'object',
+  properties: {
+    block: annotateBlockSchema,
+    sessions: {
+      type: 'object',
+      additionalProperties: annotateSessionSchema,
+    },
+    exercises: {
+      type: 'object',
+      additionalProperties: annotateExerciseSchema,
+    },
+  },
+  propertyOrdering: ['block', 'sessions', 'exercises'],
 } as const
 
 // Routine response — warmup / cooldown / cardio content attached to a main
