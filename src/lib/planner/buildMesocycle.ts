@@ -474,6 +474,95 @@ function pickAccessories(
   return picked
 }
 
+// ─── Session-exercise ordering (categorical rules) ────────────────────────
+// The two categorical ordering rules from docs/research/02-coaching-philosophy.md:
+// (1) Compound lifts come first within a session — they earn their place by producing
+//     fatigue/strength/growth smaller exercises can't, and they warm up downstream isolations.
+// (2) Consecutive exercises group by primary muscle — switching tells the muscle "we're done"
+//     and reduces growth stimulus. Within a block, compound first.
+//
+// The reorder is three passes over the post-selection exercise list:
+//   Pass 1: assign each exercise to a primary-muscle bucket.
+//   Pass 2: within each bucket, compounds come before non-compounds.
+//   Pass 3: order the buckets — session.focus[0], then focus[1..], then everything else.
+//
+// `compound` here means role === 'main lift'. The planner's variant pool already
+// classifies multi-joint movements with this role (squat, hinge, press, row,
+// pull-up). Accessory/isolation/rehab/mobility/core are NOT compounds even when
+// they happen to be multi-joint. The LLM prompt (generatePlan.ts) carries a
+// broader movement-pattern definition because it operates on a different pool.
+
+// Find the primary muscle bucket key for a planned exercise. Variant-derived
+// exercises encode their id as `variant:${id}`, so we can resolve back to the
+// VariantSpec and read `primary_muscles[0]`. If we can't resolve (defensive
+// fallback for non-variant library_ids), bucket under '__unknown__' so the
+// exercise stays at its current relative position via stable sort.
+function primaryMuscleOf(ex: PlannedExercise): MuscleGroup | '__unknown__' {
+  const libId = ex.library_id
+  if (libId.startsWith('variant:')) {
+    const variantId = libId.slice('variant:'.length)
+    const v = resolveVariant(variantId)
+    if (v && v.primary_muscles.length > 0) return v.primary_muscles[0]!
+  }
+  return '__unknown__'
+}
+
+// A "compound" within the planner is any exercise with role === 'main lift'.
+// Accessories, isolations, rehab, mobility, core, and cardio are NOT compounds.
+function isCompound(ex: PlannedExercise): boolean {
+  return ex.role === 'main lift'
+}
+
+// Reorder a session's exercises so:
+//   - Each muscle-group block is contiguous (no ping-pong).
+//   - Within each block, compounds come first.
+//   - Blocks are ordered by session.focus first, then anything else.
+// Uses stable sorts throughout so otherwise-equal items preserve insertion order.
+// Exported for direct unit testing of the categorical-ordering rules.
+export function reorderExercisesForSession(
+  exercises: PlannedExercise[],
+  focus: MuscleGroup[],
+): PlannedExercise[] {
+  if (exercises.length <= 1) return exercises
+
+  // Pass 1 — bucket by primary muscle, preserving insertion order within each bucket.
+  const buckets = new Map<string, PlannedExercise[]>()
+  for (const ex of exercises) {
+    const key = primaryMuscleOf(ex)
+    const arr = buckets.get(key)
+    if (arr) arr.push(ex)
+    else buckets.set(key, [ex])
+  }
+
+  // Pass 2 — within each bucket, stable-sort compounds before non-compounds.
+  for (const [key, arr] of buckets) {
+    const sorted = arr
+      .map((ex, idx) => ({ ex, idx, compound: isCompound(ex) }))
+      .sort((a, b) => {
+        if (a.compound !== b.compound) return a.compound ? -1 : 1
+        return a.idx - b.idx
+      })
+      .map((entry) => entry.ex)
+    buckets.set(key, sorted)
+  }
+
+  // Pass 3 — order the buckets by session focus, then the rest.
+  const orderedKeys: string[] = []
+  for (const muscle of focus) {
+    if (buckets.has(muscle) && !orderedKeys.includes(muscle)) orderedKeys.push(muscle)
+  }
+  // Append remaining buckets in their original first-appearance order.
+  for (const key of buckets.keys()) {
+    if (!orderedKeys.includes(key)) orderedKeys.push(key)
+  }
+
+  const out: PlannedExercise[] = []
+  for (const key of orderedKeys) {
+    out.push(...(buckets.get(key) ?? []))
+  }
+  return out
+}
+
 // ─── Variant → PlannedExercise ─────────────────────────────────────────────
 // Parses the first working-rep count out of a rep-scheme string ("5-8" → 5,
 // "10" → 10). Used only to pick a starting-weight bucket; tolerant of noise.
@@ -618,11 +707,17 @@ export function buildSession(args: {
     if (currentMinutes() >= targetMin * 0.95) break
   }
 
+  // Reorder per the two categorical rules from docs/research/02-coaching-philosophy.md
+  // sections 5 + 6: (1) compounds come first within a session; (2) consecutive
+  // exercises group by primary muscle (no ping-pong); muscle-group blocks
+  // ordered by session.focus first.
+  const orderedExercises = reorderExercisesForSession(exercises, defaults.focus)
+
   // The seed `suggested_weight_lbs` is held flat across every week of the
   // block (see note above `applyDeload`). `computeAutoProgressionForSession`
   // owns the lb-by-lb trajectory once check-ins exist. Deload (last week
   // of the block) cuts set counts only.
-  const finalExercises = isDeloadWeek ? applyDeload(exercises) : exercises
+  const finalExercises = isDeloadWeek ? applyDeload(orderedExercises) : orderedExercises
 
   // Build rationale from context — short, descriptive, under 280 chars.
   // Use display names (not protocol keys) so "glute_max_bridge_or_hip_thrust"

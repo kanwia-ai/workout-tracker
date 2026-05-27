@@ -4,11 +4,13 @@ import {
   buildSession,
   mergeDirectivesForSession,
   mesocycleLengthFor,
+  reorderExercisesForSession,
   resolveStage,
 } from './buildMesocycle'
 import { interpretProfile } from './interpretProfile'
 import { getProtocol } from '../../data/rehab-protocols'
 import type { UserProgramProfile } from '../../types/profile'
+import type { MuscleGroup, PlannedExercise } from '../../types/plan'
 import type {
   ProgrammingDirectives,
   RootCauseFlag,
@@ -877,5 +879,140 @@ describe('mergeDirectivesForSession — root_causes integration', () => {
     const lower = mergeDirectivesForSession('lower_squat_focus', 1, directives)
     expect(upper.priority_accessories).toContain('face_pulls_high_volume')
     expect(lower.priority_accessories).not.toContain('face_pulls_high_volume')
+  })
+})
+
+// ─── Session-exercise ordering — categorical rules ─────────────────────────
+// Two hard rules from docs/research/02-coaching-philosophy.md (sections 5+6):
+//   1. Compound lifts come first within a session (and within each muscle block).
+//   2. Consecutive exercises group by primary muscle — no ping-pong.
+//   3. session.focus muscle group(s) lead the order.
+
+// Minimal PlannedExercise factory pointing at real variant ids so
+// `primaryMuscleOf` (which resolves `variant:<id>`) returns the right bucket.
+function fakeEx(variantId: string, role: PlannedExercise['role']): PlannedExercise {
+  return {
+    library_id: `variant:${variantId}`,
+    name: variantId,
+    sets: 3,
+    reps: '8-12',
+    rir: 2,
+    rest_seconds: 90,
+    role,
+    warmup_sets: [],
+  }
+}
+
+describe('session-exercise ordering — categorical rules', () => {
+  it('compound main lift appears first in a session, even if accessories were added later', () => {
+    // Mimic the audit example: an accessory (chest-supported row) listed before
+    // the true compound (pull-up). After reorder, the compound must lead.
+    const exercises: PlannedExercise[] = [
+      fakeEx('chest_supported_row', 'main lift'),   // back, role main lift (compound)
+      fakeEx('face_pull', 'accessory'),             // shoulders/back accessory
+      fakeEx('pullup_full', 'main lift'),           // back/biceps, COMPOUND — should lead
+      fakeEx('prone_y_raise', 'isolation'),         // back/shoulders isolation
+    ]
+    const focus: MuscleGroup[] = ['back', 'biceps']
+    const ordered = reorderExercisesForSession(exercises, focus)
+    // First exercise is a compound (role === 'main lift') AND in the back bucket.
+    expect(ordered[0]!.role).toBe('main lift')
+    // It's specifically the pull-up — the more "compound" of the two main lifts,
+    // appearing first because the back bucket leads and compounds rank first
+    // within a bucket via stable sort that preserves the relative ordering of
+    // the two main-lift entries: chest_supported_row came first in the input,
+    // so it's listed second within the back bucket.
+    const backIds = ordered
+      .filter((e) => e.library_id.endsWith(':chest_supported_row') ||
+                     e.library_id.endsWith(':pullup_full'))
+      .map((e) => e.library_id)
+    // Both back compounds appear before any non-compound back exercise.
+    const backBlock = ordered.filter((e) => {
+      const idTail = e.library_id.replace('variant:', '')
+      return ['chest_supported_row', 'pullup_full', 'face_pull', 'prone_y_raise'].includes(idTail)
+    })
+    // First two of the back block are the compounds.
+    expect(backBlock.slice(0, 2).every((e) => e.role === 'main lift')).toBe(true)
+    expect(backIds).toHaveLength(2)
+  })
+
+  it('consecutive exercises group by primary muscle — no muscle ping-pong', () => {
+    // Mix back + chest + back + shoulders + back, then assert the resulting
+    // primary-muscle sequence contains each muscle in a single contiguous run.
+    const exercises: PlannedExercise[] = [
+      fakeEx('chest_supported_row', 'main lift'),       // back
+      fakeEx('bench_press_moderate', 'main lift'),      // chest
+      fakeEx('pullup_full', 'main lift'),               // back
+      fakeEx('overhead_dumbbell_press', 'main lift'),   // shoulders
+      fakeEx('face_pull', 'accessory'),                 // shoulders (primary)
+    ]
+    const ordered = reorderExercisesForSession(exercises, ['back'])
+    // Convert each exercise back to its bucketed primary muscle string and
+    // ensure each muscle appears as a single contiguous run.
+    const sequence: string[] = ordered.map((e) => {
+      const id = e.library_id.replace('variant:', '')
+      if (id === 'chest_supported_row' || id === 'pullup_full') return 'back'
+      if (id === 'bench_press_moderate') return 'chest'
+      if (id === 'overhead_dumbbell_press' || id === 'face_pull') return 'shoulders'
+      return 'other'
+    })
+    const seen = new Set<string>()
+    let prev: string | null = null
+    for (const m of sequence) {
+      if (m !== prev) {
+        // Transition: this muscle should be brand-new to the run order.
+        expect(seen.has(m), `ping-pong detected — ${m} reappears after switching to another muscle`).toBe(false)
+        seen.add(m)
+        prev = m
+      }
+    }
+  })
+
+  it('given a back+chest+back input, output is back→back→chest or back→back→back→chest (never ping-pong)', () => {
+    // Direct rendition of the audit example shape: two back exercises with a
+    // chest exercise sandwiched between them.
+    const exercises: PlannedExercise[] = [
+      fakeEx('chest_supported_row', 'main lift'),        // back
+      fakeEx('bench_press_moderate', 'main lift'),       // chest
+      fakeEx('pullup_full', 'main lift'),                // back
+    ]
+    const ordered = reorderExercisesForSession(exercises, ['back'])
+    const muscles = ordered.map((e) => {
+      const id = e.library_id.replace('variant:', '')
+      if (id === 'chest_supported_row' || id === 'pullup_full') return 'back'
+      return 'chest'
+    })
+    // back leads (it's the focus), and the back block is contiguous before chest.
+    expect(muscles).toEqual(['back', 'back', 'chest'])
+  })
+
+  it('session.focus muscle group leads the order', () => {
+    // Build a list where the focus-muscle exercise is NOT first in the input,
+    // and verify it leads after reorder.
+    const exercises: PlannedExercise[] = [
+      fakeEx('face_pull', 'accessory'),                  // shoulders primary
+      fakeEx('bench_press_moderate', 'main lift'),       // chest primary
+      fakeEx('seated_leg_curl', 'isolation'),            // hamstrings primary
+    ]
+    // Focus = chest → chest block should lead, even though the chest exercise
+    // is in the middle of the input.
+    const ordered = reorderExercisesForSession(exercises, ['chest'])
+    expect(ordered[0]!.library_id).toBe('variant:bench_press_moderate')
+  })
+
+  it('end-to-end: buildSession upper_pull places compound pull-up first', () => {
+    // Sanity check the full path — buildSession returns exercises in the
+    // reordered shape. For upper_pull (focus: back, biceps), the main lift
+    // (pull-up, compound, back-primary) must be exercises[0].
+    const d = interpretProfile(NO_INJURY_PROFILE)
+    const session = buildSession({
+      sessionType: 'upper_pull',
+      weekNumber: 1,
+      ordinal: 1,
+      directives: d,
+      dayOfWeek: 0,
+    })
+    expect(session.exercises[0]!.role).toBe('main lift')
+    expect(session.exercises[0]!.name.toLowerCase()).toContain('pull-up')
   })
 })
