@@ -30,6 +30,7 @@ import { pickCopy, DEFAULT_CHEEK } from '../lib/copy'
 import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { PlannedSession, MuscleGroup } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
+import { BodyCheckSheet, loadBodyCheck, type BodyCheckState } from './BodyCheckSheet'
 
 // Persisted day selection — survives bottom-nav round-trips and browser
 // reload. WorkoutView reads the same key so entering a session honors the
@@ -136,6 +137,12 @@ export function HomeScreen({
   const [weekHardSets, setWeekHardSets] = useState(0)
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
   const [programProfile, setProgramProfile] = useState<UserProgramProfile | null>(null)
+  // Day-of body-check ("anything off today?") — opt-in affordance shown only
+  // when the user has tracked body parts in their injury profile. Selections
+  // persist to localStorage keyed by today's ISO date so they don't bleed
+  // into tomorrow but survive a tab refresh.
+  const [bodyCheckOpen, setBodyCheckOpen] = useState(false)
+  const [bodyCheck, setBodyCheck] = useState<BodyCheckState | null>(null)
 
   const today = new Date()
   const todayDow = todayDowMon0()
@@ -241,6 +248,27 @@ export function HomeScreen({
     }).catch(() => { /* non-fatal */ })
     return () => { cancelled = true }
   }, [userId])
+
+  // Restore today's body-check state on mount so the trigger pill reflects
+  // any selections the user already saved earlier today.
+  useEffect(() => {
+    setBodyCheck(loadBodyCheck(todayISO))
+  }, [todayISO])
+
+  // Body parts the user tracks in their injury profile — only mount the
+  // body-check affordance when this is non-empty.
+  const trackedBodyParts = useMemo(() => {
+    if (!programProfile?.injuries || programProfile.injuries.length === 0) return []
+    const seen = new Set<string>()
+    const out: typeof programProfile.injuries[number]['part'][] = []
+    for (const inj of programProfile.injuries) {
+      if (!seen.has(inj.part)) {
+        seen.add(inj.part)
+        out.push(inj.part)
+      }
+    }
+    return out
+  }, [programProfile])
 
   // Load PR count + week stats
   useEffect(() => {
@@ -376,6 +404,15 @@ export function HomeScreen({
 
             {/* Today / selected-day card */}
             <SectionLabel>{isViewingToday ? 'today' : DAY_LABELS[selectedDow].toLowerCase()}</SectionLabel>
+            {/* "anything off today?" — opt-in body check. Mounts only on
+                today's view, only on a lifting day, and only when the
+                user has tracked body parts. */}
+            {isViewingToday && selectedSession && trackedBodyParts.length > 0 && (
+              <BodyCheckPill
+                flaggedCount={bodyCheck?.flagged.length ?? 0}
+                onOpen={() => setBodyCheckOpen(true)}
+              />
+            )}
             {loading ? (
               <LoadingCard />
             ) : selectedSession ? (
@@ -446,7 +483,57 @@ export function HomeScreen({
           </>
         )}
       </div>
+      {bodyCheckOpen && (
+        <BodyCheckSheet
+          parts={trackedBodyParts}
+          isoDate={todayISO}
+          initial={bodyCheck}
+          onClose={(next) => {
+            setBodyCheckOpen(false)
+            if (next !== null) setBodyCheck(next)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── BodyCheckPill ──────────────────────────────────────────────────────────
+// Small plum-tinted entry pill that opens the BodyCheckSheet. Shows a count
+// when the user has already flagged parts today so it's clear the affordance
+// is "active" — otherwise reads as a quiet invitation.
+function BodyCheckPill({ flaggedCount, onOpen }: { flaggedCount: number; onOpen: () => void }) {
+  const active = flaggedCount > 0
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-testid="body-check-pill"
+      style={{
+        alignSelf: 'flex-start',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        marginTop: 4,
+        marginBottom: 8,
+        background: active
+          ? 'color-mix(in srgb, var(--accent-plum) 22%, transparent)'
+          : 'color-mix(in srgb, var(--accent-plum) 10%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--accent-plum) 45%, transparent)',
+        borderRadius: 999,
+        color: 'var(--accent-plum)',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+      }}
+    >
+      {active ? (
+        <>flagged {flaggedCount} for today · edit</>
+      ) : (
+        <>anything off today?</>
+      )}
+    </button>
   )
 }
 

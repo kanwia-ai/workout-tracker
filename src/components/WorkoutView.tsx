@@ -43,6 +43,9 @@ import {
   computeWarmupDeltasForSession,
 } from '../lib/planner/autoProgress'
 import { isHardToFeel } from '../lib/planner/constants'
+import { affectedMuscleGroupsFor, exerciseIsAffected } from '../lib/planner/bodyPartMuscleMap'
+import { loadBodyCheck } from './BodyCheckSheet'
+import { getExerciseById } from '../data/exercises'
 import { SwapSheet } from './SwapSheet'
 import type { SessionCheckin, SetRating } from '../types/checkin'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
@@ -277,6 +280,11 @@ export function WorkoutView({
       ? loadStoredRecord<Record<string, number>>(WEIGHTS_KEY(selectedSessionKey)) || {}
       : {},
   )
+  // Day-of body check: which library_ids the user has chosen to scale -10%
+  // for today because they flagged a related body part as "off". Stored in
+  // component state only — the scaling is a one-session intent, not a
+  // permanent profile change. Keyed by library_id.
+  const [scaledExercises, setScaledExercises] = useState<Record<string, boolean>>({})
   // Adaptive rep-target recommendations for bodyweight main lifts (pull-ups,
   // dips, etc.) where there's no weight to bump. Populated by the same async
   // auto-progression effect that seeds `weights`. Keyed by library_id; only
@@ -726,6 +734,27 @@ export function WorkoutView({
 
   // ─── Derived: session progress ─────────────────────────────────────────
   const exercises = selectedSession?.exercises ?? []
+
+  // Day-of body-check signal: which muscle groups did the user flag "off"
+  // today? Used to surface inline scale/swap prompts on affected exercises.
+  // Read once on mount + when the user updates the check from HomeScreen
+  // (storage event would be cleaner, but mount-on-session-entry is enough
+  // for the common case since the user picks Home → "anything off?" → "go").
+  const bodyCheckToday = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const iso = new Date().toISOString().slice(0, 10)
+    return loadBodyCheck(iso)
+  }, [])
+  const affectedMuscles = useMemo(
+    () => affectedMuscleGroupsFor(bodyCheckToday?.flagged ?? []),
+    [bodyCheckToday],
+  )
+  const flaggedLabel = useMemo(() => {
+    const parts = bodyCheckToday?.flagged ?? []
+    if (parts.length === 0) return ''
+    if (parts.length === 1) return parts[0].replace(/_/g, ' ')
+    return `${parts.length} parts`
+  }, [bodyCheckToday])
   const totalSets = exercises.reduce((a, e) => a + e.sets, 0)
   const doneSets = exercises.reduce(
     (acc, e, ei) =>
@@ -1320,9 +1349,52 @@ export function WorkoutView({
                   const hasPRFlag = (prs[ex.library_id] ?? 0) > 0
                   const banded = isBandedExercise(ex)
                   const hardToFeel = isHardToFeel(ex.library_id, ex.name)
+                  // Day-of body check: does this exercise load any flagged
+                  // body part? Resolve the exercise's muscle list via the
+                  // library lookup (PlannedExercise carries only library_id;
+                  // muscle data lives on the canonical Exercise entry). If
+                  // the exercise isn't in the curated library (variant/
+                  // LLM-emitted name), fall back to no match — better to
+                  // miss a flag than to false-positive on every exercise.
+                  const libEntry = getExerciseById(ex.library_id)
+                  const bodyAffected =
+                    affectedMuscles.size > 0 &&
+                    libEntry !== undefined &&
+                    exerciseIsAffected(
+                      libEntry.primary_muscles,
+                      libEntry.secondary_muscles,
+                      affectedMuscles,
+                    )
+                  const isScaled = scaledExercises[ex.library_id] === true
                   return (
+                    <div key={`${ex.library_id}-${ei}`}>
+                    {bodyAffected && (
+                      <BodyAffectedNote
+                        flaggedLabel={flaggedLabel}
+                        isScaled={isScaled}
+                        onScale={() => {
+                          setScaledExercises((prev) => ({ ...prev, [ex.library_id]: true }))
+                          // Apply a 10% reduction to the displayed weight,
+                          // rounded down to nearest 2.5lb. Only applies
+                          // when an existing weight is set (skip for
+                          // unconfigured bodyweight exercises).
+                          const current = weights[ex.library_id] || 0
+                          if (current > 0) {
+                            const scaled = Math.max(0, Math.floor((current * 0.9) / 2.5) * 2.5)
+                            setWeights((prev) => ({ ...prev, [ex.library_id]: scaled }))
+                          }
+                        }}
+                        onUndoScale={() => {
+                          setScaledExercises((prev) => {
+                            const next = { ...prev }
+                            delete next[ex.library_id]
+                            return next
+                          })
+                        }}
+                        onSwap={() => setSwapIndex(ei)}
+                      />
+                    )}
                     <LiftCard
-                      key={`${ex.library_id}-${ei}`}
                       ex={ex}
                       exIdx={ei}
                       isCompleted={isCompleted}
@@ -1379,6 +1451,7 @@ export function WorkoutView({
                         }))
                       }
                     />
+                    </div>
                   )
                 })}
               </div>
@@ -1570,6 +1643,105 @@ function ProgressStrip({ done, total, title, estMinutes }: ProgressStripProps) {
         {pct >= 100 && (
           <span style={{ color: 'var(--accent-mint)', fontWeight: 700 }}>done. flop backwards.</span>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── BodyAffectedNote ───────────────────────────────────────────────────
+// Quiet plum-tinted note that renders above a LiftCard when today's
+// body-check flagged a part this exercise loads. Surfaces scale -10% and
+// swap actions — does NOT auto-modify the prescription. Tap is the user's
+// authorization; without it the program runs as planned.
+interface BodyAffectedNoteProps {
+  flaggedLabel: string
+  isScaled: boolean
+  onScale: () => void
+  onUndoScale: () => void
+  onSwap: () => void
+}
+
+function BodyAffectedNote({
+  flaggedLabel,
+  isScaled,
+  onScale,
+  onUndoScale,
+  onSwap,
+}: BodyAffectedNoteProps) {
+  return (
+    <div
+      data-testid="body-affected-note"
+      style={{
+        padding: '8px 12px',
+        marginBottom: 6,
+        background: 'color-mix(in srgb, var(--accent-plum) 12%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--accent-plum) 45%, transparent)',
+        borderRadius: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div style={{ fontSize: 12, color: 'var(--lumo-text)', lineHeight: 1.4 }}>
+        you flagged{' '}
+        <span style={{ color: 'var(--accent-plum)', fontWeight: 700 }}>{flaggedLabel}</span>
+        {' '}off today — consider lighter load or swap
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {isScaled ? (
+          <button
+            type="button"
+            onClick={onUndoScale}
+            data-testid="body-affected-undo"
+            style={{
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: 'color-mix(in srgb, var(--accent-plum) 22%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-plum) 55%, transparent)',
+              color: 'var(--accent-plum)',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            scaled -10% · undo
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onScale}
+            data-testid="body-affected-scale"
+            style={{
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: 'transparent',
+              border: '1px solid color-mix(in srgb, var(--accent-plum) 55%, transparent)',
+              color: 'var(--accent-plum)',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            scale -10%
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onSwap}
+          data-testid="body-affected-swap"
+          style={{
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: 'transparent',
+            border: '1px solid color-mix(in srgb, var(--accent-plum) 55%, transparent)',
+            color: 'var(--accent-plum)',
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          swap
+        </button>
       </div>
     </div>
   )
