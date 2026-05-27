@@ -16,6 +16,9 @@
 
 import { X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+// Auth is required (2026-05-27): every user is signed in, so the Account
+// section is always Sign-out — no more conditional "Sign in to sync"
+// affordance for local-only users.
 import { ThemeToggle } from './ThemeToggle'
 import {
   CHEEK_PREF_KEY,
@@ -88,23 +91,21 @@ export interface SettingsScreenProps {
   onResetApp?: () => void
   /**
    * Sign out — calls supabase.auth.signOut. Owner clears profile state
-   * and the App router drops the user back to LoginScreen. Local Dexie
-   * data is preserved (only the session token is invalidated) so the
-   * user can sign back in and pick up where they left off. For a full
-   * wipe, use {@link onResetApp}.
+   * and the App router drops the user back to LoginScreen. As of
+   * 2026-05-27 sign-out also wipes the local Dexie cache (the next user
+   * signing in on the same browser shouldn't see leftover data); to
+   * keep data and just end the session, use the sign-out flow before
+   * this lands. For a full reset of profile + plan + logs use
+   * {@link onResetApp} instead.
    */
   onSignOut?: () => Promise<void> | void
   /**
-   * Whether the current user is a local-only identity (no Supabase
-   * session). When true, the Account section shows a "Sign in to sync"
-   * affordance instead of Sign-out. The button is disabled when Supabase
-   * is unconfigured or unreachable — see the in-component health check.
+   * @deprecated 2026-05-27 — every user is signed in. Retained on the
+   * type for the test wrapper but no longer wired anywhere in the app.
    */
   isLocalUser?: boolean
   /**
-   * Open the sign-in flow. Owner is responsible for rendering the
-   * LoginScreen modal — Settings only triggers it. Only invoked when
-   * {@link isLocalUser} is true AND Supabase is reachable.
+   * @deprecated 2026-05-27 — see {@link isLocalUser}.
    */
   onSignIn?: () => void
 }
@@ -145,56 +146,10 @@ export function SettingsScreen({
   cheek,
   onResetApp,
   onSignOut,
-  isLocalUser = false,
-  onSignIn,
 }: SettingsScreenProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [replanConfirmOpen, setReplanConfirmOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
-
-  // Supabase reachability state — only relevant when a local-only user is
-  // looking at the "Sign in to sync" affordance. We do a single 3-second
-  // GET on /auth/v1/health on mount; on failure we mark sync unavailable
-  // and disable the button. Deliberately minimal: no retries, no polling.
-  // 'unknown' is the initial state so the button briefly disables itself
-  // until we know one way or the other — keeps the user from tapping into
-  // a guaranteed-to-fail flow.
-  type Reachability = 'unknown' | 'reachable' | 'unreachable' | 'unconfigured'
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-  const [supabaseReachable, setSupabaseReachable] = useState<Reachability>(
-    () => (supabaseUrl ? 'unknown' : 'unconfigured'),
-  )
-
-  useEffect(() => {
-    if (!supabaseUrl) {
-      setSupabaseReachable('unconfigured')
-      return
-    }
-    if (!isLocalUser) return // only need this when offering sign-in
-    let cancelled = false
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 3000)
-    void fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/health`, {
-      method: 'GET',
-      signal: controller.signal,
-    })
-      .then((res) => {
-        if (cancelled) return
-        setSupabaseReachable(res.ok ? 'reachable' : 'unreachable')
-      })
-      .catch(() => {
-        if (cancelled) return
-        setSupabaseReachable('unreachable')
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId)
-      })
-    return () => {
-      cancelled = true
-      controller.abort()
-      window.clearTimeout(timeoutId)
-    }
-  }, [supabaseUrl, isLocalUser])
 
   // Loading-state Lumo copy — swapped every 4s while the re-plan runs so
   // the user sees a rotating pool instead of one static line. We pull from
@@ -489,48 +444,37 @@ export function SettingsScreen({
           </Row>
         </Section>
 
-        {(onSignOut || onSignIn) && (
+        {onSignOut && (
           <Section title="Account">
-            {isLocalUser ? (
-              <AccountSignInButton
-                onSignIn={onSignIn}
-                supabaseReachable={supabaseReachable}
-              />
-            ) : (
-              onSignOut && (
-                <>
-                  <button
-                    type="button"
-                    data-testid="settings-sign-out"
-                    onClick={() => { void onSignOut() }}
-                    style={{
-                      width: '100%',
-                      padding: '14px 16px',
-                      background: 'var(--lumo-bg)',
-                      border: '1px solid var(--lumo-border)',
-                      borderRadius: 12,
-                      color: 'var(--lumo-text)',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Sign out
-                  </button>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--lumo-text-ter)',
-                      lineHeight: 1.45,
-                      padding: '8px 4px 0',
-                    }}
-                  >
-                    Ends your session. Your plan and history stay on this device — sign back in to pick up where you left off.
-                  </div>
-                </>
-              )
-            )}
+            <button
+              type="button"
+              data-testid="settings-sign-out"
+              onClick={() => { void onSignOut() }}
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                background: 'var(--lumo-bg)',
+                border: '1px solid var(--lumo-border)',
+                borderRadius: 12,
+                color: 'var(--lumo-text)',
+                fontSize: 14,
+                fontWeight: 600,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              Sign out
+            </button>
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--lumo-text-ter)',
+                lineHeight: 1.45,
+                padding: '8px 4px 0',
+              }}
+            >
+              Ends your session. Your data lives in the cloud — sign back in to pick up where you left off.
+            </div>
           </Section>
         )}
 
@@ -1102,67 +1046,6 @@ export function SettingsScreen({
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * Render the "Sign in to sync" affordance for local-only users. Disabled
- * (with a helpful note) when Supabase is unconfigured or unreachable so
- * the user doesn't tap into a flow that's guaranteed to fail.
- */
-function AccountSignInButton({
-  onSignIn,
-  supabaseReachable,
-}: {
-  onSignIn?: () => void
-  supabaseReachable: 'unknown' | 'reachable' | 'unreachable' | 'unconfigured'
-}) {
-  const disabled =
-    !onSignIn ||
-    supabaseReachable === 'unreachable' ||
-    supabaseReachable === 'unconfigured' ||
-    supabaseReachable === 'unknown'
-  const note =
-    supabaseReachable === 'unreachable' || supabaseReachable === 'unconfigured'
-      ? 'sync unavailable — backend offline'
-      : supabaseReachable === 'unknown'
-        ? 'checking sync availability…'
-        : "Sign in to back up your plan and history, and pick up where you left off on another device."
-  return (
-    <>
-      <button
-        type="button"
-        data-testid="settings-sign-in"
-        onClick={() => onSignIn?.()}
-        disabled={disabled}
-        aria-disabled={disabled}
-        style={{
-          width: '100%',
-          padding: '14px 16px',
-          background: disabled ? 'var(--lumo-raised)' : 'var(--brand)',
-          border: disabled ? '1px solid var(--lumo-border)' : 'none',
-          borderRadius: 12,
-          color: disabled ? 'var(--lumo-text-ter)' : 'var(--lumo-bg)',
-          fontSize: 14,
-          fontWeight: 700,
-          textAlign: 'left',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-        }}
-      >
-        Sign in to sync
-      </button>
-      <div
-        data-testid="settings-sign-in-note"
-        style={{
-          fontSize: 12,
-          color: 'var(--lumo-text-ter)',
-          lineHeight: 1.45,
-          padding: '8px 4px 0',
-        }}
-      >
-        {note}
-      </div>
-    </>
   )
 }
 

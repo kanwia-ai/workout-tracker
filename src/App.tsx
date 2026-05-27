@@ -13,10 +13,8 @@ import { useAuth } from './hooks/useAuth'
 import { useTweaks } from './hooks/useTweaks'
 import { WorkoutView } from './components/WorkoutView'
 import { HomeScreen } from './components/HomeScreen'
-// LoginScreen is now opt-in — rendered as a modal from SettingsScreen
-// when the user taps "Sign in to sync". The app itself no longer gates on
-// auth; we render onboarding/workout for every user, local or cloud.
-// See useAuth — it always returns a non-null `user`.
+// Auth is required — Supabase is the source of truth. The app routes to
+// LoginScreen whenever there's no session. See useAuth for the gate.
 import { LoginScreen } from './components/LoginScreen'
 import { ExerciseBrowser } from './components/ExerciseBrowser'
 import { MobilityRoutines } from './components/MobilityRoutines'
@@ -32,7 +30,7 @@ import { generatePlanFromDirectives } from './lib/planGen'
 import { listCheckinsForUser } from './lib/checkins'
 import type { ProgrammingDirectives } from './types/directives'
 import { Loader2, AlertTriangle } from 'lucide-react'
-import { loadProfileLocal, saveProfileLocal, syncProfileUp } from './lib/profileRepo'
+import { loadProfileLocal, saveProfileLocal } from './lib/profileRepo'
 import { wipeUserData } from './lib/db'
 import { BackendStatusBanner } from './components/BackendStatusBanner'
 import { generatePlan } from './lib/planGen'
@@ -126,7 +124,6 @@ function App() {
     setHasProfile,
     profileError,
     clearProfileError,
-    signInWithMagicLink,
     signOut,
     updateStreak,
   } = useAuth()
@@ -171,10 +168,6 @@ function App() {
   // the onboarding flow so the user doesn't silently lose their answers.
   // Reuses the same friendly-error helper as runGeneration for consistency.
   const [onboardingError, setOnboardingError] = useState<string | null>(null)
-  // Tracks whether the Sign-in modal is open from Settings. We render
-  // LoginScreen on top of Settings — closing returns to Settings, and a
-  // successful sign-in unmounts the modal via the auth state change.
-  const [signInModalOpen, setSignInModalOpen] = useState(false)
   // Generation token — captured at `runGeneration` call time. If the user
   // signs out or switches accounts mid-generation, the stale promise's
   // setters are dropped so they can't clobber the new session's state.
@@ -289,6 +282,13 @@ function App() {
     )
   }
 
+  // Auth gate — no Supabase session means LoginScreen, full stop. Supabase
+  // is the source of truth (2026-05-27); we removed the "always-mount
+  // a local user" path that prior agents added.
+  if (!user) {
+    return <LoginScreen />
+  }
+
   // Plan generation in progress — short-circuit regardless of `hasProfile`
   // so the HomeScreen "Rebuild my plan" retry also shows the loader. Without
   // this, a retry from the plan-less empty state would silently keep
@@ -390,16 +390,9 @@ function App() {
               )
               return
             }
-            // Fire-and-forget cloud sync — local save is the source of
-            // truth for the next render, and syncProfileUp leaves the
-            // row dirty on failure so we'll retry next session.
-            // Local-only users have no Supabase auth, so this would 401;
-            // skip the cloud push entirely.
-            if (!user.isLocal) {
-              void syncProfileUp(user.id).catch((err) => {
-                console.error('syncProfileUp failed', err)
-              })
-            }
+            // saveProfileLocal now triggers the cloud sync internally —
+            // no need to fire it explicitly here. The row stays dirty on
+            // failure and the next save (or the next sign-in) retries.
             // Kick off plan generation. On success this flips
             // hasProfile=true; on failure it surfaces the error screen
             // above with a retry button.
@@ -507,8 +500,6 @@ function App() {
           replanState={replanState}
           checkinCount={checkinCount}
           cheek={tweaksApi.tweaks.cheek}
-          isLocalUser={user.isLocal}
-          onSignIn={() => setSignInModalOpen(true)}
           onSignOut={signOut}
           onRegeneratePlan={() => {
             // Reload the saved profile and re-run plan generation against the
@@ -526,52 +517,6 @@ function App() {
             })
           }}
         />
-        {signInModalOpen && (
-          <div
-            data-testid="signin-modal-backdrop"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0, 0, 0, 0.6)',
-              zIndex: 1500,
-              display: 'flex',
-              alignItems: 'stretch',
-              justifyContent: 'center',
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setSignInModalOpen(false)
-            }}
-          >
-            <div style={{ width: '100%', position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => setSignInModalOpen(false)}
-                data-testid="signin-modal-close"
-                aria-label="Close sign-in"
-                style={{
-                  position: 'fixed',
-                  top: 16,
-                  right: 16,
-                  zIndex: 1600,
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: 'var(--lumo-raised)',
-                  border: '1px solid var(--lumo-border)',
-                  color: 'var(--lumo-text)',
-                  cursor: 'pointer',
-                  fontSize: 18,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                ×
-              </button>
-              <LoginScreen onSignIn={signInWithMagicLink} />
-            </div>
-          </div>
-        )}
       </>
     )
   }

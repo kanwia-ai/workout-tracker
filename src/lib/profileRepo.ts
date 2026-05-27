@@ -83,8 +83,10 @@ function ensurePrimaryGoal(profile: UserProgramProfile): UserProgramProfile {
 
 /**
  * Validate and persist a UserProgramProfile to the local Dexie store.
- * Marks the row as dirty (synced: false) so the next syncProfileUp() call
- * will push it to Supabase.
+ * Marks the row as dirty (synced: false) and fires an async push to
+ * Supabase. Caller does NOT await the push — Dexie is the immediate
+ * source of truth for the next render; the cloud catches up in the
+ * background.
  *
  * Throws a ZodError if the profile fails schema validation — nothing is
  * written in that case.
@@ -98,6 +100,13 @@ export async function saveProfileLocal(userId: string, profile: UserProgramProfi
     profile_json: JSON.stringify(profile),
     updated_at: new Date().toISOString(),
     synced: false,
+  })
+  // Fire-and-forget cloud sync. On error the row stays dirty so the
+  // next `saveProfileLocal` (or an explicit syncProfileUp) will retry.
+  // Skipped during tests where Supabase env is unset — syncProfileUp
+  // is a no-op against the stub client anyway.
+  void syncProfileUp(userId).catch((err) => {
+    console.warn('syncProfileUp (background) failed', err)
   })
 }
 

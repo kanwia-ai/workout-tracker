@@ -1,23 +1,25 @@
 // BackendStatusBanner — surfaces "Supabase unreachable" so the user knows
-// the app is in local-only mode, instead of staring at a sign-in button
-// that quietly fails. Mounted by App.tsx near the top of the tree (just
-// below the status bar).
+// cloud sync is temporarily down. Their actions still work against the
+// Dexie cache; the next successful sync flushes them up.
+//
+// 2026-05-27: app went from local-first back to cloud-as-source-of-truth.
+// We still want the banner because:
+//   - If the Supabase project is paused / migrating, sign-in fails and
+//     check-ins won't sync. The user deserves a heads-up rather than
+//     a silently-broken cloud.
+//   - Dexie keeps the writes locally — they'll catch up on the next
+//     successful sync, so the user can keep working.
 //
 // Design constraints:
 //   - Show only when Supabase is *configured* (env vars present) but
-//     unreachable. If the env vars are missing entirely the app is in a
-//     local-only build by design and this banner would just be noise.
+//     unreachable. Local dev builds with no Supabase URL skip the
+//     banner entirely — there's no backend to be down.
 //   - Run one health probe on mount with a 3s timeout. Re-probe after 60s
 //     so we don't nag every render or burn a request per keystroke.
 //   - Dismissal persists in sessionStorage so the banner doesn't reappear
 //     mid-session, but a fresh visit (new tab, app re-open) shows it again
 //     if the backend is still down.
-//   - Warm amber palette, NOT red — this is informational, not an error
-//     state. Sign-in is disabled, but the user's data is safe locally.
-//
-// Wiring: App.tsx imports + mounts `<BackendStatusBanner />`. This file
-// intentionally does not auto-mount itself — Agent B is touching App.tsx
-// and will wire it in once their changes land.
+//   - Warm amber palette, NOT red — informational, not an error state.
 
 import { useEffect, useState } from 'react'
 import { X, AlertTriangle } from 'lucide-react'
@@ -143,7 +145,7 @@ export function BackendStatusBanner({
       <span className="flex items-center gap-2 min-w-0 flex-1">
         <AlertTriangle size={14} aria-hidden="true" style={{ color: '#fbbf24', flexShrink: 0 }} />
         <span className="truncate">
-          backend offline — your data stays on this device. sign-in disabled until it&apos;s back.
+          we&apos;re temporarily having sync issues — your changes are saved on this device and will catch up shortly.
         </span>
       </span>
       <button

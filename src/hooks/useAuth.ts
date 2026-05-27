@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { loadProfileLocal, pullProfileFromCloud } from '../lib/profileRepo'
+import { pullProfileFromCloud } from '../lib/profileRepo'
+import { pullCheckinsFromCloud, syncDirtyCheckins } from '../lib/checkins'
+import { wipeUserData } from '../lib/db'
 
 interface Profile {
   id: string
@@ -13,22 +15,24 @@ interface Profile {
 }
 
 /**
- * Auth user as exposed to the rest of the app. Always non-null after first
- * render — either a real Supabase session OR a stable local-only identity
- * persisted in localStorage. The `isLocal` flag tells Settings whether the
- * user is signed in (false) or running app-only (true).
+ * Auth user as exposed to the rest of the app. NULL when no Supabase session
+ * exists — the app routes to LoginScreen in that case. We no longer mount a
+ * "local-only" identity: Supabase is the source of truth, sign-in is
+ * required, and Dexie acts purely as a cache.
  *
- * We keep `id` shaped like a Supabase `User` (string UUID) so all the Dexie
- * keys, plan generation, check-ins, etc. work unchanged for both paths.
+ * The `id` is always the Supabase user UUID, which Postgres RLS policies
+ * gate on (`auth.uid() = user_id`).
  */
 export interface AppUser {
   id: string
   email: string | null
-  isLocal: boolean
 }
 
-// Dev bypass: skip auth entirely in development
+// Dev bypass: skip auth entirely in development. Mounts a stable fake
+// user so localhost work doesn't require a Supabase session every reload.
+// PROD builds ignore this flag completely.
 const DEV_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === 'true'
+const DEV_USER: AppUser = { id: 'dev-user', email: 'dev@localhost' }
 const DEV_PROFILE: Profile = {
   id: 'dev-user',
   email: 'dev@localhost',
@@ -39,70 +43,40 @@ const DEV_PROFILE: Profile = {
   last_workout_date: null,
 }
 
-// localStorage key for the persistent local-only user UUID. Stable across
-// reloads so a user who never signs in still keeps their plan + history
-// after a refresh. Wiping localStorage (Settings → Start fresh) regenerates
-// a fresh id on the next load, which is the desired "blow it all away"
-// behaviour.
-const LOCAL_USER_ID_KEY = 'workout-tracker:local-user-id'
-
 /**
- * Generate or fetch the persisted local-only user id. UUIDs are produced
- * via `crypto.randomUUID()` when available (every modern browser + Node 19+)
- * and fall back to a Math.random hex so this still works in jsdom / SSR
- * environments that haven't shimmed crypto. The fallback isn't crypto-grade
- * but it's only used as a Dexie key, not a secret.
+ * Sync status surfaced to the UI so the app can render "syncing…" /
+ * "out of sync" affordances. Doesn't gate any feature — Dexie is the
+ * read path. Status is best-effort and reflects the most recent push.
+ *
+ *   - 'idle': no sync activity (just-mounted, or last push succeeded)
+ *   - 'syncing': a background push or pull is in flight
+ *   - 'error': the most recent sync attempt failed; retry on next write
  */
-function getOrCreateLocalUserId(): string {
-  if (typeof window === 'undefined') {
-    // SSR / non-browser path — caller will replace once on the client.
-    return 'local-pending'
-  }
-  try {
-    const existing = window.localStorage.getItem(LOCAL_USER_ID_KEY)
-    if (existing && existing.length > 0) return existing
-  } catch {
-    // localStorage unavailable (private mode); fall through and mint a
-    // throwaway id for this session.
-  }
-  const id =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  try {
-    window.localStorage.setItem(LOCAL_USER_ID_KEY, id)
-  } catch {
-    // Best-effort persistence.
-  }
-  return id
-}
+export type SyncStatus = 'idle' | 'syncing' | 'error'
 
 export function useAuth() {
-  // `user` is always non-null. Start with the local identity so the app
-  // renders instantly without a loading spinner; if a Supabase session
-  // exists, we upgrade to it in the background (see effect below).
-  const [user, setUser] = useState<AppUser>(() => {
-    if (DEV_BYPASS) {
-      return { id: 'dev-user', email: 'dev@localhost', isLocal: false }
-    }
-    return { id: getOrCreateLocalUserId(), email: null, isLocal: true }
-  })
+  // `user` is null until the first session check resolves OR the user
+  // signs in. App.tsx gates on `loading` + `user` to decide whether to
+  // render LoginScreen.
+  const [user, setUser] = useState<AppUser | null>(() =>
+    DEV_BYPASS ? DEV_USER : null,
+  )
   const [profile, setProfile] = useState<Profile | null>(() =>
     DEV_BYPASS ? DEV_PROFILE : null,
   )
   const [hasProfile, setHasProfile] = useState(false)
   /**
-   * Surfaces background failures from `loadProfileLocal` /
-   * `pullProfileFromCloud` so App.tsx can render a non-blocking banner.
-   * Local-first means the app keeps working even if cloud pull fails — we
-   * just want the user to know sync is degraded.
+   * Surfaces background failures from `pullProfileFromCloud` so App.tsx
+   * can render a non-blocking banner. Cloud-as-source-of-truth means a
+   * pull failure usually still leaves Dexie populated — we surface the
+   * hiccup but keep the app responsive.
    */
   const [profileError, setProfileError] = useState<string | null>(null)
-  // Tracks whether the UserProgramProfile resolution (local + optional cloud)
-  // has finished for the current user. While this is true, gate the
-  // "needs onboarding?" decision on a spinner instead of rendering
-  // OnboardingFlow prematurely.
-  const [programProfileResolving, setProgramProfileResolving] = useState(true)
+  // Tracks whether the auth resolution (session check + profile pull) has
+  // finished. While true, App.tsx renders a spinner instead of routing
+  // to LoginScreen or onboarding prematurely.
+  const [loading, setLoading] = useState(!DEV_BYPASS)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
 
   // Generation token — incremented on every auth change. Async resolvers
   // capture their generation at call time and no-op if a new auth event
@@ -111,43 +85,46 @@ export function useAuth() {
 
   useEffect(() => {
     if (DEV_BYPASS) {
-      const devUser: AppUser = { id: 'dev-user', email: 'dev@localhost', isLocal: false }
+      // DEV path — skip Supabase entirely. The app behaves as if a stable
+      // dev user is signed in.
       authGenRef.current += 1
       const gen = authGenRef.current
-      setUser(devUser)
-      setProfile(DEV_PROFILE)
-      setProgramProfileResolving(true)
-      void resolveProgramProfile(devUser.id, gen, { skipCloud: true })
+      void resolveProgramProfile(DEV_USER.id, gen, { skipCloud: true })
       return
     }
 
-    // Kick off resolution against the local user immediately so the app
-    // can render even if Supabase is unreachable / unconfigured.
+    // PROD path — check for an existing Supabase session. If present, the
+    // app routes into onboarding (no profile yet) or directly into the
+    // app (profile exists, even if Dexie is empty — we'll pull it).
     authGenRef.current += 1
     const initialGen = authGenRef.current
-    void resolveProgramProfile(user.id, initialGen, { skipCloud: true })
 
-    // In the background, check for an existing Supabase session — if one
-    // exists, upgrade to the cloud identity. Wrapped in try/catch so a
-    // broken Supabase config (missing env vars, network failure) doesn't
-    // crash the local-first path.
     void (async () => {
       try {
         const { data } = await supabase.auth.getSession()
         const session = data.session
-        if (!session?.user) return
-        authGenRef.current += 1
-        const gen = authGenRef.current
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? null,
-          isLocal: false,
-        })
-        setProgramProfileResolving(true)
-        fetchProfile(session.user.id, gen)
-        void resolveProgramProfile(session.user.id, gen)
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email ?? null,
+          })
+          void fetchProfile(session.user.id, initialGen)
+          void resolveProgramProfile(session.user.id, initialGen)
+        } else {
+          // No session — App routes to LoginScreen.
+          setLoading(false)
+        }
       } catch (err) {
-        console.warn('supabase.auth.getSession failed (continuing local-only)', err)
+        console.warn('supabase.auth.getSession failed', err)
+        // Treat session-check failure as "no session" — surface a profile
+        // error banner so the user knows something went wrong, then let
+        // them try sign-in (which will probably also fail loudly).
+        setProfileError(
+          err instanceof Error
+            ? `Sign-in service unavailable: ${err.message}`
+            : 'Sign-in service unavailable.',
+        )
+        setLoading(false)
       }
     })()
 
@@ -160,20 +137,16 @@ export function useAuth() {
           setUser({
             id: session.user.id,
             email: session.user.email ?? null,
-            isLocal: false,
           })
-          setProgramProfileResolving(true)
-          fetchProfile(session.user.id, gen)
+          setLoading(true)
+          void fetchProfile(session.user.id, gen)
           void resolveProgramProfile(session.user.id, gen)
         } else {
-          // Signed out — drop back to a local identity but keep all local
-          // data intact. Reuses the same persisted local id so the user's
-          // plan/history stays put.
-          const localId = getOrCreateLocalUserId()
-          setUser({ id: localId, email: null, isLocal: true })
+          // Signed out — drop to null, App routes to LoginScreen.
+          setUser(null)
           setProfile(null)
-          setProgramProfileResolving(true)
-          void resolveProgramProfile(localId, gen, { skipCloud: true })
+          setHasProfile(false)
+          setLoading(false)
         }
       })
       subscription = data.subscription
@@ -188,18 +161,17 @@ export function useAuth() {
   }, [])
 
   /**
-   * Resolve whether the user has a UserProgramProfile. Offline-first:
-   * check the local Dexie cache, then attempt a cloud pull that can also
-   * populate the cache (and flip hasProfile to true) if the user
-   * onboarded on another device.
+   * Resolve whether the user has a UserProgramProfile. Pulls from the
+   * cloud first (Supabase is source of truth) and writes to Dexie as a
+   * cache. Falls back gracefully if the cloud fetch fails — the local
+   * Dexie row, if any, becomes the authoritative read.
    *
    * `gen` is captured at call time — if a newer auth event has
    * incremented `authGenRef`, all setter calls below are dropped to
    * avoid stale-user writes after sign-out / user-switch.
    *
-   * skipCloud: true for the dev-bypass + local-only paths — no auth
-   * session means the Supabase query would 401; just trust the local
-   * cache.
+   * skipCloud: true for the dev-bypass path only — no auth session means
+   * the Supabase query would 401; trust the local cache.
    */
   async function resolveProgramProfile(
     userId: string,
@@ -208,34 +180,53 @@ export function useAuth() {
   ) {
     const stale = () => authGenRef.current !== gen
 
-    try {
-      const local = await loadProfileLocal(userId)
-      if (stale()) return
-      if (local) {
-        setHasProfile(true)
-        setProgramProfileResolving(false)
-        return
-      }
-    } catch (err) {
-      console.warn('loadProfileLocal failed', err)
-      if (!stale()) {
-        setProfileError(
-          err instanceof Error
-            ? `Couldn't load your saved profile: ${err.message}`
-            : "Couldn't load your saved profile.",
-        )
-      }
-    }
-
     if (opts.skipCloud) {
-      if (!stale()) setProgramProfileResolving(false)
+      // DEV path only — Dexie is the only source.
+      try {
+        const { loadProfileLocal } = await import('../lib/profileRepo')
+        const local = await loadProfileLocal(userId)
+        if (stale()) return
+        if (local) setHasProfile(true)
+      } catch (err) {
+        console.warn('loadProfileLocal failed', err)
+      } finally {
+        if (!stale()) setLoading(false)
+      }
       return
     }
 
+    setSyncStatus('syncing')
     try {
+      // Cloud is source of truth — pull first so a fresh-Dexie device
+      // (re-install, new browser) gets the user's profile back without
+      // forcing them through onboarding again.
       const cloud = await pullProfileFromCloud(userId)
       if (stale()) return
-      if (cloud) setHasProfile(true)
+      if (cloud) {
+        setHasProfile(true)
+      } else {
+        // No cloud profile yet — fall back to local (covers race where
+        // user just saved their onboarding answers and hasn't synced
+        // up). If local also empty, App routes to onboarding.
+        const { loadProfileLocal } = await import('../lib/profileRepo')
+        const local = await loadProfileLocal(userId)
+        if (stale()) return
+        if (local) setHasProfile(true)
+      }
+      // Pull check-ins (and flush any locally-dirty ones) in parallel.
+      // These run after the profile pull so a fresh-Dexie device gets
+      // the user's history back even if they signed in on a new browser.
+      let checkinError = false
+      try {
+        await pullCheckinsFromCloud(userId)
+        if (stale()) return
+        await syncDirtyCheckins(userId)
+      } catch (err) {
+        console.warn('checkin sync on sign-in failed', err)
+        checkinError = true
+      }
+      if (stale()) return
+      setSyncStatus(checkinError ? 'error' : 'idle')
     } catch (err) {
       console.warn('pullProfileFromCloud failed', err)
       if (!stale()) {
@@ -244,9 +235,20 @@ export function useAuth() {
             ? `Sync hiccup: ${err.message}`
             : 'Cloud sync unavailable right now.',
         )
+        setSyncStatus('error')
+      }
+      // Cloud failed — fall back to local cache so the user isn't locked
+      // out by a flaky network.
+      try {
+        const { loadProfileLocal } = await import('../lib/profileRepo')
+        const local = await loadProfileLocal(userId)
+        if (stale()) return
+        if (local) setHasProfile(true)
+      } catch (innerErr) {
+        console.warn('loadProfileLocal fallback failed', innerErr)
       }
     } finally {
-      if (!stale()) setProgramProfileResolving(false)
+      if (!stale()) setLoading(false)
     }
   }
 
@@ -268,55 +270,34 @@ export function useAuth() {
     }
   }
 
-  async function signInWithMagicLink(email: string): Promise<{ error: string | null }> {
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      })
-      return { error: error?.message ?? null }
-    } catch (err) {
-      return {
-        error:
-          err instanceof Error
-            ? err.message
-            : 'Failed to reach the sign-in service.',
-      }
-    }
-  }
-
-  /**
-   * `signIn` is a no-op for the local-only path — sign-in is opt-in via
-   * the Settings flow which calls `signInWithMagicLink` directly. Kept on
-   * the returned API for backwards compatibility with any caller that
-   * still references it.
-   */
-  function signIn() {
-    // intentional no-op — see jsdoc above.
-  }
-
   async function signOut() {
     authGenRef.current += 1  // invalidate any in-flight resolvers
+    const previousUserId = user?.id
     try {
       await supabase.auth.signOut()
     } catch (err) {
       console.warn('supabase.auth.signOut failed (continuing)', err)
     }
-    // Drop back to the local identity. Keep local Dexie data intact —
-    // sign-out clears the session token, not the user's workouts.
-    const localId = getOrCreateLocalUserId()
-    setUser({ id: localId, email: null, isLocal: true })
+    // Clear local Dexie cache so the next user starting fresh (e.g.
+    // friend signing in on Kyra's laptop) doesn't see Kyra's leftover
+    // workout data. The onAuthStateChange handler will null-out user
+    // state and App routes to LoginScreen.
+    if (previousUserId && previousUserId !== 'dev-user') {
+      try {
+        await wipeUserData()
+      } catch (err) {
+        console.warn('wipeUserData on sign-out failed', err)
+      }
+    }
+    setUser(null)
     setProfile(null)
+    setHasProfile(false)
     setProfileError(null)
-    setProgramProfileResolving(true)
-    const gen = authGenRef.current
-    void resolveProgramProfile(localId, gen, { skipCloud: true })
+    setLoading(false)
   }
 
   async function updateStreak() {
-    if (!profile) return
+    if (!profile || !user) return
 
     const today = new Date().toISOString().split('T')[0]
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
@@ -356,11 +337,8 @@ export function useAuth() {
       }
     }
 
-    // Local-only users have no Supabase row to update; bump the in-memory
-    // profile and bail. (Streak persistence for local users is a Phase 3
-    // problem — for now it resets on reload, which is no worse than the
-    // old behaviour for users who never signed in.)
-    if (user.isLocal) {
+    // Dev user has no Supabase row to update; bump the in-memory profile.
+    if (DEV_BYPASS) {
       setProfile({ ...profile, streak: newStreak, last_workout_date: today })
       return
     }
@@ -382,18 +360,14 @@ export function useAuth() {
   return {
     user,
     profile,
-    // No auth-loading wait anymore — the local identity is available
-    // synchronously. We still want the app to gate onboarding decisions on
-    // the profile-resolve so it doesn't briefly render the onboarding flow
-    // while we're still checking Dexie.
-    loading: programProfileResolving,
+    loading,
     hasProfile,
     setHasProfile,
     profileError,
     clearProfileError: () => setProfileError(null),
-    signIn,
-    signInWithMagicLink,
     signOut,
     updateStreak,
+    syncStatus,
+    setSyncStatus,
   }
 }

@@ -1,12 +1,16 @@
 import 'fake-indexeddb/auto'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   saveCheckin,
   loadCheckin,
   listCheckinsForUser,
   exportCheckinsForUser,
+  syncCheckinUp,
+  syncDirtyCheckins,
+  pullCheckinsFromCloud,
 } from './checkins'
 import { db } from './db'
+import { supabase } from './supabase'
 import type { SessionCheckin } from '../types/checkin'
 
 function makeCheckin(overrides: Partial<SessionCheckin> = {}): SessionCheckin {
@@ -158,5 +162,166 @@ describe('checkins CRUD', () => {
     const parsed = JSON.parse(json)
     expect(parsed.count).toBe(0)
     expect(parsed.checkins).toEqual([])
+  })
+})
+
+describe('checkins sync', () => {
+  beforeEach(async () => {
+    await db.sessionCheckins.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('syncCheckinUp upserts the dirty row and flips synced: true', async () => {
+    // Install the upsert mock BEFORE saveCheckin so the background fire
+    // hits the same mock; then call syncCheckinUp explicitly to verify
+    // the explicit path works too.
+    const upsert = vi.fn().mockResolvedValue({ error: null })
+    vi.spyOn(supabase, 'from').mockReturnValue({ upsert } as any)
+
+    await saveCheckin(makeCheckin())
+    await new Promise((r) => setTimeout(r, 0))
+    await syncCheckinUp('sess-1')
+
+    expect(supabase.from).toHaveBeenCalledWith('session_checkins')
+    expect(upsert).toHaveBeenCalled()
+    const arg = upsert.mock.calls[0][0]
+    expect(arg.session_id).toBe('sess-1')
+    expect(arg.user_id).toBe('user-1')
+    expect(typeof arg.completed_at).toBe('string')
+
+    const row = await db.sessionCheckins.get('sess-1')
+    expect(row?.synced).toBe(true)
+  })
+
+  it('syncCheckinUp is a no-op when row is already synced', async () => {
+    const upsertA = vi.fn().mockResolvedValue({ error: null })
+    vi.spyOn(supabase, 'from').mockReturnValue({ upsert: upsertA } as any)
+    await saveCheckin(makeCheckin())
+    await new Promise((r) => setTimeout(r, 0))
+    // First sync flips synced: true
+    await syncCheckinUp('sess-1')
+    upsertA.mockClear()
+    await syncCheckinUp('sess-1')
+    expect(upsertA).not.toHaveBeenCalled()
+  })
+
+  it('syncCheckinUp throws on supabase error and leaves row dirty', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: { message: 'boom' } })
+    vi.spyOn(supabase, 'from').mockReturnValue({ upsert } as any)
+    await saveCheckin(makeCheckin())
+    // Reset row to dirty in case background sync (above mock) already
+    // touched it.
+    await db.sessionCheckins.update('sess-1', { synced: false })
+    await expect(syncCheckinUp('sess-1')).rejects.toBeTruthy()
+    const row = await db.sessionCheckins.get('sess-1')
+    expect(row?.synced).toBe(false)
+  })
+
+  it('syncDirtyCheckins flushes every unsynced row for a user', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null })
+    vi.spyOn(supabase, 'from').mockReturnValue({ upsert } as any)
+    await saveCheckin(makeCheckin({ session_id: 'a' }))
+    await saveCheckin(makeCheckin({ session_id: 'b' }))
+    await saveCheckin(makeCheckin({ session_id: 'c', user_id: 'other' }))
+    // Force them dirty so the assertion is deterministic regardless of
+    // whether the background fire-and-forget has settled.
+    await db.sessionCheckins.update('a', { synced: false })
+    await db.sessionCheckins.update('b', { synced: false })
+    await db.sessionCheckins.update('c', { synced: false })
+    upsert.mockClear()
+
+    await syncDirtyCheckins('user-1')
+
+    // Two upserts (a, b) for user-1; c (user_id=other) is skipped.
+    expect(upsert).toHaveBeenCalledTimes(2)
+    const ids = upsert.mock.calls.map((c) => c[0].session_id).sort()
+    expect(ids).toEqual(['a', 'b'])
+  })
+
+  it('pullCheckinsFromCloud merges cloud rows into Dexie', async () => {
+    const cloudCheckin = makeCheckin({ session_id: 'cloud-1' })
+    const order = vi.fn() // unused but on the chain in some queries
+    const eq = vi.fn().mockResolvedValue({
+      data: [
+        {
+          session_id: cloudCheckin.session_id,
+          user_id: cloudCheckin.user_id,
+          completed_at: cloudCheckin.completed_at,
+          week_number: cloudCheckin.week_number,
+          checkin: cloudCheckin,
+        },
+      ],
+      error: null,
+    })
+    const select = vi.fn().mockReturnValue({ eq, order })
+    vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
+
+    await pullCheckinsFromCloud('user-1')
+
+    expect(supabase.from).toHaveBeenCalledWith('session_checkins')
+    const row = await db.sessionCheckins.get('cloud-1')
+    expect(row).toBeTruthy()
+    expect(row?.synced).toBe(true)
+    const parsed = JSON.parse(row!.checkin_json)
+    expect(parsed.session_id).toBe('cloud-1')
+  })
+
+  it('pullCheckinsFromCloud does not clobber a locally-dirty row', async () => {
+    // Put a dirty local copy in first.
+    const local = makeCheckin({
+      session_id: 'sess-1',
+      overall_feel: 5,
+    })
+    await db.sessionCheckins.put({
+      session_id: local.session_id,
+      user_id: local.user_id,
+      completed_at: local.completed_at,
+      week_number: local.week_number,
+      checkin_json: JSON.stringify(local),
+      synced: false,
+    })
+
+    const cloud = makeCheckin({ session_id: 'sess-1', overall_feel: 1 })
+    const eq = vi.fn().mockResolvedValue({
+      data: [
+        {
+          session_id: cloud.session_id,
+          user_id: cloud.user_id,
+          completed_at: cloud.completed_at,
+          week_number: cloud.week_number,
+          checkin: cloud,
+        },
+      ],
+      error: null,
+    })
+    const select = vi.fn().mockReturnValue({ eq })
+    vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
+
+    await pullCheckinsFromCloud('user-1')
+    const row = await db.sessionCheckins.get('sess-1')
+    expect(row?.synced).toBe(false)
+    const parsed = JSON.parse(row!.checkin_json)
+    expect(parsed.overall_feel).toBe(5) // local wins
+  })
+
+  it('pullCheckinsFromCloud throws on supabase error', async () => {
+    const eq = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'rls denied' },
+    })
+    const select = vi.fn().mockReturnValue({ eq })
+    vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
+
+    await expect(pullCheckinsFromCloud('user-1')).rejects.toBeTruthy()
+  })
+
+  it('pullCheckinsFromCloud handles empty result gracefully', async () => {
+    const eq = vi.fn().mockResolvedValue({ data: [], error: null })
+    const select = vi.fn().mockReturnValue({ eq })
+    vi.spyOn(supabase, 'from').mockReturnValue({ select } as any)
+
+    await expect(pullCheckinsFromCloud('user-1')).resolves.toBeUndefined()
+    const count = await db.sessionCheckins.count()
+    expect(count).toBe(0)
   })
 })

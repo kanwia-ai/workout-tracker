@@ -95,15 +95,22 @@ describe('profileRepo', () => {
 
   describe('syncProfileUp', () => {
     it('upserts dirty row to supabase and marks local synced', async () => {
-      await saveProfileLocal('user-1', VALID_PROFILE)
-
+      // Stub BEFORE save so the background fire-and-forget sync that
+      // saveProfileLocal triggers internally hits the same mock and gets
+      // counted alongside the explicit syncProfileUp call. We assert >= 1
+      // call rather than exactly 1 since the background sync may or may
+      // not have flushed by the time we re-call syncProfileUp.
       const upsert = vi.fn().mockResolvedValue({ error: null })
       vi.spyOn(supabase, 'from').mockReturnValue({ upsert } as any)
 
+      await saveProfileLocal('user-1', VALID_PROFILE)
+      // Give the background promise a tick to settle. Without this the
+      // assertion below may race against the unresolved fire-and-forget.
+      await new Promise((r) => setTimeout(r, 0))
       await syncProfileUp('user-1')
 
       expect(supabase.from).toHaveBeenCalledWith('user_program_profiles')
-      expect(upsert).toHaveBeenCalledTimes(1)
+      expect(upsert).toHaveBeenCalled()
       const arg = upsert.mock.calls[0][0]
       expect(arg.user_id).toBe('user-1')
       expect(arg.profile).toEqual(VALID_PROFILE)
@@ -184,9 +191,21 @@ describe('profileRepo', () => {
     it('refuses to clobber unsynced local edits — returns local profile instead', async () => {
       const localProfile: UserProgramProfile = { ...VALID_PROFILE, goal: 'rehab' }
       await saveProfileLocal('user-1', localProfile)  // synced: false
+      // saveProfileLocal triggers a background sync that hits supabase.from
+      // internally. Wait for the microtask queue to drain so the spy below
+      // sees a clean call counter — otherwise pullProfileFromCloud's
+      // "no `from` call" assertion races with the still-pending background
+      // push.
+      await new Promise((r) => setTimeout(r, 10))
+      // Force the row back to dirty in case the background sync (against
+      // the stub client) flipped it. In a real env it would fail and
+      // leave the row dirty; the stub returns no error → marks synced.
+      await db.userProgramProfiles.update('user-1', { synced: false })
 
       const from = vi.spyOn(supabase, 'from')
       const result = await pullProfileFromCloud('user-1')
+      // pullProfileFromCloud should short-circuit on dirty rows — no
+      // fresh `from('user_program_profiles')` call.
       expect(from).not.toHaveBeenCalled()
       // Returned profile is the unsynced local profile + derived primary_goal.
       expect(result).toMatchObject(localProfile)
