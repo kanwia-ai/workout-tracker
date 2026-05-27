@@ -63,6 +63,36 @@ describe('REPLAN_SYSTEM_PROMPT (audit item #1 — MEV/MAV/MRV)', () => {
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/NEVER remove a root_causes entry/)
     expect(REPLAN_SYSTEM_PROMPT).toMatch(/RESPECT THE PROGRESSION ARC/)
   })
+
+  // ── Core philosophy preamble (v3.1 — judgment over calendar) ─────────────
+  it('opens with a CORE PHILOSOPHY framing user feedback as the trigger, not the calendar', () => {
+    // Per docs/research/02-coaching-philosophy.md, every numeric default in
+    // the prompt is a STARTING POINT — the actual adjustment comes from the
+    // user's check-in data. "tough" with reps cleared = TARGET; "failed"
+    // with reps not completed = overreach. The preamble must call this out
+    // before the rest of the rules so the model frames its read correctly.
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/CORE PHILOSOPHY/)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/respond to the user's REPORTED EFFORT — not the calendar/)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/STARTING POINT/)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/"tough" with reps cleared is the TARGET/)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/"failed" with reps NOT completed is the OVERREACH signal/)
+  })
+
+  // ── Per-exercise rules: tough + reps cleared = HOLD (no premature cut) ──
+  it('per-exercise rule: "tough" with reps cleared is HOLD, not a fatigue signal', () => {
+    // Previous version cut sets / widened range on "tough 2+ weeks". That
+    // mistook on-target stimulus for over-target. The reframed rule
+    // distinguishes "tough + reps cleared" (HOLD) from "tough + reps
+    // staying flat AND rating worsening" (the actual fatigue signal).
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/'tough' 2\+ weeks in a row on the SAME exercise WITH reps CLEARED → HOLD/)
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/'tough' 2\+ weeks in a row with reps_done STAYING FLAT and rating GETTING TOUGHER/)
+    // Hold case explicitly tells the model not to cut.
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/Don't cut sets\. Don't widen rep range\. The user is doing the work\./)
+  })
+
+  it('per-exercise rule: missing rating data → do NOT change the prescription', () => {
+    expect(REPLAN_SYSTEM_PROMPT).toMatch(/no rating data exists for an exercise[\s\S]*?DON'T change the prescription/)
+  })
 })
 
 // ─── User prompt body: muscle group rollup section ─────────────────────────

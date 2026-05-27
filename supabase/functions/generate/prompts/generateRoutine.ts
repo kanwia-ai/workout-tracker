@@ -8,6 +8,13 @@
 //
 // IMPORTANT: `profile` is untrusted client-provided data. The caller must
 // validate shape before invoking this builder.
+//
+// v1.1 (2026-05-26): per docs/research/02-coaching-philosophy.md, cardio
+// placement is now framed as a judgment from goal rather than a hard-coded
+// "stack 10 min after lifting" rule. The minute budget the caller passes
+// is a STARTING POINT — the prompt teaches when goal/intensity context
+// should pull the volume up or down, and surfaces the cardio block as an
+// opt-in tool rather than auto-prescribed work.
 
 export type RoutineKind = 'warmup' | 'cooldown' | 'cardio'
 
@@ -23,9 +30,28 @@ export function buildRoutinePrompt(input: BuildRoutinePromptInput): string {
   const { profile, sessionFocus, kind, minutes, focusTag } = input
 
   const rulesByKind: Record<RoutineKind, string> = {
-    warmup: `Dynamic mobility for ${minutes} min — NOT static stretching (research: Behm 2011 — static holds pre-strength reduce force output ~5%). Include hip/ankle/knee mobility, light cardio (brisk walk / bike / rower, 2-3 min), and activation work (banded glute bridges, scapular retractions, band pull-aparts). End with 2-3 ramp-up sets if sessionFocus includes a heavy compound (squat, deadlift, bench, overhead press). Prefer movements that raise core temp, lubricate joints, and prime the primary movers for the working sets.`,
+    warmup: `Dynamic mobility for ${minutes} min — NOT static stretching (research: Behm 2011 — static holds pre-strength reduce force output ~5%). Include hip/ankle/knee mobility, light cardio (brisk walk / bike / rower, 2-3 min), and activation work (banded glute bridges, scapular retractions, band pull-aparts).
+
+Ramp-up sets — judgment, not a fixed count (per docs/research/02-coaching-philosophy.md §"Mind-muscle connection is real"):
+  • If sessionFocus includes a heavy compound (squat, deadlift, bench, overhead press), include ramp-up sets. Starting point: 2-3 ramps for a true cold-start. Drop to 1-2 if the user has lifting context earlier in their day, OR if the compound is preceded by another compound that hit the same primary muscle (the muscle is already warm and connected).
+  • For training_age_months ≤ 6 (beginner), lean toward 3 ramps so they find the pattern. For training_age_months ≥ 36, 1 ramp is often enough.
+  • If the user's recent checkins flagged "didn't feel it" on this exercise, add a ramp set.
+The default is the safe overshoot — but DON'T pad ramps when the body is clearly already warm.
+
+Prefer movements that raise core temp, lubricate joints, and prime the primary movers for the working sets.`,
     cooldown: `Down-regulate for ${minutes} min. Open with 3-5 min of light walking or easy stationary bike, then static stretching targeting the muscle groups in sessionFocus. Hold each stretch 20-45 seconds. Keep it short — cooldown serves as a calm-down ritual + opportunity for mobility/static stretching the user couldn't do pre-workout. Doesn't accelerate physical recovery per Van Hooren & Peake 2018, but useful for psychological transition out of the session.`,
-    cardio: `Zone-2 or interval cardio for ${minutes} min. Keep post-strength cardio brief (~10 min) when stacked into the same session — UX heuristic so the cardio block fits in a typical session without crowding lifting. No specific research basis for the 10-min number; concurrent-training interference is real but small/modality-dependent (favor low-impact, ideally separate sessions when possible). Prefer low-impact options: treadmill incline walk, stair master at a slow pace, stationary bike at conversational effort. Rower and assault bike are acceptable if the user tolerates them. Do NOT program high-intensity intervals if this will interfere with the user's lifting recovery.`,
+    cardio: `Cardio block for ${minutes} min — but the duration and placement are JUDGMENT from the user's goal, not a fixed prescription.
+
+**Cardio placement — judgment from these principles** (per docs/research/02-coaching-philosophy.md §"Don't confuse the body"):
+The body has a state. Heavy cardio before lifting puts the body in cardiovascular mode and degrades strength output. So:
+  • If the user's goal is hypertrophy / strength / build_muscle / get_stronger: this cardio block is POST-strength (cooldown segment OR separate session). An EASY-pace pre-lift activation (5-min row / 5-min backwards walk) is fine ONLY if the user is still fresh after — surface as user toggle, not auto-included.
+  • If the user's goal is fat loss / cutting: post-strength cardio works best (HR already elevated, supplements the deficit). Keep effort conversational — not intervals — when stacked into the same session as lifting.
+  • If the user's goal is cardiovascular health: cardio can lead the session; the lifting after should be light enough that depleted strength doesn't matter.
+  • If the user's goal is bulking / mass gain: don't add cardio — it competes with recovery. Prefer a brief walk/flush only.
+
+Modality: Zone-2 (conversational effort) is the default. Prefer low-impact options: treadmill incline walk, stair master at a slow pace, stationary bike at conversational effort. Rower and assault bike are acceptable if the user tolerates them. Do NOT program high-intensity intervals when this block is stacked AFTER lifting — concurrent-training interference is real (small but modality-dependent), and the lifting session has already drawn from the recovery budget.
+
+The ${minutes}-minute target is a STARTING POINT — if the user's goal calls for shorter (e.g. bulking: just a 5-min walk to flush), or longer (cardiovascular health: full Zone-2 dose), reason from the goal.`,
   }
 
   return `You are a strength coach designing ${kind} content for the user's session.

@@ -64,11 +64,25 @@ describe('buildPlanPrompt (v3)', () => {
     expect(prompt).toContain('Hamstrings MEV 6')
   })
 
-  it('prescribes rest intervals by role (180/120/75s)', () => {
-    // v3 condenses the prescription into one line on rule 5.4.
-    expect(prompt).toMatch(/main compound 180s/)
-    expect(prompt).toMatch(/accessory 120s/)
-    expect(prompt).toMatch(/isolation 75s/)
+  it('prescribes rest intervals by role (180/120/75s) as a starting table the model adjusts from', () => {
+    // v3.1 reframes 5.4 from a flat numeric prescription to a STARTING TABLE
+    // the model adjusts up/down based on user signals (per
+    // docs/research/02-coaching-philosophy.md §"It depends — and here's how
+    // to read what it depends on"). The numbers must still be present, but
+    // the framing teaches when to deviate.
+    expect(prompt).toMatch(/Rest periods — start here, adjust from the user's signal/)
+    // Starting-point numbers still emitted.
+    expect(prompt).toMatch(/Compound main lifts:\s*180s/)
+    expect(prompt).toMatch(/Accessory compounds[^\n]*120s/)
+    expect(prompt).toMatch(/Isolation work[^\n]*75s/)
+    // Adjustment philosophy: down for endurance / "ready already"; up for
+    // powerlifting / "still cooked" / recent injury.
+    expect(prompt).toMatch(/Adjust DOWN when/)
+    expect(prompt).toMatch(/cardiovascular endurance/)
+    expect(prompt).toMatch(/"ready already"/)
+    expect(prompt).toMatch(/Adjust UP when/)
+    expect(prompt).toMatch(/powerlifting-focused/)
+    expect(prompt).toMatch(/"still cooked"/)
   })
 
   it('prescribes warmup ramp sets with explicit percentages', () => {
@@ -114,8 +128,11 @@ describe('buildPlanPrompt (v3)', () => {
 
   it('declares the RIR progression across the block', () => {
     // v3 uses ASCII hyphen in the RIR range and frames deload as rule 7.4.
+    // v3.1 (philosophy pass): "Final week = scheduled DELOAD" — the
+    // "scheduled" qualifier was added so 7.4.1 can introduce a separate
+    // user-data-driven mid-block deload trigger without collision.
     expect(prompt).toMatch(/Week 1:\s*RIR 2-3/)
-    expect(prompt).toMatch(/Final week = DELOAD/)
+    expect(prompt).toMatch(/Final week = scheduled DELOAD/)
   })
 
   it('bans generic session titles ("Workout 1", "Lower A", etc.)', () => {
@@ -288,5 +305,73 @@ describe('buildPlanPrompt (v3)', () => {
   // ── Height (reserved) ────────────────────────────────────────────────────
   it('mentions height_cm as reserved / not currently active', () => {
     expect(prompt).toMatch(/height_cm.*NOT currently active/)
+  })
+
+  // ── Warmup-set philosophy (rule 4 — v3.1 philosophy pass) ────────────────
+  it('frames warmup-set count as judgment from principles, not a fixed prescription', () => {
+    // Per docs/research/02-coaching-philosophy.md, warmup count depends on
+    // (a) prior-exercise warmth, (b) hard-to-feel exercises, (c) training
+    // age, and (d) previous-session "didn't feel it" signal. Numbers stay
+    // as STARTING POINTS.
+    expect(prompt).toMatch(/Warmup sets — judgment from these principles/)
+    expect(prompt).toMatch(/preceded by a compound that hit the same primary muscle/)
+    expect(prompt).toMatch(/hard to feel correctly/)
+    expect(prompt).toMatch(/training_age_months/)
+    expect(prompt).toMatch(/didn't feel it/)
+    // Starting-point numbers are preserved.
+    expect(prompt).toContain('{"percent": 50, "reps": 10}')
+    expect(prompt).toContain('{"percent": 70, "reps": 5}')
+    expect(prompt).toContain('{"percent": 85, "reps": 3}')
+    expect(prompt).toContain('{"percent": 60, "reps": 8}')
+  })
+
+  it('teaches the model to drop a warmup ramp when the same muscle is already worked', () => {
+    // Accessory rule should explicitly call out the "muscle already
+    // connected" → drop the ramp case.
+    expect(prompt).toMatch(/SAME primary muscle has already been worked[\s\S]*?one or more sets earlier in this session/)
+    expect(prompt).toMatch(/Drop the 50\/10 if a same-muscle compound came immediately before/)
+  })
+
+  // ── Cardio placement philosophy (rule 8.6 — v3.1) ────────────────────────
+  it('frames cardio placement as judgment from the user goal — never auto-inserts heavy cardio pre-lift', () => {
+    // Per docs/research/02-coaching-philosophy.md §"Don't confuse the body":
+    // cardio placement depends on goal; easy-pace activation is an OPT-IN,
+    // not auto-prescribed; bulking gets no cardio.
+    expect(prompt).toMatch(/Cardio placement — judgment from these principles/)
+    expect(prompt).toMatch(/hypertrophy \/ build_muscle \/ get_stronger[^\n]*cardio goes AFTER the strength work/i)
+    expect(prompt).toMatch(/fat loss \/ cutting[\s\S]*?DON'T prescribe a cardio block/i)
+    expect(prompt).toMatch(/cardiovascular health[\s\S]*?cardio can lead the session/i)
+    expect(prompt).toMatch(/bulking \/ mass gain[\s\S]*?do NOT prescribe cardio/i)
+    // Hard floor: never auto-insert heavy cardio before lifting.
+    expect(prompt).toMatch(/In NO scenario does the planner auto-insert heavy cardio/)
+  })
+
+  // ── Progression-signal philosophy (rule 8.5 — v3.1) ──────────────────────
+  it('teaches the model to read per-set effort signals instead of bumping on the calendar', () => {
+    // Per docs/research/02-coaching-philosophy.md §"Progressive overload is
+    // noticed, not calculated": the autoProgress engine reads effort
+    // ratings; the prompt's job is to NOT bump on a calendar.
+    expect(prompt).toMatch(/Progression — read the user's reported effort, not the calendar/)
+    // The four rating buckets all surface, mapped to the right action.
+    expect(prompt).toMatch(/"easy" \+ reps cleared at top of range → bump/)
+    expect(prompt).toMatch(/"on it" \+ reps cleared → hold/)
+    expect(prompt).toMatch(/"cooked" \+ reps cleared → hold/)
+    expect(prompt).toMatch(/"failed" → hold OR back off/)
+    // Numeric starting points are preserved for the cold-start case.
+    expect(prompt).toMatch(/\+2\.5kg upper \/ \+5kg lower per session/)
+    expect(prompt).toMatch(/DOUBLE PROGRESSION/)
+    expect(prompt).toMatch(/DUP/)
+  })
+
+  // ── Mid-block deload trigger (rule 7.4.1 — v3.1) ─────────────────────────
+  it('triggers mid-block deload on user feedback (failed ratings), NOT on the calendar', () => {
+    // Per docs/research/02-coaching-philosophy.md: "tough" at RIR 1-3 is the
+    // TARGET; do NOT cut sets just because the calendar passed a threshold.
+    // Cuts trigger on (a) consecutive "failed" sessions on a muscle group
+    // OR (b) an acute body-region flag.
+    expect(prompt).toMatch(/Mid-block deload — triggered by user feedback, NOT the calendar/)
+    expect(prompt).toMatch(/Multiple consecutive sessions on the same muscle group report "failed"/)
+    expect(prompt).toMatch(/tough at RIR 1-3 is the TARGET, not an MRV breach/)
+    expect(prompt).toMatch(/Mistaking on-target for over-target produces unnecessary deloads/)
   })
 })
