@@ -26,6 +26,28 @@ interface LocalSetLog {
   reps_completed?: number
   timestamp: string
   synced: boolean
+  // ─── Per-set micro-feedback signals (v10) ──────────────────────────────
+  // These are INPUTS to autoProgress / replan / warmup adjustment — NOT
+  // triggers for deterministic logic on their own. Skipping the tap is
+  // valid (null = "not rated" / "no signal captured"). See
+  // docs/research/02-coaching-philosophy.md §How the coach thinks.
+  //
+  // `set_rating` — user's 3-tap effort signal after marking the set done.
+  // 'easy' | 'on it' | 'cooked' map onto the ExerciseRating taxonomy
+  // (easy / solid / tough). Aggregated to the per-exercise rating in
+  // SessionCheckin via mean-to-rating round-trip.
+  set_rating?: 'easy' | 'on it' | 'cooked' | null
+  // `rest_needed_seconds` — captured when the user taps "ready already?"
+  // on the rest banner before the timer expires. Actual seconds elapsed
+  // since rest started. Informs the LLM prompt's reasoning about future
+  // rest periods for this user on this exercise.
+  rest_needed_seconds?: number | null
+  // `mind_muscle_felt` — only populated on exercises in
+  // HARD_TO_FEEL_EXERCISE_IDS (lat pulldowns, clamshells, etc.). Once
+  // per session per exercise, captured after the FIRST working set.
+  // 'felt' / 'missed'. Wires into next-session warmup count (+1 ramp
+  // when missed; returns to baseline when consistently felt).
+  mind_muscle_felt?: 'felt' | 'missed' | null
 }
 
 interface LocalCardioLog {
@@ -292,6 +314,30 @@ db.version(8).stores({
 // newest-first, and on completed_mesocycle_id so we can answer "did we
 // replan FROM this block yet?" in O(1).
 db.version(9).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, synced',
+  userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+  customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
+  sessionCheckins: 'session_id, user_id, completed_at, synced',
+  replanHistory: 'id, user_id, completed_mesocycle_id, created_at, synced',
+})
+
+// v10 — additive ONLY. Adds the new per-set micro-feedback fields
+// (`set_rating`, `rest_needed_seconds`, `mind_muscle_felt`) to setLogs.
+// Dexie auto-extends the row shape without a versioning step for non-
+// indexed columns; bumping the version explicitly is just so the schema
+// changelog stays linear and a future reader can see when the affordance
+// fields landed. Schema strings are identical to v9 — no new indices
+// because the fields are read in aggregate (per exercise) via the
+// session-scoped check-in, not queried directly.
+db.version(10).stores({
   sessionLogs: 'id, user_id, workout_id, date, synced',
   setLogs: 'id, session_log_id, exercise_id, synced',
   cardioLogs: 'id, user_id, date, synced',

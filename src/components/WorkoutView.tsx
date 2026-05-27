@@ -38,9 +38,13 @@ import { generatePlan } from '../lib/planGen'
 import { requestSwap, applySwap, type SwapReason } from '../lib/swap'
 import { swapVariantLocal } from '../lib/swapLocal'
 import { saveCheckin } from '../lib/checkins'
-import { computeAutoProgressionForSession } from '../lib/planner/autoProgress'
+import {
+  computeAutoProgressionForSession,
+  computeWarmupDeltasForSession,
+} from '../lib/planner/autoProgress'
+import { isHardToFeel } from '../lib/planner/constants'
 import { SwapSheet } from './SwapSheet'
-import type { SessionCheckin } from '../types/checkin'
+import type { SessionCheckin, SetRating } from '../types/checkin'
 import { getCopy, pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../lib/copy'
 import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { TimerState, SessionPhase } from '../types'
@@ -87,6 +91,22 @@ const WARMUP_CHECKED_KEY = (sessionId: string) =>
 // exercise is detected (see `isBandedExercise`).
 const BAND_TENSIONS_KEY = (sessionId: string) =>
   `workout-tracker:band-tensions:${sessionId}`
+// ─── Micro-feedback affordance state (per-session, localStorage) ──────────
+// Per-set effort tap. Keyed by `${exerciseIdx}-${setIdx}` → SetRating.
+// Mirrors checkedSets — same key shape so iteration logic stays parallel.
+// Skipping the tap is fine; absent key = "no signal captured" (not "easy").
+const SET_RATINGS_KEY = (sessionId: string) =>
+  `workout-tracker:set-ratings:${sessionId}`
+// Per-set rest-needed seconds. Keyed by `${exerciseIdx}-${setIdx}` →
+// number (seconds elapsed when user tapped "ready already?"). Absent key
+// = "user let the timer run", no signal.
+const REST_NEEDED_KEY = (sessionId: string) =>
+  `workout-tracker:rest-needed:${sessionId}`
+// Per-exercise mind-muscle tap on hard-to-feel exercises. Keyed by
+// library_id → 'felt' | 'missed'. At most one entry per exercise per
+// session; absent = tap was skipped (or exercise isn't hard-to-feel).
+const MIND_MUSCLE_KEY = (sessionId: string) =>
+  `workout-tracker:mind-muscle:${sessionId}`
 
 // ─── Banded-exercise detection + tension ↔ load sentinel mapping ─────────
 // A banded exercise has no pound load — the user picks a band by feel
@@ -289,6 +309,29 @@ export function WorkoutView({
       : {},
   )
   const [perSetExpanded, setPerSetExpanded] = useState<Record<string, boolean>>({})
+  // ─── Micro-feedback affordances ─────────────────────────────────────────
+  // Per-set effort tap. Keyed `${exIdx}-${setIdx}`. See SET_RATINGS_KEY.
+  const [setRatings, setSetRatings] = useState<Record<string, SetRating>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, SetRating>>(SET_RATINGS_KEY(selectedSessionKey)) || {}
+      : {},
+  )
+  // Per-set rest-needed seconds. Keyed `${exIdx}-${setIdx}`. See REST_NEEDED_KEY.
+  const [restNeededSecs, setRestNeededSecs] = useState<Record<string, number>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, number>>(REST_NEEDED_KEY(selectedSessionKey)) || {}
+      : {},
+  )
+  // Per-exercise mind-muscle tap. Keyed by library_id. See MIND_MUSCLE_KEY.
+  const [mindMuscleFelt, setMindMuscleFelt] = useState<Record<string, 'felt' | 'missed'>>(() =>
+    selectedSessionKey
+      ? loadStoredRecord<Record<string, 'felt' | 'missed'>>(MIND_MUSCLE_KEY(selectedSessionKey)) || {}
+      : {},
+  )
+  // History-derived warmup-count delta per exercise (library_id → +N).
+  // Populated by computeWarmupDeltasForSession on session hydrate, reset
+  // on session switch. Only hard-to-feel exercises ever appear here.
+  const [warmupDeltas, setWarmupDeltas] = useState<Record<string, number>>({})
   const [timer, setTimer] = useState<TimerState | null>(null)
   const [hasUsed, setHasUsed] = useState<boolean>(
     () => localStorage.getItem(HAS_USED_KEY) === 'true',
@@ -303,6 +346,9 @@ export function WorkoutView({
     startedAt: number
     exerciseName: string
     encouragement: string
+    /** The set this rest period follows. Used by the "ready already?" tap
+     *  to record `rest_needed_seconds` against the correct set slot. */
+    priorSet: { exIdx: number; setIdx: number } | null
   }
   const [restState, setRestState] = useState<RestState | null>(null)
   const [burstKey, setBurstKey] = useState<string | null>(null)
@@ -389,6 +435,12 @@ export function WorkoutView({
     weekNumber: number
     exercises: PlannedExercise[]
     completedWeights: Record<string, number>
+    // Per-set micro-feedback signals — frozen at end-session so the sheet
+    // can mirror them into the persisted ExerciseCheckin without racing
+    // React state cleanup in finalizeSession.
+    setRatings: Record<string, ReadonlyArray<SetRating | null>>
+    restNeededSeconds: Record<string, ReadonlyArray<number | null>>
+    mindMuscleFelt: Record<string, 'felt' | 'missed'>
   }
   const [checkinSnapshot, setCheckinSnapshot] = useState<CheckinSnapshot | null>(null)
 
@@ -486,6 +538,10 @@ export function WorkoutView({
       setBandTensions({})
       setPerSetExpanded({})
       setRestState(null)
+      setSetRatings({})
+      setRestNeededSecs({})
+      setMindMuscleFelt({})
+      setWarmupDeltas({})
       return
     }
     if (hydratedForRef.current === selectedSessionKey) return
@@ -522,6 +578,17 @@ export function WorkoutView({
     setBandTensions(savedTensions)
     setPerSetExpanded({})
     setRestState(null)
+    // Re-hydrate per-session micro-feedback state from localStorage.
+    const savedSetRatings =
+      loadStoredRecord<Record<string, SetRating>>(SET_RATINGS_KEY(selectedSessionKey)) || {}
+    const savedRestNeeded =
+      loadStoredRecord<Record<string, number>>(REST_NEEDED_KEY(selectedSessionKey)) || {}
+    const savedMindMuscle =
+      loadStoredRecord<Record<string, 'felt' | 'missed'>>(MIND_MUSCLE_KEY(selectedSessionKey)) || {}
+    setSetRatings(savedSetRatings)
+    setRestNeededSecs(savedRestNeeded)
+    setMindMuscleFelt(savedMindMuscle)
+    setWarmupDeltas({})
     hydratedForRef.current = selectedSessionKey
 
     // Async second pass: replace the planner's static suggestion with a
@@ -585,6 +652,19 @@ export function WorkoutView({
       .catch((err) => {
         console.error('computeAutoProgressionForSession failed', err)
       })
+    // History-derived warmup deltas for hard-to-feel exercises. Best-
+    // effort: failure leaves deltas empty (no warmup augment), which is
+    // strictly the existing behavior — so we swallow errors.
+    void computeWarmupDeltasForSession(userId, selectedSession.id, selectedSession.exercises)
+      .then((deltaMap) => {
+        if (cancelled) return
+        if (hydratedForRef.current !== sessionKeyAtStart) return
+        if (Object.keys(deltaMap).length === 0) return
+        setWarmupDeltas(deltaMap)
+      })
+      .catch((err) => {
+        console.error('computeWarmupDeltasForSession failed', err)
+      })
     return () => {
       cancelled = true
     }
@@ -614,6 +694,22 @@ export function WorkoutView({
     if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
     localStorage.setItem(BAND_TENSIONS_KEY(selectedSessionKey), JSON.stringify(bandTensions))
   }, [selectedSessionKey, bandTensions])
+
+  // ─── Persist micro-feedback state ────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(SET_RATINGS_KEY(selectedSessionKey), JSON.stringify(setRatings))
+  }, [selectedSessionKey, setRatings])
+
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(REST_NEEDED_KEY(selectedSessionKey), JSON.stringify(restNeededSecs))
+  }, [selectedSessionKey, restNeededSecs])
+
+  useEffect(() => {
+    if (!selectedSessionKey || hydratedForRef.current !== selectedSessionKey) return
+    localStorage.setItem(MIND_MUSCLE_KEY(selectedSessionKey), JSON.stringify(mindMuscleFelt))
+  }, [selectedSessionKey, mindMuscleFelt])
 
   useEffect(() => {
     if (session && !hasUsed) {
@@ -721,6 +817,7 @@ export function WorkoutView({
         startedAt: Date.now(),
         exerciseName: ex.name,
         encouragement: pickCopy('restStart', cheekLevel, lastRestStartRef),
+        priorSet: { exIdx: exerciseIdx, setIdx: setIdx },
       })
     }
 
@@ -750,11 +847,17 @@ export function WorkoutView({
       setCheckedSets({})
       setCheckedWarmups({})
       setRestState(null)
+      setSetRatings({})
+      setRestNeededSecs({})
+      setMindMuscleFelt({})
       localStorage.removeItem(CHECKED_SETS_KEY(finishedSessionId))
       localStorage.removeItem(WARMUP_CHECKED_KEY(finishedSessionId))
       localStorage.removeItem(WEIGHTS_KEY(finishedSessionId))
       localStorage.removeItem(PER_SET_WEIGHTS_KEY(finishedSessionId))
       localStorage.removeItem(BAND_TENSIONS_KEY(finishedSessionId))
+      localStorage.removeItem(SET_RATINGS_KEY(finishedSessionId))
+      localStorage.removeItem(REST_NEEDED_KEY(finishedSessionId))
+      localStorage.removeItem(MIND_MUSCLE_KEY(finishedSessionId))
 
       const now = new Date().toISOString()
       await saveSession({
@@ -856,13 +959,48 @@ export function WorkoutView({
       endedSession,
       title: selectedSession.title,
     }
+    // ─── Freeze per-exercise micro-feedback arrays for the check-in ───
+    // The state vars are keyed at the granularity each affordance writes
+    // (e.g. "${exIdx}-${setIdx}" for setRatings). We collapse to the
+    // (library_id → per-set array) shape ExerciseCheckin consumes.
+    const setRatingsByLib: Record<string, ReadonlyArray<SetRating | null>> = {}
+    const restNeededByLib: Record<string, ReadonlyArray<number | null>> = {}
+    selectedSession.exercises.forEach((ex, ei) => {
+      const ratings: Array<SetRating | null> = []
+      const rests: Array<number | null> = []
+      let sawRating = false
+      let sawRest = false
+      for (let si = 0; si < ex.sets; si++) {
+        const r = setRatings[`${ei}-${si}`] ?? null
+        const rs = restNeededSecs[`${ei}-${si}`] ?? null
+        if (r !== null) sawRating = true
+        if (rs !== null) sawRest = true
+        ratings.push(r)
+        rests.push(rs)
+      }
+      if (sawRating) setRatingsByLib[ex.library_id] = ratings
+      if (sawRest) restNeededByLib[ex.library_id] = rests
+    })
     setCheckinSnapshot({
       sessionId: finishedSessionId,
       weekNumber: selectedSession.week_number,
       exercises: selectedSession.exercises,
       completedWeights: effectiveWeights,
+      setRatings: setRatingsByLib,
+      restNeededSeconds: restNeededByLib,
+      mindMuscleFelt: { ...mindMuscleFelt },
     })
-  }, [session, selectedSession, weights, perSetWeights, bandTensions, endSession])
+  }, [
+    session,
+    selectedSession,
+    weights,
+    perSetWeights,
+    bandTensions,
+    setRatings,
+    restNeededSecs,
+    mindMuscleFelt,
+    endSession,
+  ])
 
   const handleCheckinSave = useCallback(
     async (checkin: SessionCheckin) => {
@@ -1096,7 +1234,10 @@ export function WorkoutView({
           </div>
         )}
 
-        {/* Inline rest banner — fires auto on working-set complete */}
+        {/* Inline rest banner — fires auto on working-set complete.
+            "ready already?" tap captures actual seconds-needed onto the
+            prior set log as an INPUT signal (no in-moment behavior
+            change). Only wired when we know which set this rest follows. */}
         {restState && (
           <div className="mt-3">
             <RestBanner
@@ -1111,6 +1252,18 @@ export function WorkoutView({
                 )
               }}
               onDone={() => setRestState(null)}
+              onReadyAlready={
+                restState.priorSet
+                  ? (elapsedSeconds) => {
+                      const ps = restState.priorSet!
+                      setRestNeededSecs((prev) => ({
+                        ...prev,
+                        [`${ps.exIdx}-${ps.setIdx}`]: elapsedSeconds,
+                      }))
+                      setRestState(null)
+                    }
+                  : undefined
+              }
             />
           </div>
         )}
@@ -1166,6 +1319,7 @@ export function WorkoutView({
                     : weights[ex.library_id] || 0
                   const hasPRFlag = (prs[ex.library_id] ?? 0) > 0
                   const banded = isBandedExercise(ex)
+                  const hardToFeel = isHardToFeel(ex.library_id, ex.name)
                   return (
                     <LiftCard
                       key={`${ex.library_id}-${ei}`}
@@ -1184,6 +1338,10 @@ export function WorkoutView({
                       burstKey={burstKey}
                       burstTrigger={burstTrigger}
                       burstIsWarmup={burstIsWarmup}
+                      setRatings={setRatings}
+                      isHardToFeelEx={hardToFeel}
+                      mindMuscleFelt={mindMuscleFelt[ex.library_id]}
+                      warmupDelta={warmupDeltas[ex.library_id] ?? 0}
                       onTapSet={(si) => toggleSet(ei, si)}
                       onInfo={() => setInfoLibraryId(ex.library_id)}
                       onSwap={() => setSwapIndex(ei)}
@@ -1207,6 +1365,18 @@ export function WorkoutView({
                           arr[k] = v
                           return { ...prev, [ex.library_id]: arr }
                         })
+                      }
+                      onSetRating={(si, rating) =>
+                        setSetRatings((prev) => ({
+                          ...prev,
+                          [`${ei}-${si}`]: rating,
+                        }))
+                      }
+                      onMindMuscleFelt={(value) =>
+                        setMindMuscleFelt((prev) => ({
+                          ...prev,
+                          [ex.library_id]: value,
+                        }))
                       }
                     />
                   )
@@ -1314,6 +1484,9 @@ export function WorkoutView({
           weekNumber={checkinSnapshot.weekNumber}
           exercises={checkinSnapshot.exercises}
           completedWeights={checkinSnapshot.completedWeights}
+          setRatings={checkinSnapshot.setRatings}
+          restNeededSeconds={checkinSnapshot.restNeededSeconds}
+          mindMuscleFelt={checkinSnapshot.mindMuscleFelt}
           onSave={handleCheckinSave}
           onSkip={handleCheckinSkip}
         />
@@ -1423,10 +1596,20 @@ interface LiftCardProps {
   perSetArr: number[]
   expanded: boolean
   hasPRFlag: boolean
-  checkedSets: Record<string, boolean>
+  checkedSets?: Record<string, boolean>
   burstKey: string | null
   burstTrigger: number
   burstIsWarmup: boolean
+  /** Per-set effort taps. Keyed `${exIdx}-${setIdx}`. Optional —
+   *  defaults to empty so legacy callers (tests, isolated mounts) work
+   *  without plumbing the affordance state. */
+  setRatings?: Record<string, SetRating>
+  /** True when this exercise belongs in the hard-to-feel bucket. */
+  isHardToFeelEx?: boolean
+  /** Current mind-muscle tap for this exercise (felt/missed), if any. */
+  mindMuscleFelt?: 'felt' | 'missed'
+  /** History-derived extra warmup-set count delta (only for hard-to-feel). */
+  warmupDelta?: number
   onTapSet: (setIdx: number) => void
   onInfo: () => void
   onSwap: () => void
@@ -1434,6 +1617,8 @@ interface LiftCardProps {
   onChangeWeight: (v: number) => void
   onChangeBandTension?: (t: BandTension) => void
   onChangePerSet: (setIdx: number, v: number) => void
+  onSetRating?: (setIdx: number, rating: SetRating) => void
+  onMindMuscleFelt?: (value: 'felt' | 'missed') => void
 }
 
 export function LiftCard({
@@ -1448,10 +1633,14 @@ export function LiftCard({
   perSetArr,
   expanded,
   hasPRFlag,
-  checkedSets,
+  checkedSets: checkedSetsProp,
   burstKey,
   burstTrigger,
   burstIsWarmup,
+  setRatings: setRatingsProp,
+  isHardToFeelEx = false,
+  mindMuscleFelt,
+  warmupDelta = 0,
   onTapSet,
   onInfo,
   onSwap,
@@ -1459,7 +1648,17 @@ export function LiftCard({
   onChangeWeight,
   onChangeBandTension,
   onChangePerSet,
+  onSetRating,
+  onMindMuscleFelt,
 }: LiftCardProps) {
+  const checkedSets = checkedSetsProp ?? {}
+  const setRatings = setRatingsProp ?? {}
+  // Number of working sets currently marked done — used to decide when to
+  // surface the mind-muscle tap (after the FIRST working set is logged).
+  const doneCount = Array.from({ length: ex.sets }, (_, k) =>
+    checkedSets[`${exIdx}-${k}`] ? 1 : 0,
+  ).reduce<number>((a, b) => a + b, 0)
+  const showMindMuscle = isHardToFeelEx && doneCount >= 1 && mindMuscleFelt === undefined
   return (
     <div
       className="rounded-2xl p-3.5"
@@ -1549,15 +1748,38 @@ export function LiftCard({
           )}
           {' · '}{ex.rest_seconds}s rest · RIR {ex.rir}
         </div>
-        {ex.warmup_sets.length > 0 && (() => {
-          const steps = ex.warmup_sets.map((w) => {
-            const pct = w.percent / 100
+        {(ex.warmup_sets.length > 0 || warmupDelta > 0) && (() => {
+          // History delta: prior session's mind-muscle tap was 'missed' →
+          // prepend (warmupDelta) extra light warmup rows so the user gets
+          // more reps to find the target muscle this session. Cosmetic /
+          // suggestive only — does not mutate the stored plan, and skipping
+          // them costs nothing.
+          const baseSteps = ex.warmup_sets.map((w) => ({
+            pct: w.percent / 100,
+            reps: w.reps,
+            isDelta: false,
+          }))
+          // Extra warmup rows clone the lightest existing percent (capped
+          // at 50%) so we extend the ramp at the bottom — that's where the
+          // mind-muscle work happens, not closer to working weight.
+          const extras = Array.from({ length: warmupDelta }, () => ({
+            pct: ex.warmup_sets[0]
+              ? Math.min(0.5, ex.warmup_sets[0].percent / 100)
+              : 0.5,
+            reps: ex.warmup_sets[0]?.reps ?? 8,
+            isDelta: true,
+          }))
+          const allSteps = [...extras, ...baseSteps]
+          const steps = allSteps.map(({ pct, reps, isDelta }) => {
             const rawW = displayedWeight * pct
             const rW = Math.round(rawW / 5) * 5
             const useNumeric = displayedWeight > 0 && rW > 0
             const verbal = pct < 0.55 ? 'light' : pct < 0.8 ? 'medium' : 'almost working'
             const head = useNumeric ? `${rW}` : verbal
-            return `${head} × ${w.reps}`
+            const label = `${head} × ${reps}`
+            // Tag extra warmup rows so the rendered string makes the source
+            // of the delta legible to the user — "one extra · light × 8".
+            return isDelta ? `extra · ${label}` : label
           })
           return (
             <div
@@ -1664,26 +1886,246 @@ export function LiftCard({
         </div>
       )}
 
-      {/* Circular working-set buttons row */}
-      <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+      {/* Circular working-set buttons row + inline 3-tap effort pill.
+          The pill row only renders for sets the user has already marked
+          done — capturing the signal while the experience is fresh, but
+          not nagging the user before they've actually finished the set.
+          The taps are optional; absent state is null = "not rated". */}
+      <div className="flex items-start gap-2.5 mt-3 flex-wrap">
         {Array.from({ length: ex.sets }, (_, k) => {
           const done = !!checkedSets[`${exIdx}-${k}`]
           const circleKey = `${exIdx}-${k}`
           const burstHere = burstKey === circleKey && burstTrigger > 0 && !burstIsWarmup
+          const currentRating = setRatings[circleKey]
           return (
-            <SetCircle
+            <div
               key={k}
-              done={done}
-              label={k + 1}
-              exerciseName={ex.name}
-              setIndex={k}
-              onTap={() => onTapSet(k)}
-              showBurst={burstHere}
-              burstTrigger={burstTrigger}
-            />
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+            >
+              <SetCircle
+                done={done}
+                label={k + 1}
+                exerciseName={ex.name}
+                setIndex={k}
+                onTap={() => onTapSet(k)}
+                showBurst={burstHere}
+                burstTrigger={burstTrigger}
+              />
+              {done && onSetRating && (
+                <SetRatingPill
+                  exerciseName={ex.name}
+                  setIndex={k}
+                  current={currentRating}
+                  onSelect={(rating) => onSetRating(k, rating)}
+                />
+              )}
+            </div>
           )
         })}
       </div>
+
+      {/* Mind-muscle tap — only on hard-to-feel exercises, once per session
+          per exercise, surfaced after the first working set is marked done.
+          Single tap, no modal. Skipping is fine. */}
+      {showMindMuscle && onMindMuscleFelt && (
+        <MindMusclePill
+          exerciseName={ex.name}
+          onSelect={(value) => onMindMuscleFelt(value)}
+        />
+      )}
+      {mindMuscleFelt !== undefined && (
+        <MindMuscleConfirm value={mindMuscleFelt} />
+      )}
+    </div>
+  )
+}
+
+// ─── SetRatingPill ──────────────────────────────────────────────────────
+// 3-tap effort capture pill row, surfaced inline below a completed set
+// circle. Single tap, no modal. Mint for "easy", brand for "on it",
+// plum for "cooked" — the existing palette. Compact (28px tall, 36px wide
+// per chip) so the working-set row stays the visual focus.
+interface SetRatingPillProps {
+  exerciseName: string
+  setIndex: number
+  current?: SetRating
+  onSelect: (rating: SetRating) => void
+}
+
+const SET_RATING_OPTIONS: ReadonlyArray<{
+  value: SetRating
+  label: string
+  selectedBg: string
+  selectedFg: string
+}> = [
+  {
+    value: 'easy',
+    label: 'easy',
+    selectedBg: 'color-mix(in srgb, var(--accent-mint) 32%, transparent)',
+    selectedFg: 'var(--accent-mint)',
+  },
+  {
+    value: 'on it',
+    label: 'on it',
+    selectedBg: 'var(--brand)',
+    selectedFg: '#fff',
+  },
+  {
+    value: 'cooked',
+    label: 'cooked',
+    selectedBg: 'color-mix(in srgb, var(--accent-plum) 30%, transparent)',
+    selectedFg: 'var(--accent-plum)',
+  },
+]
+
+function SetRatingPill({ exerciseName, setIndex, current, onSelect }: SetRatingPillProps) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={`Effort for set ${setIndex + 1} of ${exerciseName}`}
+      data-testid={`set-rating-${setIndex}`}
+      style={{
+        display: 'flex',
+        gap: 3,
+        padding: 3,
+        background: 'var(--lumo-overlay)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 999,
+      }}
+    >
+      {SET_RATING_OPTIONS.map(({ value, label, selectedBg, selectedFg }) => {
+        const selected = current === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            data-testid={`set-rating-${setIndex}-${value.replace(/\s+/g, '-')}`}
+            onClick={() => onSelect(value)}
+            style={{
+              padding: '3px 8px',
+              fontSize: 10,
+              lineHeight: 1,
+              fontWeight: 700,
+              letterSpacing: '0.02em',
+              background: selected ? selectedBg : 'transparent',
+              color: selected ? selectedFg : 'var(--lumo-text-ter)',
+              border: 'none',
+              borderRadius: 999,
+              cursor: 'pointer',
+              transition: 'background 140ms, color 140ms',
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── MindMusclePill ─────────────────────────────────────────────────────
+// 2-tap "felt it / didn't feel it" prompt for hard-to-feel exercises.
+// Surfaced inline once per session after the first working set is logged.
+// Single tap, no modal. Renders into the LiftCard footer (below set row)
+// so it doesn't pull the user's eye away from active sets.
+interface MindMusclePillProps {
+  exerciseName: string
+  onSelect: (value: 'felt' | 'missed') => void
+}
+
+function MindMusclePill({ exerciseName, onSelect }: MindMusclePillProps) {
+  return (
+    <div
+      data-testid="mind-muscle-pill"
+      style={{
+        marginTop: 12,
+        padding: '10px 12px',
+        background: 'var(--lumo-overlay)',
+        border: '1px solid var(--lumo-border)',
+        borderRadius: 12,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: 'var(--lumo-text-sec)',
+          fontFamily: "'Fraunces', Georgia, serif",
+          fontStyle: 'italic',
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        feeling it where you should?
+      </div>
+      <div role="radiogroup" aria-label={`Mind-muscle for ${exerciseName}`} style={{ display: 'flex', gap: 6 }}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={false}
+          data-testid="mind-muscle-felt"
+          onClick={() => onSelect('felt')}
+          style={{
+            padding: '5px 12px',
+            fontSize: 11,
+            fontWeight: 700,
+            background: 'color-mix(in srgb, var(--accent-mint) 18%, transparent)',
+            color: 'var(--accent-mint)',
+            border: '1px solid color-mix(in srgb, var(--accent-mint) 40%, transparent)',
+            borderRadius: 999,
+            cursor: 'pointer',
+          }}
+        >
+          felt it
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={false}
+          data-testid="mind-muscle-missed"
+          onClick={() => onSelect('missed')}
+          style={{
+            padding: '5px 12px',
+            fontSize: 11,
+            fontWeight: 700,
+            background: 'transparent',
+            color: 'var(--lumo-text-sec)',
+            border: '1px solid var(--lumo-border-strong)',
+            borderRadius: 999,
+            cursor: 'pointer',
+          }}
+        >
+          didn't feel it
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Compact confirmation chip once the user has answered the mind-muscle
+// prompt. Lets them see they tapped without re-surfacing the prompt; no
+// way to change the answer (intentional — keep the surface area tiny).
+function MindMuscleConfirm({ value }: { value: 'felt' | 'missed' }) {
+  const label = value === 'felt' ? 'logged: felt it' : 'logged: noted'
+  return (
+    <div
+      data-testid="mind-muscle-confirm"
+      data-mind-muscle-value={value}
+      style={{
+        marginTop: 10,
+        fontSize: 11,
+        color: 'var(--lumo-text-ter)',
+        fontFamily: "'Fraunces', Georgia, serif",
+        fontStyle: 'italic',
+        letterSpacing: '0.02em',
+      }}
+    >
+      {label}
     </div>
   )
 }

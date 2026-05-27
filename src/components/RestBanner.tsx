@@ -26,6 +26,21 @@ export interface RestBannerProps {
   onDone?: () => void
   /** Fires when the user taps "skip". Button only renders when provided. */
   onSkip?: () => void
+  /**
+   * Fires when the user taps "ready already?" — they're back in the gym
+   * before the prescribed rest is up. We pass the actual seconds elapsed
+   * so the parent can capture `rest_needed_seconds` as an INPUT signal
+   * to the LLM prompt's rest-prescription reasoning. Distinct from
+   * `onSkip` (which clears the rest UI) because "ready already" is a
+   * data-capture beat — the rest banner still closes after, but the
+   * micro-feedback is the point of the tap.
+   *
+   * Renders a quiet secondary chip; only present when this callback is
+   * passed. Tap before the timer expires logs the signal AND closes
+   * the rest UI (the user moves on to the next set). Tapping after
+   * the timer expires is no-op (the banner has already auto-closed).
+   */
+  onReadyAlready?: (elapsedSeconds: number) => void
   /** Optional cheeky line (e.g. from Lumo). */
   message?: string
 }
@@ -63,6 +78,7 @@ export function RestBanner({
   startedAt,
   onDone,
   onSkip,
+  onReadyAlready,
   message,
 }: RestBannerProps) {
   // `now` is what drives the countdown render. We tick it every 1s since
@@ -171,6 +187,24 @@ export function RestBanner({
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
   }
+  // "ready already?" — quieter than the skip button. Visually it's a
+  // ghost link rather than a chip, because tapping it is meant to be
+  // self-reported data capture, not a primary action. Sits next to the
+  // skip button when both are present.
+  const readyAlreadyStyle: CSSProperties = {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--lumo-text-ter)',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '6px 8px',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontFamily: "'Fraunces', Georgia, serif",
+    fontStyle: 'italic',
+    letterSpacing: '0.02em',
+    textDecoration: 'underline',
+  }
 
   return (
     <div data-testid="rest-banner" style={containerStyle}>
@@ -224,6 +258,24 @@ export function RestBanner({
         )}
       </div>
 
+      {onReadyAlready && !done && (
+        <button
+          type="button"
+          data-testid="rest-banner-ready-already"
+          onClick={() => {
+            // Capture actual seconds elapsed since the rest started. We
+            // floor (not round) so a tap at the 12.7s mark counts as 12s
+            // — the user's body wasn't "13s ready", it was "12s ready
+            // and they hit the button". Conservative on signal honesty.
+            const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+            onReadyAlready(elapsed)
+          }}
+          aria-label="Tell us you're ready before the timer"
+          style={readyAlreadyStyle}
+        >
+          ready already?
+        </button>
+      )}
       {onSkip && (
         <button
           type="button"

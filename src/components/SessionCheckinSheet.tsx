@@ -4,6 +4,7 @@ import {
   ExerciseRating,
   type ExerciseCheckin,
   type SessionCheckin,
+  type SetRating,
 } from '../types/checkin'
 import type { PlannedExercise } from '../types/plan'
 
@@ -78,6 +79,28 @@ export interface SessionCheckinSheetProps {
    * per set; 0 means "not recorded".
    */
   completedReps?: Record<string, number[]>
+  /**
+   * In-flow per-set effort taps captured via the 3-tap pill row beneath
+   * each set circle. Parallel to `completedReps`: one entry per set,
+   * null when the user didn't tap. Mirrored verbatim into the persisted
+   * ExerciseCheckin so autoProgress can prefer the per-set signal over
+   * the session-end rating. Optional — null/missing → no per-set signal.
+   */
+  setRatings?: Record<string, ReadonlyArray<SetRating | null>>
+  /**
+   * In-flow "ready already?" rest taps captured on the rest banner.
+   * Parallel to `setRatings`: actual seconds elapsed when the user
+   * tapped; null when the user let the timer run to completion. Mirrored
+   * onto the persisted ExerciseCheckin as INPUT only — no in-moment
+   * behavior change.
+   */
+  restNeededSeconds?: Record<string, ReadonlyArray<number | null>>
+  /**
+   * Per-exercise mind-muscle tap (felt / missed) for hard-to-feel
+   * exercises. Captured at most once per session. Mirrored onto the
+   * persisted ExerciseCheckin so generateWarmup can read it next session.
+   */
+  mindMuscleFelt?: Record<string, 'felt' | 'missed'>
   onSave: (checkin: SessionCheckin) => void
   onSkip: () => void
 }
@@ -90,6 +113,9 @@ export function SessionCheckinSheet({
   exercises,
   completedWeights,
   completedReps,
+  setRatings,
+  restNeededSeconds,
+  mindMuscleFelt,
   onSave,
   onSkip,
 }: SessionCheckinSheetProps) {
@@ -135,6 +161,20 @@ export function SessionCheckinSheet({
       }
       if (r.reps_done && r.reps_done.length > 0) {
         base.reps_done = r.reps_done
+      }
+      // Per-set micro-feedback — only attach when at least one set carries
+      // a captured signal. A fully-null array isn't worth persisting.
+      const setRatingArr = setRatings?.[r.library_id]
+      if (setRatingArr && setRatingArr.some((v) => v != null)) {
+        base.set_ratings = setRatingArr.slice()
+      }
+      const restArr = restNeededSeconds?.[r.library_id]
+      if (restArr && restArr.some((v) => v != null)) {
+        base.rest_needed_seconds = restArr.slice()
+      }
+      const mmf = mindMuscleFelt?.[r.library_id]
+      if (mmf === 'felt' || mmf === 'missed') {
+        base.mind_muscle_felt = mmf
       }
       return base
     })

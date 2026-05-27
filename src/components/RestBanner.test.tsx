@@ -121,4 +121,60 @@ describe('RestBanner', () => {
     // we assert no animation keyword leaked through in the reduced path.
     expect(digits.style.animation).toBe('')
   })
+
+  // ─── "ready already?" affordance ─────────────────────────────────────
+  // Quiet secondary tap that captures actual seconds-elapsed onto the
+  // prior set log as an INPUT signal to future rest-prescription
+  // reasoning. Distinct from skip — taps capture data AND close the
+  // banner (the user is moving on to the next set), but skip only
+  // closes it without a signal.
+  it('renders the "ready already?" button when onReadyAlready is provided', () => {
+    render(
+      <RestBanner
+        seconds={90}
+        startedAt={FROZEN_NOW}
+        onReadyAlready={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('rest-banner-ready-already')).toBeDefined()
+  })
+
+  it('does not render "ready already?" when callback is absent', () => {
+    render(<RestBanner seconds={90} startedAt={FROZEN_NOW} />)
+    expect(screen.queryByTestId('rest-banner-ready-already')).toBeNull()
+  })
+
+  it('passes actual elapsed seconds (floored) when "ready already?" tapped', () => {
+    const onReady = vi.fn()
+    render(
+      <RestBanner
+        seconds={120}
+        startedAt={FROZEN_NOW}
+        onReadyAlready={onReady}
+      />,
+    )
+    // Advance time by 12.7s before tapping
+    act(() => {
+      vi.advanceTimersByTime(12_700)
+    })
+    fireEvent.click(screen.getByTestId('rest-banner-ready-already'))
+    expect(onReady).toHaveBeenCalledTimes(1)
+    // Floor (not round): 12.7s → 12s. Conservative on signal honesty.
+    expect(onReady).toHaveBeenCalledWith(12)
+  })
+
+  it('hides "ready already?" after the timer expires', () => {
+    render(
+      <RestBanner
+        seconds={5}
+        startedAt={FROZEN_NOW}
+        onReadyAlready={vi.fn()}
+      />,
+    )
+    // Tick past the timer end
+    act(() => {
+      vi.advanceTimersByTime(6_000)
+    })
+    expect(screen.queryByTestId('rest-banner-ready-already')).toBeNull()
+  })
 })

@@ -477,6 +477,258 @@ describe('LiftCard band-tension picker', () => {
   })
 })
 
+// ─── Per-set effort tap pill (Affordance 1) ───────────────────────────────
+// The pill row sits inline below each completed set circle. It only renders
+// after the set is marked done — capturing the signal while the experience
+// is fresh, without nagging the user before they've finished.
+
+describe('LiftCard per-set effort tap', () => {
+  function makeExercise(): PlannedSession['exercises'][number] {
+    return {
+      library_id: 'ex:squat',
+      name: 'Back Squat',
+      sets: 3,
+      reps: '8-12',
+      rir: 2,
+      rest_seconds: 90,
+      role: 'main lift',
+      warmup_sets: [],
+      suggested_weight_lbs: 100,
+    }
+  }
+  const baseLiftCardProps = {
+    exIdx: 0,
+    isCompleted: false,
+    displayedWeight: 100,
+    perSetActive: false,
+    perSetArr: [],
+    expanded: false,
+    hasPRFlag: false,
+    burstKey: null,
+    burstTrigger: 0,
+    burstIsWarmup: false,
+    onTapSet: vi.fn(),
+    onInfo: vi.fn(),
+    onSwap: vi.fn(),
+    onToggleExpand: vi.fn(),
+    onChangeWeight: vi.fn(),
+    onChangePerSet: vi.fn(),
+  }
+
+  it('does NOT render the rating pill for incomplete sets', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeExercise()}
+        checkedSets={{}}
+        onSetRating={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('set-rating-0')).not.toBeInTheDocument()
+  })
+
+  it('renders the 3-button rating pill below a completed set', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeExercise()}
+        checkedSets={{ '0-0': true }}
+        onSetRating={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('set-rating-0')).toBeInTheDocument()
+    expect(screen.getByTestId('set-rating-0-easy')).toBeInTheDocument()
+    expect(screen.getByTestId('set-rating-0-on-it')).toBeInTheDocument()
+    expect(screen.getByTestId('set-rating-0-cooked')).toBeInTheDocument()
+  })
+
+  it('fires onSetRating with the tapped value', () => {
+    const onSetRating = vi.fn()
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeExercise()}
+        checkedSets={{ '0-0': true }}
+        onSetRating={onSetRating}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('set-rating-0-cooked'))
+    expect(onSetRating).toHaveBeenCalledWith(0, 'cooked')
+    fireEvent.click(screen.getByTestId('set-rating-0-easy'))
+    expect(onSetRating).toHaveBeenLastCalledWith(0, 'easy')
+  })
+
+  it('marks the current tap as aria-checked', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeExercise()}
+        checkedSets={{ '0-0': true }}
+        setRatings={{ '0-0': 'on it' }}
+        onSetRating={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('set-rating-0-on-it').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByTestId('set-rating-0-easy').getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByTestId('set-rating-0-cooked').getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('does NOT render the rating pill when onSetRating is absent (legacy callers)', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeExercise()}
+        checkedSets={{ '0-0': true }}
+      />,
+    )
+    expect(screen.queryByTestId('set-rating-0')).not.toBeInTheDocument()
+  })
+})
+
+// ─── Mind-muscle prompt (Affordance 3) ────────────────────────────────────
+// Only renders on hard-to-feel exercises, after the first working set is
+// marked done, and only when the user hasn't already answered.
+
+describe('LiftCard mind-muscle prompt', () => {
+  function makeHardToFeel(): PlannedSession['exercises'][number] {
+    return {
+      library_id: 'variant:cable_row_neutral',
+      name: 'Neutral-Grip Cable Row',
+      sets: 3,
+      reps: '10',
+      rir: 2,
+      rest_seconds: 90,
+      role: 'main lift',
+      warmup_sets: [],
+      suggested_weight_lbs: 80,
+    }
+  }
+  function makeEasyToFeel(): PlannedSession['exercises'][number] {
+    return {
+      library_id: 'variant:back_squat_moderate',
+      name: 'Back Squat',
+      sets: 3,
+      reps: '8-12',
+      rir: 2,
+      rest_seconds: 180,
+      role: 'main lift',
+      warmup_sets: [],
+      suggested_weight_lbs: 135,
+    }
+  }
+  const baseLiftCardProps = {
+    exIdx: 0,
+    isCompleted: false,
+    displayedWeight: 80,
+    perSetActive: false,
+    perSetArr: [],
+    expanded: false,
+    hasPRFlag: false,
+    burstKey: null,
+    burstTrigger: 0,
+    burstIsWarmup: false,
+    onTapSet: vi.fn(),
+    onInfo: vi.fn(),
+    onSwap: vi.fn(),
+    onToggleExpand: vi.fn(),
+    onChangeWeight: vi.fn(),
+    onChangePerSet: vi.fn(),
+  }
+
+  it('hides the prompt before any sets are done (no nagging upfront)', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeHardToFeel()}
+        isHardToFeelEx
+        checkedSets={{}}
+        onMindMuscleFelt={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('mind-muscle-pill')).not.toBeInTheDocument()
+  })
+
+  it('shows the prompt once the first set is done on a hard-to-feel exercise', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeHardToFeel()}
+        isHardToFeelEx
+        checkedSets={{ '0-0': true }}
+        onMindMuscleFelt={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('mind-muscle-pill')).toBeInTheDocument()
+    expect(screen.getByTestId('mind-muscle-felt')).toBeInTheDocument()
+    expect(screen.getByTestId('mind-muscle-missed')).toBeInTheDocument()
+  })
+
+  it('hides the prompt and shows a confirm once the user taps', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeHardToFeel()}
+        isHardToFeelEx
+        checkedSets={{ '0-0': true }}
+        mindMuscleFelt="felt"
+        onMindMuscleFelt={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('mind-muscle-pill')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mind-muscle-confirm')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('mind-muscle-confirm').getAttribute('data-mind-muscle-value'),
+    ).toBe('felt')
+  })
+
+  it('does NOT show the prompt on easy-to-feel exercises (back squat)', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeEasyToFeel()}
+        isHardToFeelEx={false}
+        checkedSets={{ '0-0': true }}
+        onMindMuscleFelt={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('mind-muscle-pill')).not.toBeInTheDocument()
+  })
+
+  it('fires onMindMuscleFelt with the selected value', () => {
+    const onMM = vi.fn()
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={makeHardToFeel()}
+        isHardToFeelEx
+        checkedSets={{ '0-0': true }}
+        onMindMuscleFelt={onMM}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('mind-muscle-missed'))
+    expect(onMM).toHaveBeenCalledWith('missed')
+  })
+
+  it('renders +1 extra warmup row when warmupDelta is 1', () => {
+    render(
+      <LiftCard
+        {...baseLiftCardProps}
+        ex={{
+          ...makeHardToFeel(),
+          warmup_sets: [{ percent: 50, reps: 10 }],
+        }}
+        isHardToFeelEx
+        warmupDelta={1}
+        checkedSets={{}}
+      />,
+    )
+    const warmup = screen.getByTestId('warmup-block')
+    // The "extra" prefix flags the delta row so the user can see WHY it's
+    // there. Two rows total: 1 extra + 1 base.
+    expect(warmup.textContent).toContain('extra')
+  })
+})
+
 describe('WorkoutView PR celebration', () => {
   // These tests exercise async state (loadPRs resolves on mount). Switch to
   // real timers — the component tree doesn't poll, so a microtask drain is

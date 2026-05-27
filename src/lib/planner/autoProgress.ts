@@ -26,9 +26,31 @@
 //   - Bump magnitude is training-age-aware (audit rec 2): novices absorb
 //     bigger jumps, advanced lifters need finer increments.
 import { db } from '../db'
-import { SessionCheckinSchema, type ExerciseCheckin } from '../../types/checkin'
+import {
+  SessionCheckinSchema,
+  aggregateSetRatings,
+  type ExerciseCheckin,
+  type ExerciseRating,
+} from '../../types/checkin'
 import type { PlannedExercise } from '../../types/plan'
 import { loadProfileLocal } from '../profileRepo'
+import { warmupCountDeltaFromHistory } from './generateWarmup'
+import { isHardToFeel } from './constants'
+
+/**
+ * The "effective" rating for a check-in entry — prefers the per-set tap
+ * aggregate when set_ratings are present (the in-flow taps are the
+ * source of truth per the coaching philosophy: "the user's body is the
+ * source of truth, not the spreadsheet"). Falls back to the session-end
+ * rating chip otherwise. Pure.
+ */
+function effectiveRating(c: ExerciseCheckin): ExerciseRating {
+  if (c.set_ratings && c.set_ratings.length > 0) {
+    const agg = aggregateSetRatings(c.set_ratings)
+    if (agg !== undefined) return agg
+  }
+  return c.rating
+}
 
 // Roles that should never auto-progress by load. Bodyweight / time-based /
 // rehab work either has no load or is calibrated by feel, not 5-lb jumps.
@@ -172,6 +194,7 @@ function computeBodyweightRepTarget(
   history: ExerciseCheckin[],
 ): ProgressionResult | null {
   const last = history[0]!
+  const lastRating = effectiveRating(last)
   const ceiling = maxRepsOf(exercise.reps)
   const floor = minRepsOf(exercise.reps)
   const lastMetReps = metRepTarget(last, exercise.sets, exercise.reps)
@@ -179,9 +202,9 @@ function computeBodyweightRepTarget(
 
   // Two-strike: two failures within the lookback window resets the target
   // back to the prescribed floor. Same window as the weighted branch.
-  if (last.rating === 'failed' || !lastMetReps) {
+  if (lastRating === 'failed' || !lastMetReps) {
     const isMiss = (c: ExerciseCheckin): boolean =>
-      c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
+      effectiveRating(c) === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
     const priorMiss = history.slice(1, 1 + TWO_STRIKE_LOOKBACK).find(isMiss)
     if (priorMiss !== undefined) {
       return {
@@ -199,7 +222,7 @@ function computeBodyweightRepTarget(
     }
   }
 
-  if (last.rating === 'tough') {
+  if (lastRating === 'tough') {
     return {
       weight: 0,
       rep_target: ceiling,
@@ -253,6 +276,7 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
   if (last.used_weight_lb === undefined || last.used_weight_lb <= 0) return null
 
   const lastWeight = last.used_weight_lb
+  const lastRating = effectiveRating(last)
   const bump = bumpFor(exercise.role, trainingAgeMonths)
   const half = halfBumpFor(bump)
   const lastMetReps = metRepTarget(last, exercise.sets, exercise.reps)
@@ -260,8 +284,9 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
 
   // Rating-driven branches. The rating field already encodes the user's
   // own assessment of effort; we let it dominate, then layer rep-completion
-  // as a guardrail on top.
-  if (last.rating === 'failed' || !lastMetReps) {
+  // as a guardrail on top. Per-set taps (set_ratings) override the session-
+  // end chip when present — see effectiveRating().
+  if (lastRating === 'failed' || !lastMetReps) {
     // One miss → hold. Two misses at the same load → drop ~10%.
     //
     // Why scan a window instead of just history[1]:
@@ -292,7 +317,7 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
     const exactSameLoadAt = (c: ExerciseCheckin): boolean =>
       c.used_weight_lb !== undefined && c.used_weight_lb === lastWeight
     const isMiss = (c: ExerciseCheckin): boolean =>
-      c.rating === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
+      effectiveRating(c) === 'failed' || !metRepTarget(c, exercise.sets, exercise.reps)
 
     let priorSameLoadMiss: ExerciseCheckin | undefined
     for (const candidate of history.slice(1, 1 + TWO_STRIKE_LOOKBACK)) {
@@ -326,7 +351,7 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
     }
   }
 
-  if (last.rating === 'tough') {
+  if (lastRating === 'tough') {
     // Tough + cleared the top of the range → reward with a half bump.
     // They earned forward motion, just not at the full novice-style step.
     if (lastMetCeiling) {
@@ -352,7 +377,7 @@ export function computeNextWeight({ exercise, history, trainingAgeMonths }: Comp
       weight: next,
       action: 'bump',
       reason:
-        last.rating === 'easy'
+        lastRating === 'easy'
           ? `cleared all reps at the top of ${exercise.reps} and felt easy at ${lastWeight} lb — bumping +${bump}`
           : `cleared all reps at the top of ${exercise.reps} at ${lastWeight} lb — bumping +${bump}`,
     }
@@ -414,6 +439,55 @@ export async function computeAutoProgressionForSession(
       trainingAgeMonths,
     })
     if (result) out[ex.library_id] = result
+  }
+  return out
+}
+
+/**
+ * Build a `library_id → warmup-count delta` map for the upcoming session,
+ * derived from the user's mind_muscle_felt history on hard-to-feel
+ * exercises. Returns 0 entries for exercises with no history or no signal;
+ * +1 when the most recent signal was 'missed'.
+ *
+ * Pure on inputs (reads Dexie once). Caller (WorkoutView) augments the
+ * rendered warmup-set list inline — the stored PlannedExercise.warmup_sets
+ * is never mutated.
+ *
+ * Wired through autoProgress (not generateWarmup) because the source data
+ * lives in sessionCheckins, which generateWarmup doesn't touch — keeps
+ * generateWarmup pure-on-input the way the tests expect.
+ */
+export async function computeWarmupDeltasForSession(
+  userId: string,
+  excludeSessionId: string | null,
+  exercises: PlannedExercise[],
+): Promise<Record<string, number>> {
+  if (!userId || exercises.length === 0) return {}
+  // Filter to just hard-to-feel exercises up front — no point reading
+  // history for lifts that don't take the delta.
+  const candidates = exercises.filter((ex) => isHardToFeel(ex.library_id, ex.name))
+  if (candidates.length === 0) return {}
+
+  const rows = await db.sessionCheckins.where('user_id').equals(userId).toArray()
+  const checkins = rows.flatMap((r) => {
+    if (excludeSessionId && r.session_id === excludeSessionId) return []
+    const result = SessionCheckinSchema.safeParse(JSON.parse(r.checkin_json))
+    return result.success ? [result.data] : []
+  })
+  checkins.sort((a, b) => (a.completed_at < b.completed_at ? 1 : -1))
+
+  const byLib: Record<string, Array<'felt' | 'missed' | null | undefined>> = {}
+  for (const checkin of checkins) {
+    for (const ex of checkin.exercises) {
+      if (!byLib[ex.library_id]) byLib[ex.library_id] = []
+      byLib[ex.library_id]!.push(ex.mind_muscle_felt)
+    }
+  }
+
+  const out: Record<string, number> = {}
+  for (const ex of candidates) {
+    const delta = warmupCountDeltaFromHistory(byLib[ex.library_id] ?? [])
+    if (delta > 0) out[ex.library_id] = delta
   }
   return out
 }

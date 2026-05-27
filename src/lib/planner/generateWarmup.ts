@@ -20,6 +20,52 @@ import { getProtocol } from '../../data/rehab-protocols'
 import { resolveStage } from './buildMesocycle'
 import type { WarmupElement } from '../../data/rehab-protocols/types'
 
+// ─── Mind-muscle warmup delta ──────────────────────────────────────────────
+// Hard-to-feel exercises (lat pulldowns, clamshells, hamstring curls) need
+// extra warmup work for the user to find the target muscle. The per-set
+// `mind_muscle_felt` tap captured during the prior session feeds this
+// decision: last session "missed" → +1 warmup set on this exercise; two
+// consecutive "felt" sessions → return to baseline (0 delta).
+//
+// Per the coaching philosophy (docs/research/02-coaching-philosophy.md §7):
+// "Allow the user to mark 'didn't feel it' — that signal informs whether
+// the next session adds warmup, swaps to a machine version, or tries a
+// different cue."
+//
+// This module exports a pure delta function. WorkoutView calls it when
+// rendering the warmup ramp for a hard-to-feel exercise; it does NOT mutate
+// the stored PlannedExercise.warmup_sets — the in-session render augments
+// the displayed list. Keeping the stored shape unchanged means the delta
+// is a fresh read of history on every mount; no migration of past plans.
+
+/**
+ * Compute the warmup-set count delta for one exercise given its recent
+ * mind_muscle_felt history (newest-first). Pure, total.
+ *
+ *   - Most recent signal == 'missed' → +1 warmup set
+ *   - Most recent signal == 'felt' and the one before was also 'felt' → 0
+ *   - Most recent signal == 'felt' (alone) → 0  (one good session isn't
+ *     proof, but we don't add extra warmup on a session the user felt)
+ *   - No signal in history → 0
+ *
+ * Returns a non-negative integer (capped at +1 per the spec — keep it
+ * gentle, not aggressive).
+ */
+export function warmupCountDeltaFromHistory(
+  felts: ReadonlyArray<'felt' | 'missed' | null | undefined>,
+): number {
+  // Drop entries without a signal so the lookback window is "felt /
+  // missed" sessions only, not unrated ones.
+  const signals: Array<'felt' | 'missed'> = []
+  for (const f of felts) {
+    if (f === 'felt' || f === 'missed') signals.push(f)
+  }
+  if (signals.length === 0) return 0
+  const last = signals[0]
+  if (last === 'missed') return 1
+  return 0
+}
+
 // ─── Output schema ─────────────────────────────────────────────────────────
 export const StructuredWarmupExerciseSchema = z.object({
   name: z.string(),
