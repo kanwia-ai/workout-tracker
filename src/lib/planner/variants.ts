@@ -138,6 +138,18 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     ramp_style: 'accessory',
     default_rest_seconds: 120,
   },
+  // Machine squat — fixed path takes the lower back out of it, so it's a
+  // good main-lift option for users with a back flag or who prefer machines.
+  hack_squat_moderate: {
+    id: 'hack_squat_moderate',
+    name: 'Hack Squat',
+    primary_muscles: ['quads', 'glutes'],
+    secondary_muscles: [],
+    equipment: ['hack_squat_machine'],
+    role: 'main lift',
+    ramp_style: 'compound',
+    default_rest_seconds: 150,
+  },
   reverse_lunge_loaded: {
     id: 'reverse_lunge_loaded',
     name: 'Loaded Reverse Lunge',
@@ -239,6 +251,31 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     role: 'main lift',
     ramp_style: 'compound',
     default_rest_seconds: 240,
+  },
+  // Wider stance + more upright torso than conventional — less shear on the
+  // lower back, so it's the back-friendlier pull for users with a back flag.
+  sumo_deadlift_moderate: {
+    id: 'sumo_deadlift_moderate',
+    name: 'Sumo Deadlift',
+    primary_muscles: ['hamstrings', 'glutes', 'quads'],
+    secondary_muscles: ['back', 'core'],
+    equipment: ['barbell', 'plates'],
+    role: 'main lift',
+    library_id: 'ex-sumo-deadlift',
+    ramp_style: 'compound',
+    default_rest_seconds: 180,
+  },
+  // RDL on a fixed bar path — the machine balances the load for you, so it's
+  // a lower-skill, back-friendlier hinge for beginners or back-flag users.
+  smith_machine_rdl: {
+    id: 'smith_machine_rdl',
+    name: 'Smith Machine Romanian Deadlift',
+    primary_muscles: ['hamstrings', 'glutes'],
+    secondary_muscles: ['back', 'core'],
+    equipment: ['smith_machine'],
+    role: 'main lift',
+    ramp_style: 'compound',
+    default_rest_seconds: 120,
   },
 
   // ── Pressing ────────────────────────────────────────────────────────

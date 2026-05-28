@@ -12,7 +12,6 @@ import {
   primaryGoalToLegacyGoal,
   type UserProgramProfile,
   type PrimaryGoal,
-  type AestheticPreference,
   type ExerciseDislike as ExerciseDislikeValue,
 } from '../../types/profile'
 import type { MuscleGroup } from '../../types/plan'
@@ -21,7 +20,6 @@ import { StepWelcome } from './StepWelcome'
 import { StepName } from './StepName'
 import { StepPrimaryGoal } from './StepPrimaryGoal'
 import { StepMusclePriority } from './StepMusclePriority'
-import { StepAesthetic } from './StepAesthetic'
 import { StepSpecificTarget } from './StepSpecificTarget'
 import { StepSessions } from './StepSessions'
 import { StepDays } from './StepDays'
@@ -48,7 +46,6 @@ const STEPS = [
   'name',
   'primary_goal',
   'muscle_priority',
-  'aesthetic',
   'specific_target',
   'sessions',
   'days',
@@ -134,10 +131,6 @@ export function OnboardingFlow({ onComplete }: Props) {
       muscle_priority:
         draft.muscle_priority && draft.muscle_priority.length > 0
           ? draft.muscle_priority
-          : undefined,
-      aesthetic_preference:
-        draft.aesthetic_preference && draft.aesthetic_preference !== 'none'
-          ? draft.aesthetic_preference
           : undefined,
       specific_target:
         draft.specific_target && draft.specific_target.length > 0
@@ -243,15 +236,6 @@ export function OnboardingFlow({ onComplete }: Props) {
                 advance({ muscle_priority })
               }
               onSkip={() => advance({ muscle_priority: [] })}
-            />
-          )}
-          {stepId === 'aesthetic' && (
-            <StepAesthetic
-              value={draft.aesthetic_preference}
-              onNext={(aesthetic_preference: AestheticPreference) =>
-                advance({ aesthetic_preference })
-              }
-              onSkip={() => advance({ aesthetic_preference: 'none' })}
             />
           )}
           {stepId === 'specific_target' && (

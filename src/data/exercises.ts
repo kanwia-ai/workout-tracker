@@ -31,7 +31,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-hip-thrust',
     name: 'Barbell Hip Thrust',
-    description: 'The most effective exercise for glute max development. Higher bench position allows greater ROM than glute bridges.',
+    description: 'Drives your glutes hard at the top of the lift, where they work hardest — one of the best moves for building them. The raised bench gives you more range than a glute bridge.',
     instructions: [
       'Set up with shoulder blades on a bench, barbell across hips with pad.',
       'Feet flat, hip-width apart, about shin-length from the bench.',
@@ -557,7 +557,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-reverse-lunge-elevated',
     name: 'Front Foot Elevated Reverse Lunge',
-    description: 'Elevated front foot lengthens the working leg and adds ROM while keeping the movement knee-friendly.',
+    description: 'Raising your front foot gives you more range and a deeper stretch on the working leg, while staying easy on the knee.',
     instructions: [
       'Stand with front foot on a low platform or step.',
       'Step the other foot back into a lunge.',
@@ -1412,7 +1412,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-leg-raise',
     name: 'Lying Leg Raise',
-    description: 'Lower ab exercise. Keep lower back pressed into the floor.',
+    description: 'Hits your abs — the lower part especially — plus your hip flexors. Keep your lower back pressed into the floor. (There\'s no separate "lower ab" muscle; it\'s all one sheet, but this leans on the bottom.)',
     instructions: [
       'Lie on your back, hands at your sides or under hips.',
       'Raise straight legs up to 90 degrees.',
@@ -1437,7 +1437,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-toe-touches',
     name: 'Toe Touches',
-    description: 'Upper ab crunch reaching for your toes.',
+    description: 'Crunch reaching up toward your toes. Works your abs, a little more up top.',
     instructions: [
       'Lie on your back, legs straight up in the air.',
       'Reach hands toward your toes, lifting shoulders off the floor.',
@@ -1457,7 +1457,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-scissors',
     name: 'Scissors',
-    description: 'Alternating leg raises that keep constant tension on lower abs.',
+    description: 'Alternating leg raises that keep your abs under constant tension — the lower part most, with your hip flexors helping out.',
     instructions: [
       'Lie on your back, hands under hips for support.',
       'Lift both legs slightly off the floor.',
@@ -1499,7 +1499,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-hanging-knee-raise',
     name: 'Hanging Knee Raise',
-    description: 'Core exercise hanging from a bar. Great for lower abs.',
+    description: 'Hang from a bar and lift your legs. Hits your abs hard — the lower part most — and works your grip and hip flexors too.',
     instructions: [
       'Hang from a pull-up bar.',
       'Bring knees up toward your chest.',
@@ -1566,7 +1566,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-barbell-back-squat',
     name: 'Barbell Back Squat',
-    description: 'The king of lower body exercises. However, deep squatting past 90 degrees puts significant stress on the meniscus.',
+    description: 'One of the best all-around moves for building leg strength and size. Squatting deep is safe for healthy knees — if you\'ve got a meniscus issue right now, adjust how deep and how heavy you go instead of skipping it.',
     instructions: [
       'Bar on upper back, feet shoulder-width.',
       'Squat down by pushing hips back and bending knees.',
@@ -2002,7 +2002,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-hip-flexor-stretch',
     name: 'Half-Kneeling Hip Flexor Stretch',
-    description: 'Essential stretch for anyone who sits a lot. Opens up the hip flexors.',
+    description: 'Stretches your hip flexors — good if you sit a lot. That "tight" feeling is usually more about weak or stiff muscles than short ones, so pair this with glute and core work to actually fix it.',
     instructions: [
       'Half-kneel with front foot flat, back knee on a pad.',
       'Tuck tailbone and squeeze back-side glute.',
@@ -2029,7 +2029,7 @@ export const EXERCISE_LIBRARY: Exercise[] = [
   {
     id: 'ex-stairmaster',
     name: 'StairMaster',
-    description: 'Glute-dominant cardio. Great for building endurance and glute conditioning.',
+    description: 'Cardio that leans on your glutes — builds endurance while working them more than flat ground does.',
     instructions: [
       'Step onto the StairMaster and start at a moderate pace.',
       'Stay upright — don\'t lean on the handles.',

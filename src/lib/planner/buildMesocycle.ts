@@ -36,6 +36,7 @@ import {
   type VariantSpec,
 } from './variants'
 import { suggestStartingWeight } from './startingWeights'
+import { substituteStaticStretch } from './staticStretchSubstitution'
 
 // ─── Mesocycle shape ───────────────────────────────────────────────────────
 export interface BuiltMesocycle {
@@ -221,7 +222,11 @@ export function mergeDirectivesForSession(
           if (!preferred.includes(a)) preferred.push(a)
         }
         for (const el of stage.warmup_protocol) {
-          if (!warmupElements.includes(el.name)) warmupElements.push(el.name)
+          // Swap static stretches for dynamic equivalents (or drop) — static
+          // holds pre-lift transiently cut force output. See
+          // staticStretchSubstitution.ts.
+          const sub = substituteStaticStretch(el.name)
+          if (sub && !warmupElements.includes(sub)) warmupElements.push(sub)
         }
         if (stage.rep_scheme_override) {
           // First-in wins for rep override (most-rehab-active injury drives)
@@ -250,7 +255,9 @@ export function mergeDirectivesForSession(
     const perSession = protocol.per_session_type[sessionType]
     if (perSession) {
       for (const el of perSession.warmup_focus) {
-        if (!warmupElements.includes(el)) warmupElements.push(el)
+        // Same static-stretch guard as the rehab-stage path above.
+        const sub = substituteStaticStretch(el)
+        if (sub && !warmupElements.includes(sub)) warmupElements.push(sub)
       }
       for (const av of perSession.avoid_on_this_session) {
         avoidThisSession.push(av)
@@ -389,7 +396,11 @@ function pickRepScheme(
       return { reps: `${override[0]}-${override[1]}`, rir: 2, rest: 150 }
     }
     const [lo, hi] = goal.rep_scheme_bias.main_compounds
-    return { reps: `${lo}-${hi}`, rir: goal.primary_adaptation === 'strength_power' ? 1 : 2, rest: 180 }
+    return {
+      reps: `${lo}-${hi}`,
+      rir: goal.primary_adaptation === 'strength_power' ? 1 : 2,
+      rest: 180,
+    }
   }
   if (role === 'accessory') {
     const [lo, hi] = goal.rep_scheme_bias.accessories
@@ -614,7 +625,7 @@ function variantToExercise(
 // the seed flat lets autoProgress own the trajectory without static noise.
 
 // ─── Deload (last week) adjustments ───────────────────────────────────────
-// Delphi consensus 2024 (PMC10511399): cut volume OR intensity, not both —
+// Delphi consensus, Bell et al. 2023 (PMC10511399): cut volume OR intensity, not both —
 // volume is the more commonly-recommended lever. We cut sets to ~50% and
 // leave RIR untouched. The previous setup also bumped RIR by 1, which
 // stacked a ~30% effort cut on top of the volume cut and over-deloaded

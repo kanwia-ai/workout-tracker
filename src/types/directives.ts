@@ -177,6 +177,13 @@ export const BODY_PART_TO_PROTOCOL: Record<string, ProtocolId | null> = {
   ankle: 'ankle',
   neck: 'neck',
   elbow: 'elbow',
+  // No dedicated protocol yet — fall through to LLM interpretation (like `other`).
+  // The engine still respects the reported severity; the nuance layer + KB
+  // (injuries domain) supply the region-specific guidance.
+  groin: null,
+  hamstring: null,
+  achilles: null,
+  forearm: null,
   other: null,  // falls through to LLM interpretation
 }
 

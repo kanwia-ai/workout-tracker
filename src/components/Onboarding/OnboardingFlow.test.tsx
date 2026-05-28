@@ -29,10 +29,6 @@ describe('OnboardingFlow', () => {
     expectStep('muscle_priority')
     fireEvent.click(screen.getByTestId('step-skip'))
 
-    // aesthetic — skip
-    expectStep('aesthetic')
-    fireEvent.click(screen.getByTestId('step-skip'))
-
     // specific target — skip
     expectStep('specific_target')
     fireEvent.click(screen.getByTestId('step-skip'))
@@ -127,8 +123,9 @@ describe('OnboardingFlow', () => {
   it('footprint progress bar shows total steps and current index', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     const bar = screen.getByRole('progressbar')
-    // 16 steps after adding the day-picker between sessions and active_minutes.
-    expect(bar).toHaveAttribute('aria-valuemax', '16')
+    // 15 steps: removed the redundant "aesthetic" emphasis step (it just
+    // re-asked the primary goal). Day-picker sits between sessions and active_minutes.
+    expect(bar).toHaveAttribute('aria-valuemax', '15')
     expect(bar).toHaveAttribute('aria-valuenow', '1')
   })
 
@@ -149,10 +146,6 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Glutes/i }))
     fireEvent.click(screen.getByRole('button', { name: /^Back$/i }))
     fireEvent.click(screen.getByTestId('step-muscle-priority-next'))
-
-    // aesthetic — pick "Get stronger" (research-honest training emphasis)
-    fireEvent.click(screen.getByRole('radio', { name: /get stronger/i }))
-    fireEvent.click(screen.getByTestId('step-aesthetic-next'))
 
     // specific target
     fireEvent.change(screen.getByLabelText(/specific target/i), {
@@ -209,7 +202,6 @@ describe('OnboardingFlow', () => {
     const [profile] = onComplete.mock.calls[0]
     expect(profile.primary_goal).toBe('lean_and_strong')
     expect(profile.muscle_priority).toEqual(['glutes', 'back'])
-    expect(profile.aesthetic_preference).toBe('get_stronger')
     expect(profile.specific_target).toBe('first pull-up')
     expect(profile.weight_kg).toBe(65)
     expect(profile.exercise_dislikes).toEqual(['burpees'])

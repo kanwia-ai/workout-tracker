@@ -3,6 +3,7 @@ import {
   bucketFromMonths,
   entryMatchesProfile,
   goalsForProfile,
+  normalizeGoalToken,
   retrieveRelevantEntries,
   scoreEntry,
 } from './retrieval'
@@ -92,6 +93,38 @@ describe('goalsForProfile', () => {
   })
 })
 
+describe('normalizeGoalToken', () => {
+  it('passes canonical PrimaryGoal tokens through unchanged', () => {
+    for (const g of [
+      'build_muscle',
+      'get_stronger',
+      'lean_and_strong',
+      'fat_loss',
+      'mobility',
+      'athletic',
+      'general_fitness',
+    ]) {
+      expect(normalizeGoalToken(g)).toBe(g)
+    }
+  })
+
+  it('maps every legacy / drift KB token to a canonical PrimaryGoal', () => {
+    expect(normalizeGoalToken('get_strong')).toBe('get_stronger')
+    expect(normalizeGoalToken('strong')).toBe('get_stronger')
+    expect(normalizeGoalToken('strength')).toBe('get_stronger')
+    expect(normalizeGoalToken('aesthetics')).toBe('build_muscle')
+    expect(normalizeGoalToken('glutes')).toBe('build_muscle')
+    expect(normalizeGoalToken('longevity')).toBe('general_fitness')
+    expect(normalizeGoalToken('rehab')).toBe('mobility')
+    expect(normalizeGoalToken('general')).toBe('general_fitness')
+  })
+
+  it('passes the `any` wildcard and unknown tokens through verbatim', () => {
+    expect(normalizeGoalToken('any')).toBe('any')
+    expect(normalizeGoalToken('something_new')).toBe('something_new')
+  })
+})
+
 describe('entryMatchesProfile', () => {
   it('passes when entry goals match the user goals (canonical token)', () => {
     const entry = buildEntry({
@@ -116,6 +149,59 @@ describe('entryMatchesProfile', () => {
     })
     const profile = buildProfile({ primary_goals: ['get_stronger'] })
     expect(entryMatchesProfile(entry, profile)).toBe(true)
+  })
+
+  it('passes a `rehab` entry for a mobility user (legacy token normalized)', () => {
+    const entry = buildEntry({
+      applicability: {
+        goals: ['rehab'],
+        training_age: 'any',
+        sex: 'any',
+        injuries: [],
+      },
+    })
+    const profile = buildProfile({ primary_goals: ['mobility'] })
+    expect(entryMatchesProfile(entry, profile)).toBe(true)
+  })
+
+  it('passes a bare `general` entry for a general_fitness user (drift token normalized)', () => {
+    const entry = buildEntry({
+      applicability: {
+        goals: ['build_muscle', 'general', 'athletic'],
+        training_age: 'any',
+        sex: 'any',
+        injuries: [],
+      },
+    })
+    const profile = buildProfile({ primary_goals: ['general_fitness'] })
+    expect(entryMatchesProfile(entry, profile)).toBe(true)
+  })
+
+  it('passes a `longevity` entry for a general_fitness user', () => {
+    const entry = buildEntry({
+      applicability: {
+        goals: ['longevity'],
+        training_age: 'any',
+        sex: 'any',
+        injuries: [],
+      },
+    })
+    const profile = buildProfile({ primary_goals: ['general_fitness'] })
+    expect(entryMatchesProfile(entry, profile)).toBe(true)
+  })
+
+  it('still scores a legacy-token goal match (rehab → mobility)', () => {
+    const entry = buildEntry({
+      applicability: {
+        goals: ['rehab'],
+        training_age: 'any',
+        sex: 'any',
+        injuries: [],
+      },
+    })
+    const profile = buildProfile({ primary_goals: ['mobility'] })
+    // +5 dominant goal match + (+2 high confidence) at minimum.
+    expect(scoreEntry(entry, profile)).toBeGreaterThanOrEqual(5)
   })
 
   it('fails when entry goals do NOT overlap the user goals', () => {

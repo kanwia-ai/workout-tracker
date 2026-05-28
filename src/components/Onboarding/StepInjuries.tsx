@@ -38,6 +38,10 @@ const BODY_PART_LABELS: Record<BodyPartValue, string> = {
   ankle: 'Ankle',
   neck: 'Neck',
   elbow: 'Elbow',
+  groin: 'Groin / adductor',
+  hamstring: 'Hamstring',
+  achilles: 'Achilles / heel',
+  forearm: 'Forearm',
   other: 'Other',
 }
 

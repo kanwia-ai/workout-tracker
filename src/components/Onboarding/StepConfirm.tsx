@@ -3,7 +3,11 @@
 import { useMemo } from 'react'
 import { StepChrome } from './StepChrome'
 import { pickCopy, DEFAULT_CHEEK, type CheekLevel } from '../../lib/copy'
-import type { UserProgramProfile, PrimaryGoal, AestheticPreference, ExerciseDislike } from '../../types/profile'
+import type {
+  UserProgramProfile,
+  PrimaryGoal,
+  ExerciseDislike,
+} from '../../types/profile'
 import { formatHeight, formatWeight } from '../../lib/units'
 
 interface Props {
@@ -58,13 +62,6 @@ const SEX_LABELS: Record<UserProgramProfile['sex'], string> = {
   female: 'Female',
   male: 'Male',
   prefer_not_to_say: 'Prefer not to say',
-}
-
-const AESTHETIC_LABELS: Record<AestheticPreference, string> = {
-  build_muscle: 'Add muscle',
-  get_stronger: 'Get stronger',
-  balanced: 'Mix of both',
-  none: 'No preference',
 }
 
 const DISLIKE_LABELS: Record<ExerciseDislike, string> = {
@@ -167,12 +164,6 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK, targetAcknow
         }}
       >
         <Row label="Goal">{goalLabel}</Row>
-        {draft.aesthetic_preference &&
-          draft.aesthetic_preference !== 'none' && (
-            <Row label="Emphasis">
-              {AESTHETIC_LABELS[draft.aesthetic_preference]}
-            </Row>
-          )}
         {draft.specific_target && (
           <Row label="Target">{draft.specific_target}</Row>
         )}

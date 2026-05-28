@@ -326,6 +326,7 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
      60+    → same RIR prescription as the general population (1-3) UNLESS the user has flagged a contraindication (cardiovascular condition, joint issue, recent injury via the injuries array). The "protected by age" framing is a stereotype: Fragala 2019 (NSCA Position Statement on Resistance Training for Older Adults) explicitly supports near-failure training (RIR 1-2) for hypertrophy in healthy older adults. Treat training_age_months and injury history as the actual gating signals, NOT chronological age. The only age-driven override that remains is: replace plyometric or jumping movements with a low-impact equivalent from the pool.
 • weight_kg (float, optional): if > 120 kg (~265 lb), substitute every plyometric, deep-squat, or high-impact movement with a low-impact pool equivalent. Prefer machine + cable variants over barbell free-weight where the pool offers it. Do NOT exclude lifts entirely — the user is here to train. // REMOVED: weight-based rep cap on single-leg work. No research basis. If joint stress is a concern, surface it via injury flags (knee, ankle, hip) — those are the actual signals.
 • height_cm (float, optional): NOT currently active. Reserved for future range-of-motion (ROM) scaling — ignore for now.
+
 • units: UI display preference only — no effect on generation.
 
 ═══ OUTPUT ═══

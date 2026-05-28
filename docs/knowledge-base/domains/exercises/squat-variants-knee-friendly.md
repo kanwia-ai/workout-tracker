@@ -42,7 +42,7 @@ Squatting is a movement *family*, not a single exercise. Picking the right varia
 - **What it does:** seat-back support removes lower-back stabilization; sled path is fixed → no balance variable. Quad-dominant by geometry.
 - **Best for:** lower-back-limited users who still want a heavy squat-pattern stimulus; advanced quad-focus accumulation work; older / returning lifters who want compound stimulus without injury-prone free-weight skill demand.
 - **Knee impact:** lower than free-weight back squat at matched effort because the sled controls the descent (no crash into the bottom). Some hack squats stress the knee more if the foot position is too high on the platform — feet lower-on-platform = quad-dominant + more knee flexion; feet higher = glute + ham bias + less knee shear.
-- **In this app's planner:** not currently a variant. **Engineering flag:** add `hack_squat_moderate` as a `main lift` variant for users with lower-back flag or "machine-preferred" preference.
+- **In this app's planner:** available as the `hack_squat_moderate` `main lift` variant — surface it for users with a lower-back flag or a "machine-preferred" preference.
 
 ### Leg press
 
@@ -90,7 +90,7 @@ Goal: squat-pattern compound for this session.
 Has knee injury flag?
   Acute (knee_phase == 'acute'):
     → leg_press_narrow_rom  (variant id)
-    or hack_squat_moderate (if added to variants)
+    or hack_squat_moderate
     or skip squat pattern entirely; do RDL + hip thrust instead
   Subacute (knee_phase == 'subacute'):
     → heel_elevated_goblet_squat OR heel_elevated_barbell_back_squat
@@ -99,7 +99,7 @@ Has knee injury flag?
     → standard back_squat, heel_elevated optional
 
 Has lower-back injury flag, no knee flag?
-  → hack squat (when added) OR leg press OR front squat OR goblet squat
+  → hack squat OR leg press OR front squat OR goblet squat
   Avoid: heavy back squat with significant forward lean
 
 Goal includes glutes priority?
@@ -113,7 +113,7 @@ Goal is general / no flags?
 ## Nuance
 
 - **"Knee-friendly" is user-specific, not exercise-intrinsic.** Some meniscus patients tolerate deep heel-elevated goblet squats with no pain; others can only do partial-ROM leg press. The engine's job is to give the user a *menu* of variants and let the mind-muscle / pain-check feedback loop sort out which works.
-- **Hack squat is a hole in this app's variant pool.** Multiple references in this KB point to hack squat as a useful option; the variants.ts file doesn't have it. Engineering follow-up.
+- **Hack squat is now in the variant pool** (`hack_squat_moderate` in variants.ts) — a useful machine option for lower-back-limited or machine-preferred users.
 - **The "front squat = knee-killer" trope is overstated.** Schoenfeld 2010 quantified knee forces by depth and depth — full-depth squats with proper form do not produce more meniscus / patellofemoral injury than partial squats in non-injured populations. For injured users, *load and ROM* are the levers, not the squat variant per se.
 - **"Squats are bad for knees" is a myth at the population level** — see myth `more-volume-always-better` and the broader injury research that links *poor programming* (too much volume, no warmup, ignoring pain signals) to injury, not the squat itself.
 
@@ -121,7 +121,7 @@ Goal is general / no flags?
 
 - **Variant pool** in `src/lib/planner/variants.ts`:
   - Already has: `heel_elevated_goblet_squat`, `heel_elevated_barbell_back_squat`, `goblet_squat_light`, `back_squat`, `back_squat_moderate_load`, `front_squat`, `front_squat_moderate`, `leg_press_narrow_rom`, `box_squat_high`, `split_squat_rear_foot_elevated_bodyweight`, `split_squat_bodyweight`, `bulgarian_split_squat_loaded`, `reverse_lunge_loaded`, `forward_lunge_loaded`.
-  - Missing: `hack_squat_moderate` — add as a `main lift` for back-flag and machine-preferred users.
+  - Also has: `hack_squat_moderate` (`main lift`) — for back-flag and machine-preferred users.
 - **Engine substitution logic:** when the user logs a pain check on the squat exercise, the engine should propose a variant *down the knee-friendliness ladder* (back squat → heel-elevated → leg press), not swap to a different pattern (e.g., RDL) unless the user explicitly opts to.
 - **LLM nuance copy:**
   - When prescribing a heel-elevated squat: "we're elevating your heels because your ankle mobility limits depth — this lets you keep the torso upright and load the quads without rounding the back."

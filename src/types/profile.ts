@@ -66,7 +66,11 @@ export const BodyPart = z.enum([
   'left_meniscus', 'right_meniscus', 'left_knee', 'right_knee',
   'lower_back', 'upper_back', 'hip_flexors',
   'left_shoulder', 'right_shoulder', 'left_trap', 'right_trap',
-  'wrist', 'ankle', 'neck', 'elbow', 'other',
+  'wrist', 'ankle', 'neck', 'elbow',
+  // Added: common strain/tendinopathy sites without a dedicated protocol yet.
+  // They map to null in BODY_PART_TO_PROTOCOL → handled by the LLM nuance layer.
+  'groin', 'hamstring', 'achilles', 'forearm',
+  'other',
 ])
 export type BodyPart = z.infer<typeof BodyPart>
 export const Sex = z.enum(['female', 'male', 'prefer_not_to_say'])

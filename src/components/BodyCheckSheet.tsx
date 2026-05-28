@@ -64,6 +64,10 @@ export function humanizeBodyPart(part: BodyPart): string {
     case 'ankle':          return 'ankle'
     case 'neck':           return 'neck'
     case 'elbow':          return 'elbow'
+    case 'groin':          return 'groin'
+    case 'hamstring':      return 'hamstring'
+    case 'achilles':       return 'Achilles / heel'
+    case 'forearm':        return 'forearm'
     case 'other':          return 'other'
   }
 }

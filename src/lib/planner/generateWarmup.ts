@@ -18,6 +18,7 @@ import type {
 } from '../../types/directives'
 import { getProtocol } from '../../data/rehab-protocols'
 import { resolveStage } from './buildMesocycle'
+import { STATIC_STRETCH_SUBSTITUTIONS } from './staticStretchSubstitution'
 import type { WarmupElement } from '../../data/rehab-protocols/types'
 
 // ─── Mind-muscle warmup delta ──────────────────────────────────────────────
@@ -351,31 +352,6 @@ const WARMUP_CATALOG: Record<string, CatalogEntry> = {
     category: 'activation',
     default_reps: 10,
   },
-}
-
-// ─── Static-stretch substitution ───────────────────────────────────────────
-// WHY: Static stretching >30s pre-lift acutely depresses peak force ~3.7-5%
-// (Behm & Chaouachi 2011, Behm 2016). Dynamic ROM work doesn't. Static work
-// stays in cooldown / mobility-only contexts. We substitute any static-stretch
-// id pulled from a protocol's warmup_focus with a dynamic equivalent that
-// targets the same region; if none exists, drop it (cooldown will pick it up).
-//
-// Substitution map: protocol-emitted id → dynamic warmup id already in the
-// catalog. `null` means "drop entirely from warmup" (no dynamic substitute
-// available — schedule in cooldown / standalone mobility block instead).
-const STATIC_STRETCH_SUBSTITUTIONS: Record<string, string | null> = {
-  couch_stretch: 'hip_airplane',                       // hip-flexor lengthening → dynamic hip ER/IR
-  couch_stretch_60s: 'hip_airplane',
-  couch_stretch_60s_per_side: 'hip_airplane',
-  couch_stretch_daily: 'hip_airplane',
-  hip_flexor_stretch: 'hip_airplane',
-  hip_flexor_stretch_kneeling: 'hip_airplane',
-  hip_flexor_kneeling_stretch: 'hip_airplane',
-  hip_flexor_pnf_stretch: 'hip_airplane',
-  supine_hip_flexor_stretch: 'hip_airplane',
-  supported_hip_flexor_stretch: 'hip_airplane',
-  soleus_stretch: 'ankle_dorsiflexion_mobility',       // static calf → dynamic ankle DF
-  '90_90_hip_stretch': '90_90_hip',                    // re-label as mobility, not "stretch"
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

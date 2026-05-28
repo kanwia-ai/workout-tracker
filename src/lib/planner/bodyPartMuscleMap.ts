@@ -56,6 +56,14 @@ const BODY_PART_TO_MUSCLES: Record<BodyPart, ReadonlyArray<MuscleGroup>> = {
   // Elbow stress shows up on pulls (biceps work the elbow flexor) and
   // pressing (triceps load the elbow extensor). Heavy holds also matter.
   elbow:           ['biceps', 'triceps', 'back', 'chest', 'shoulders'],
+  // Groin/adductor → wide-stance squats, lunges, anything loading hip adduction.
+  groin:           ['quads', 'glutes', 'hamstrings'],
+  // Hamstring → hinges, knee flexion, sprint/jump conditioning.
+  hamstring:       ['hamstrings', 'glutes', 'back', 'calves'],
+  // Achilles/heel → calf work plus anything standing/jumping under load.
+  achilles:        ['calves', 'quads', 'hamstrings', 'glutes'],
+  // Forearm → grip-loaded pulls, holds, and curls.
+  forearm:         ['biceps', 'triceps', 'back'],
   // 'other' is the user-typed free-text path — we can't infer; return empty
   // and let the affordance show a generic note instead of pre-flagging exercises.
   other:           [],

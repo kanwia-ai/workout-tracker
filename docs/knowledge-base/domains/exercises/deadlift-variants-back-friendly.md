@@ -52,7 +52,7 @@ The hinge pattern is a movement *family*, not just "the deadlift." Variant selec
   - **Conventional** — taller users with long arms; strength-priority lifters chasing 1RM; users with no back limits.
   - **Sumo** — shorter users; users with limited hip-hinge ROM; lifters with mild lower-back limits who want to keep deadlifting.
 - **Back impact:** Escamilla 2002 found sumo had **lower** spinal extensor demand and **lower** L4-L5 shear forces than conventional at matched loads. For lower-back-conscious lifters, sumo is the preferred conventional-deadlift variant.
-- **In this app's planner:** `conventional_deadlift_moderate` is available for advanced lifters. Sumo isn't currently a separate variant — **engineering flag** to add `sumo_deadlift_moderate` as a back-friendlier alternative to conventional.
+- **In this app's planner:** `conventional_deadlift_moderate` is available for advanced lifters, and `sumo_deadlift_moderate` is available as the back-friendlier alternative — prefer it for lifters with a lower-back flag.
 
 ### Smith machine RDL
 
@@ -129,8 +129,7 @@ Goal is general / no flags?
 ## Application in this app
 
 - **Variant pool** in `src/lib/planner/variants.ts`:
-  - Already has: `trap_bar_deadlift_light`, `trap_bar_deadlift_moderate`, `kettlebell_hip_hinge`, `romanian_deadlift_light`, `romanian_deadlift_moderate`, `conventional_deadlift_moderate`.
-  - Missing: `sumo_deadlift_moderate`, `smith_machine_rdl` — engineering follow-up.
+  - Already has: `trap_bar_deadlift_light`, `trap_bar_deadlift_moderate`, `kettlebell_hip_hinge`, `romanian_deadlift_light`, `romanian_deadlift_moderate`, `conventional_deadlift_moderate`, `sumo_deadlift_moderate`, `smith_machine_rdl`.
 - **Engine substitution logic for back flags:**
   - On a chronic back flag, the engine defaults to trap-bar over conventional.
   - On a subacute flag, the engine drops to RDL (light or moderate) AND adds a back-tightness check after the warmup. If the user reports tightness, the session auto-swaps to cable pull-through + glute bridge for the day.
