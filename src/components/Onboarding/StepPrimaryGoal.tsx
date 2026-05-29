@@ -39,7 +39,7 @@ const OPTIONS: {
     id: 'fat_loss',
     title: 'Fat loss',
     blurb:
-      'Build/protect muscle in a deficit. Body composition is diet-driven; training preserves the muscle that gives you shape. No cardio prescribed — layer it in only if you enjoy it.',
+      'Lift to protect muscle in a deficit, plus cardio to support the burn — both come standard. Diet drives the actual fat loss; the training keeps the shape underneath.',
   },
   {
     id: 'mobility',

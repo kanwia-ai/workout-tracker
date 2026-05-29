@@ -339,7 +339,7 @@ describe('buildPlanPrompt (v3)', () => {
     // not auto-prescribed; bulking gets no cardio.
     expect(prompt).toMatch(/Cardio placement — judgment from these principles/)
     expect(prompt).toMatch(/hypertrophy \/ build_muscle \/ get_stronger[^\n]*cardio goes AFTER the strength work/i)
-    expect(prompt).toMatch(/fat loss \/ cutting[\s\S]*?DON'T prescribe a cardio block/i)
+    expect(prompt).toMatch(/fat loss \/ cutting[\s\S]*?DO prescribe cardio as a standard part of the program/i)
     expect(prompt).toMatch(/cardiovascular health[\s\S]*?cardio can lead the session/i)
     expect(prompt).toMatch(/bulking \/ mass gain[\s\S]*?do NOT prescribe cardio/i)
     // Hard floor: never auto-insert heavy cardio before lifting.

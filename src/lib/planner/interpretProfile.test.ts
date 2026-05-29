@@ -152,11 +152,12 @@ describe('interpretProfile — goal interpretation', () => {
     expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
   })
 
-  it('fat_loss goal uses optional cardio policy (diet-driven, no forced cardio days)', () => {
+  it('fat_loss prescribes cardio by default (it is a workout plan; cardio is the training-side fat-loss lever)', () => {
     const d = interpretProfile(DESK_WORKER_TONED)
-    expect(d.goal.cardio_policy).toBe('optional')
-    // 'optional' surfaces cardio as opt-in; no scheduled cardio days.
-    expect(d.week_shape.cardio_days).toEqual(['none'])
+    expect(d.goal.cardio_policy).toBe('separated')
+    // 'separated' schedules a standalone cardio day rather than burying cardio
+    // as an opt-in. Diet still drives the result; the program includes cardio.
+    expect(d.week_shape.cardio_days).toEqual(['rest_day'])
   })
 
   it('get_stronger aesthetic on a hypertrophy base pushes rep ranges DOWN for force production', () => {

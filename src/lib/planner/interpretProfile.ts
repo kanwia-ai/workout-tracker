@@ -102,9 +102,11 @@ const GOAL_DEFAULTS: Record<PrimaryGoal, GoalDirectives> = {
       finishers: [12, 15],
     },
     intensity_bias: 'moderate load, higher volume, RIR 1-3',
-    // WHY: cardio is a deficit accelerator, not a requirement. Don't force 3
-    // cardio days on someone whose goal is body comp.
-    cardio_policy: 'optional',
+    // WHY: this is a workout plan and the user's goal is fat loss, so cardio is
+    // the DEFAULT training lever — prescribe it (separate/post-lift days), don't
+    // bury it as an opt-in. Diet still drives the actual fat loss; lifting
+    // protects muscle; cardio supports the deficit.
+    cardio_policy: 'separated',
   },
   mobility: {
     aesthetic: 'general',
