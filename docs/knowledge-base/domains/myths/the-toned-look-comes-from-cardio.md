@@ -32,7 +32,7 @@ contradicts: []
 ## What the research actually says
 1. **The "lean / toned" look = enough muscle + low enough body fat.** Cardio without resistance training produces fat loss + some muscle loss (Willis 2012) — yielding the "skinny-fat" look, not the lean-defined look.
 2. **Resistance training during a deficit preserves muscle** (Stiegler & Cunliffe 2006). The "muscle preservation lever" is the critical piece — without it, a calorie deficit pulls weight from both fat AND muscle, and the resulting body composition is not what most people want.
-3. **The combination** — resistance training + sufficient protein + caloric deficit — produces the lean-with-defined-muscle look that people are usually after when they say "toned." Cardio is optional in this combination; resistance training is not.
+3. **The combination** — resistance training + sufficient protein + caloric deficit — produces the lean-with-defined-muscle look that people are usually after when they say "toned." Cardio is not the *cause* of that look — resistance training and the deficit are. (Cardio still helps widen the deficit, which is why a fat-loss program in this app prescribes it as support — it's just not what creates "tone.")
 4. **Schoenfeld 2017** and many others: muscle growth comes from resistance training. Cardio alone provides minimal resistance stimulus and won't build the muscle that makes the lean look "lean and toned" rather than "skinny."
 
 ## The corrected understanding
@@ -43,8 +43,8 @@ contradicts: []
 
 ## Application in this app
 - Copy must NOT frame cardio as the path to a "lean" / "toned" body. Frame it accurately: cardio is one tool to widen a caloric deficit; the lean look requires muscle (from lifting) + low body fat (from diet).
-- LLM nuance layer: when user says "I want to be lean and toned," reframe: "that comes from building muscle (lifting) plus losing fat (calorie deficit). Cardio is optional support."
-- Onboarding StepPrimaryGoal `fat_loss` blurb is correctly framed as "Protect strength in a deficit, add density" (R2 P9 framing). Keep.
+- LLM nuance layer: when user says "I want to be lean and toned," reframe: "that look comes from building muscle (lifting) plus losing fat (mostly diet). Cardio isn't what makes you 'toned' — but for a fat-loss goal we do program it to help with the deficit."
+- Onboarding StepPrimaryGoal `fat_loss` blurb frames lifting as muscle protection + cardio as deficit support, with diet as the actual driver — consistent with this entry.
 
 ## App surfaces where this myth used to appear
 - See [cardio-burns-fat-directly](cardio-burns-fat-directly.md) — same surface-area issues in CardioPage / CardioGoals.

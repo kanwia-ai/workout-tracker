@@ -42,13 +42,13 @@ contradicts: []
 - Some users prefer to lose fat with no cardio (eating slightly less); others prefer to eat slightly more and add cardio. Both work.
 
 ## Application in this app
-- Engine: `fat_loss` goal does NOT mandate cardio. `cardio_policy: 'optional'` is the correct default (per myth_sweep_planner.md H3, fixed in `interpretProfile.ts:98`).
-- LLM nuance layer: never tell a fat-loss user "you need cardio." If they ask, answer: "diet is the lever; cardio is one way to widen the deficit but it's optional."
-- CardioPage / CardioGoals: must frame cardio as "low-stress conditioning" or "supports the lifts" — not as "fat burning" / "for weight loss."
-- Deadline framing (`generatePlan.ts:240`): for 2-6 week deadlines, the rationale should say "diet is the fat-loss lever; cardio is optional" — not "pair with cardio."
+- Engine: this is a workout plan, so a `fat_loss` goal PRESCRIBES cardio as the training-side deficit support — `cardio_policy: 'separated'` schedules a standalone cardio day (`interpretProfile.ts`). Diet remains the primary fat-loss lever and lifting preserves muscle; cardio is the training the program includes to support the deficit, not an opt-in afterthought.
+- LLM nuance layer: frame cardio as prescribed support, with diet as the main driver — e.g. "diet drives the fat loss, your lifting protects the muscle underneath, and the cardio we've programmed supports the deficit." Do NOT claim cardio "burns fat" directly or that it's the main lever, and do NOT downgrade it to "optional, skip if you want" for a fat-loss goal.
+- CardioPage / CardioGoals: frame cardio as "supports the deficit / low-stress conditioning" — not as magic "fat burning."
+- Deadline framing (`generatePlan.ts`): cardio follows the goal's `cardio_policy` (prescribed for fat-loss goals); the deadline rationale should still name diet as the primary lever without calling cardio "optional" for fat-loss users.
 
 ## App surfaces where this myth used to appear
-- `supabase/functions/generate/prompts/generatePlan.ts:240` — "pair this with a calorie deficit / cardio" for body-comp deadlines (flagged; revised to "diet is the lever, cardio optional").
+- `supabase/functions/generate/prompts/generatePlan.ts` — body-comp deadline framing now names diet as the primary lever while cardio follows the goal's `cardio_policy` (prescribed for fat-loss goals). The "cardio burns the fat" framing is what's banned, not cardio itself.
 - `src/lib/planner/interpretProfile.ts:73` — `build_muscle` hardcoded `cardio_policy: 'integrated'` (flagged; should default to `'optional'`).
 - `src/components/CardioPage.tsx:117, 151-162` — "keep the engine running" / "your heart rate's waiting" framing primes cardio-as-the-point (revised to "low-stress conditioning, supports the lifts").
 - `src/components/CardioGoals.tsx:447-462` — "Goal Complete!" milestone celebrations for arbitrary minute totals.
