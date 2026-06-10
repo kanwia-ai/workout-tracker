@@ -20,7 +20,6 @@ import { StepWelcome } from './StepWelcome'
 import { StepName } from './StepName'
 import { StepPrimaryGoal } from './StepPrimaryGoal'
 import { StepMusclePriority } from './StepMusclePriority'
-import { StepSpecificTarget } from './StepSpecificTarget'
 import { StepSessions } from './StepSessions'
 import { StepDays } from './StepDays'
 import { StepActiveMinutes } from './StepActiveMinutes'
@@ -46,7 +45,6 @@ const STEPS = [
   'name',
   'primary_goal',
   'muscle_priority',
-  'specific_target',
   'sessions',
   'days',
   'active_minutes',
@@ -131,10 +129,6 @@ export function OnboardingFlow({ onComplete }: Props) {
       muscle_priority:
         draft.muscle_priority && draft.muscle_priority.length > 0
           ? draft.muscle_priority
-          : undefined,
-      specific_target:
-        draft.specific_target && draft.specific_target.length > 0
-          ? draft.specific_target
           : undefined,
       exercise_dislikes:
         draft.exercise_dislikes && draft.exercise_dislikes.length > 0
@@ -236,13 +230,6 @@ export function OnboardingFlow({ onComplete }: Props) {
                 advance({ muscle_priority })
               }
               onSkip={() => advance({ muscle_priority: [] })}
-            />
-          )}
-          {stepId === 'specific_target' && (
-            <StepSpecificTarget
-              value={draft.specific_target}
-              onNext={(specific_target: string) => advance({ specific_target })}
-              onSkip={() => advance({ specific_target: '' })}
             />
           )}
           {stepId === 'sessions' && (

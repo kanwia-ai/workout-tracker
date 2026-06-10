@@ -45,7 +45,6 @@ export const AnnotationResponseSchema = z.object({
   block: z
     .object({
       rationale: z.string().max(800).optional(),
-      specific_target_acknowledgment: z.string().max(600).optional(),
       cited_entries: z.array(z.string()).default([]),
     })
     .optional(),
@@ -187,9 +186,6 @@ export function graftAnnotations(
   }
   if (annotation.block) {
     next.rationale = annotation.block.rationale ?? next.rationale
-    next.specific_target_acknowledgment =
-      annotation.block.specific_target_acknowledgment ??
-      next.specific_target_acknowledgment
     if (annotation.block.cited_entries && annotation.block.cited_entries.length > 0) {
       next.cited_entries = annotation.block.cited_entries
     }

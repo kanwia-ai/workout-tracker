@@ -145,7 +145,6 @@ describe('graftAnnotations', () => {
     const annotation = AnnotationResponseSchema.parse({
       block: {
         rationale: 'Block-level coaching paragraph.',
-        specific_target_acknowledgment: 'Your deadline is tight; diet is the lever.',
         cited_entries: ['deadline-aware-programming'],
       },
       sessions: {
@@ -163,7 +162,6 @@ describe('graftAnnotations', () => {
     })
     const out = graftAnnotations(plan, annotation)
     expect(out.rationale).toBe('Block-level coaching paragraph.')
-    expect(out.specific_target_acknowledgment).toContain('diet is the lever')
     expect(out.cited_entries).toEqual(['deadline-aware-programming'])
     expect(out.sessions[0].rationale).toBe('why lower body today')
     expect(out.sessions[0].cited_entries).toEqual(['progressive-overload'])
@@ -275,7 +273,6 @@ describe('annotateWithNuance', () => {
     const annotation = {
       block: {
         rationale: 'block paragraph',
-        specific_target_acknowledgment: 'target ack',
         cited_entries: ['e1'],
       },
       sessions: {
@@ -301,7 +298,6 @@ describe('annotateWithNuance', () => {
       ]),
     })
     expect(result.rationale).toBe('block paragraph')
-    expect(result.specific_target_acknowledgment).toBe('target ack')
     expect(result.sessions[0].rationale).toBe('session line')
     expect(result.sessions[0].exercises[0].rationale).toBe('why squat for you')
   })

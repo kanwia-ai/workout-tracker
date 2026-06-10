@@ -31,7 +31,6 @@ const PROFILE = {
   muscle_priority: ['glutes', 'hamstrings'],
   aesthetic_preference: 'build_muscle',
   exercise_dislikes: ['burpees'],
-  specific_target: 'first pull-up',
 }
 
 describe('buildPlanPrompt (v3)', () => {
@@ -158,11 +157,10 @@ describe('buildPlanPrompt (v3)', () => {
     expect(prompt).toContain('"FULL BODY · POSTERIOR CHAIN"')
   })
 
-  it('includes the personalization overlay (muscle_priority, aesthetic_preference, exercise_dislikes, specific_target)', () => {
+  it('includes the personalization overlay (muscle_priority, aesthetic_preference, exercise_dislikes)', () => {
     expect(prompt).toMatch(/muscle_priority/)
     expect(prompt).toMatch(/aesthetic_preference/)
     expect(prompt).toMatch(/exercise_dislikes[\s\S]*?EXCLUDE entirely/)
-    expect(prompt).toMatch(/specific_target/)
   })
 
   it('embeds the user profile as JSON and the exercise pool', () => {
@@ -277,29 +275,6 @@ describe('buildPlanPrompt (v3)', () => {
     expect(p).toMatch(/training_age_months and injury history as the actual gating signals/)
     // The low-impact substitution does remain for 60+.
     expect(p).toMatch(/replace plyometric or jumping movements with a low-impact equivalent/)
-  })
-
-  // ── Deadline awareness (rule 13 / specific_target) ───────────────────────
-  it('with specific_target containing a deadline, contains deadline-awareness language and a today date', () => {
-    const p = buildPlanPrompt({
-      profile: { ...PROFILE, specific_target: 'lose 1 dress size by end of May' },
-      exercisePool: POOL,
-      weeks: 6,
-      today: '2026-05-09',
-    })
-    expect(p).toMatch(/DEADLINE AWARENESS/)
-    expect(p).toContain("today's date is 2026-05-09")
-    expect(p).toMatch(/≥ 12 weeks/)
-    expect(p).toMatch(/6-12 weeks/)
-    expect(p).toMatch(/2-6 weeks/)
-    expect(p).toMatch(/< 2 weeks/)
-    expect(p).toMatch(/Body-composition targets.*are weight\/shape goals, not strength goals/)
-  })
-
-  it('falls back to runtime current date when `today` is omitted', () => {
-    const p = buildPlanPrompt({ profile: PROFILE, exercisePool: POOL, weeks: 6 })
-    // ISO date pattern YYYY-MM-DD appears after "today's date is "
-    expect(p).toMatch(/today's date is \d{4}-\d{2}-\d{2}/)
   })
 
   // ── Height (reserved) ────────────────────────────────────────────────────

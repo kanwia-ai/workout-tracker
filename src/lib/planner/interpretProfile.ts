@@ -415,10 +415,6 @@ function detectUnhandled(profile: UserProgramProfile): string[] {
       unhandled.push(`injury: ${inj.note ?? 'unspecified'} (other)`)
     }
   }
-  if (profile.specific_target && profile.specific_target.length > 0) {
-    // specific_target is free-text; leave for an LLM pass when/if one runs.
-    unhandled.push(`specific_target: ${profile.specific_target}`)
-  }
   return unhandled
 }
 

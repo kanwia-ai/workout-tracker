@@ -387,7 +387,6 @@ export function HomeScreen({
           <BlockRationaleCard
             mesocycleId={plan.id}
             rationale={plan.rationale}
-            specificTarget={plan.specific_target_acknowledgment}
           />
         )}
 
@@ -1291,11 +1290,9 @@ function setBlockAck(mesocycleId: string): void {
 function BlockRationaleCard({
   mesocycleId,
   rationale,
-  specificTarget,
 }: {
   mesocycleId: string
   rationale: string
-  specificTarget?: string
 }) {
   const [acked, setAcked] = useState<boolean>(() => loadBlockAck(mesocycleId))
   if (acked) return null
@@ -1336,21 +1333,6 @@ function BlockRationaleCard({
       >
         {rationale}
       </div>
-      {specificTarget && (
-        <div
-          style={{
-            fontSize: 13,
-            color: 'var(--lumo-text-sec)',
-            fontFamily: "'Fraunces', Georgia, serif",
-            fontStyle: 'italic',
-            lineHeight: 1.5,
-            paddingTop: 6,
-            borderTop: '1px solid var(--lumo-border)',
-          }}
-        >
-          {specificTarget}
-        </div>
-      )}
       <button
         type="button"
         onClick={() => {

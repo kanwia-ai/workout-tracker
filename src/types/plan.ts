@@ -107,16 +107,7 @@ export const MesocycleSchema = z.object({
    */
   rationale: z.string().max(800).optional(),
   /**
-   * Specific-target acknowledgment — the LLM's explicit response to the
-   * user's `profile.specific_target` field (e.g. "lose 1 dress size by
-   * June"). Names the actual lever (diet for body comp; programming for
-   * strength) and frames the deadline realistically. Surfaced on the
-   * onboarding StepConfirm completion screen + Settings detail view.
-   */
-  specific_target_acknowledgment: z.string().max(600).optional(),
-  /**
-   * Ids of KB entries the LLM cited when authoring the block-level
-   * rationale + specific-target acknowledgment.
+   * Ids of KB entries the LLM cited when authoring the block-level rationale.
    */
   cited_entries: z.array(z.string()).optional(),
 })

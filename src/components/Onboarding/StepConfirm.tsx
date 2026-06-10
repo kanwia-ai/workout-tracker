@@ -14,20 +14,6 @@ interface Props {
   draft: Partial<UserProgramProfile>
   onNext: () => void
   cheek?: CheekLevel
-  /**
-   * Optional — after the user has tapped Generate and the LLM nuance layer
-   * produced a `specific_target_acknowledgment` paragraph, the OnboardingFlow
-   * can pass it back into this screen as a callback-rendered confirmation
-   * before transitioning to HomeScreen. When unset (engine-only flow, or
-   * before the LLM has run), the rationale-acknowledgment panel doesn't
-   * render and the screen behaves exactly as it did pre-nuance-layer.
-   *
-   * Today the same paragraph also surfaces via BlockRationaleCard on
-   * HomeScreen's first view of the new block — this prop is the
-   * onboarding-flow integration hook for parents that want to gate
-   * "Save and generate" → home transition on the user reading it.
-   */
-  targetAcknowledgment?: string
 }
 
 const PRIMARY_GOAL_LABELS: Record<PrimaryGoal, string> = {
@@ -104,7 +90,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK, targetAcknowledgment }: Props) {
+export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK }: Props) {
   const name = draft.first_name?.trim() || 'friend'
   const bubble = useMemo(
     () => pickCopy('onboardingConfirm', cheek, undefined, { name }),
@@ -164,9 +150,6 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK, targetAcknow
         }}
       >
         <Row label="Goal">{goalLabel}</Row>
-        {draft.specific_target && (
-          <Row label="Target">{draft.specific_target}</Row>
-        )}
         <Row label="Priority muscles">{priorityText}</Row>
         <Row label="Sessions / week">{draft.sessions_per_week ?? '—'}</Row>
         <Row label="Active lifting minutes">
@@ -224,35 +207,6 @@ export function StepConfirm({ draft, onNext, cheek = DEFAULT_CHEEK, targetAcknow
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {targetAcknowledgment && (
-        <div
-          data-testid="step-confirm-target-acknowledgment"
-          className="p-4 rounded-2xl mb-5"
-          style={{
-            background: 'var(--lumo-raised)',
-            border: '2px solid var(--accent-plum)',
-          }}
-        >
-          <div
-            className="text-xs uppercase tracking-wide font-bold mb-2"
-            style={{ color: 'var(--accent-plum)' }}
-          >
-            about your target
-          </div>
-          <div
-            style={{
-              fontFamily: "'Fraunces', Georgia, serif",
-              fontStyle: 'italic',
-              fontSize: 14,
-              lineHeight: 1.5,
-              color: 'var(--lumo-text)',
-            }}
-          >
-            {targetAcknowledgment}
-          </div>
         </div>
       )}
 

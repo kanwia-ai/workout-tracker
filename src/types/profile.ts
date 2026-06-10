@@ -112,8 +112,6 @@ export const UserProgramProfileSchema = z.object({
   muscle_priority: z.array(MuscleGroup).optional(),
   /** What "good" looks like — weight hint for Pass 3. */
   aesthetic_preference: AestheticPreference.optional(),
-  /** Free-text target, e.g. "first pull-up" or "glutes by June". */
-  specific_target: z.string().max(200).optional(),
   /** Multi-select of things the user wants to avoid. */
   exercise_dislikes: z.array(ExerciseDislike).optional(),
   /** Show auto-playing exercise demos? */

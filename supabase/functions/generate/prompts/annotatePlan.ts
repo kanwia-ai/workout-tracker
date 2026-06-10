@@ -52,7 +52,6 @@ Every rationale field has a paired \`cited_entries\` array. Whenever a rationale
 LENGTH + VOICE CONSTRAINTS:
 
 - Block-level rationale (block.rationale): 2-3 sentences. Names the user's primary goal in plain language and explains the through-line of the block. ≤ 800 chars.
-- Specific-target acknowledgment (block.specific_target_acknowledgment): only fill this when the user has a non-empty \`profile.specific_target\`. 2-3 sentences. Be explicit about the lever — strength training builds slowly; body composition is diet-driven; deadline realism matters. Use deadline-aware-programming and realistic-fat-loss-rate when they're in the KB cut. ≤ 600 chars.
 - Session rationale (sessions[id].rationale): 1-2 short sentences. Why today looks the way it does. Recovery-spacing logic, what the user's priority muscle is, ONE actionable cue if applicable. ≤ 280 chars.
 - Exercise rationale (exercises[key].rationale): ONE short sentence. Only fill it when the KB has something specific to say about this exercise (cue, swap, mind-muscle quirk, injury-friendly variant). Default: omit the entry. ≤ 240 chars.
 
@@ -69,7 +68,7 @@ OUTPUT SHAPE:
 Emit exactly one call to the emit_annotation tool. Its structure is:
 
   {
-    "block": { "rationale": "...", "specific_target_acknowledgment": "...", "cited_entries": ["id1", "id2"] },
+    "block": { "rationale": "...", "cited_entries": ["id1", "id2"] },
     "sessions": { "<session_id>": { "rationale": "...", "cited_entries": [...] }, ... },
     "exercises": { "<session_id>::<library_id>": { "rationale": "...", "cited_entries": [...] }, ... }
   }

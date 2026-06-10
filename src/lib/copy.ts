@@ -86,10 +86,6 @@ type CopyShape = {
   /** Easter egg: tapping a completed footprint. 4+ per tier. */
   readonly onboardingFootprintTap: readonly string[];
   // ── Per-step bubble pools (added 2026-04) ──────────────────────────────
-  /** Aesthetic-step bubble. 3+ per tier. */
-  readonly onboardingAesthetic: readonly string[];
-  /** Specific-target free-text step. 3+ per tier. */
-  readonly onboardingSpecificTarget: readonly string[];
   /** Cadence step — sessions/week picker. 3+ per tier. */
   readonly onboardingSessions: readonly string[];
   /** Active-minutes step — lifting duration. 3+ per tier. */
@@ -632,16 +628,6 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       'done. keep going.',
       'logged.',
     ],
-    onboardingAesthetic: [
-      'pick a look.',
-      'what shape are we building.',
-      'optional. skip fine.',
-    ],
-    onboardingSpecificTarget: [
-      'any concrete target.',
-      'one line goal. optional.',
-      'skip if none.',
-    ],
     onboardingSessions: [
       'how many days.',
       'weekly cadence.',
@@ -931,18 +917,6 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "done step. keep going.",
       "nice, you cleared that.",
       'logged already, keep rolling.',
-    ],
-    onboardingAesthetic: [
-      "what do you want the mirror to show?",
-      'pick a shape — we can tune later.',
-      "what's the look you're after?",
-      'optional. skip if you just want results.',
-    ],
-    onboardingSpecificTarget: [
-      'any one specific goal?',
-      'concrete target, optional.',
-      'one line, if there is one.',
-      'skip if nothing comes to mind.',
     ],
     onboardingSessions: [
       'how many sessions a week?',
@@ -1318,19 +1292,6 @@ export const COPY: Readonly<Record<CheekLevel, CopyShape>> = {
       "checked off, menace.",
       "you already told me that one.",
       'already in the bank, love.',
-    ],
-    onboardingAesthetic: [
-      "lock it in — what do you want the mirror to show?",
-      'what shape are we building today?',
-      "pick your vibe. you can tune later.",
-      "what do you want to look like, for real.",
-      'choose a look, no judgment.',
-    ],
-    onboardingSpecificTarget: [
-      'got one goal you’re gunning for? tell me.',
-      'one concrete target. optional but fun.',
-      'any specific thing? a pull-up? glutes by june?',
-      'name a target. totally skippable.',
     ],
     onboardingSessions: [
       'how many days a week, honestly?',

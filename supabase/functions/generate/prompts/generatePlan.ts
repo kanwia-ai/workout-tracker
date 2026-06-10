@@ -50,13 +50,6 @@ export interface BuildPlanPromptInput {
   profile: unknown
   exercisePool: ExercisePoolEntry[]
   weeks: number
-  /**
-   * ISO date string (YYYY-MM-DD) representing "today" — used by the deadline-
-   * awareness logic in the personalization overlay (rule 13, specific_target).
-   * Optional; defaults to the runtime current date so legacy callers in
-   * supabase/functions/generate/index.ts don't break.
-   */
-  today?: string
 }
 
 // WHY (rule 5.3, "toned" / "lean" string-matches removed): 5-30 rep ranges all
@@ -68,7 +61,6 @@ export interface BuildPlanPromptInput {
 // rep prescription. Its rep range follows the user's actual goal.
 export function buildPlanPrompt(input: BuildPlanPromptInput): string {
   const { profile, exercisePool, weeks } = input
-  const today = input.today ?? new Date().toISOString().slice(0, 10)
   return `You are a board-certified sports physical therapist and ACSM-CPT strength coach, calibrated to Mike Israetel's Renaissance Periodization volume/intensity framework. You build plans that a working PT would sign off on: every session has a named muscle focus, a recovery-spacing rationale, explicit warmup ramp prescriptions, and a clear split logic. You do NOT output generic lifter-bro labels or hand-waving "full body" placeholder sessions.
 
 ═══ 0. EXERCISE POOL IS THE SOURCE OF TRUTH (HALLUCINATION GUARD) ═══
@@ -293,7 +285,7 @@ If profile.equipment = ["bands_only"] → no barbell/cable/machine. If "bodyweig
 
 ═══ 13. PERSONALIZATION OVERLAY ═══
 
-Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.specific_target, profile.active_minutes, profile.posture_notes, profile.age, profile.weight_kg, profile.height_cm:
+Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preference, profile.exercise_dislikes, profile.active_minutes, profile.posture_notes, profile.age, profile.weight_kg, profile.height_cm:
 
 • primary_goals (ordered list of 1-2): dominant first. When both "get_stronger" AND "build_muscle" appear, treat as 60% hypertrophy / 40% strength — 3-4 sets of 6-10 reps on main compounds at RIR 1-2, plus 3-4 sets of 8-12 on accessories. When "lean_and_strong" is combined with anything, bias toward compound work + mixed rep ranges. When "mobility" appears as a second goal, pad warmups and insert 1 mobility/rehab exercise per session. When only one goal is present, apply its rep-range bucket as spec'd in rule 5.3.
 • muscle_priority (ordered list): prioritize these muscles. Give them more sets (toward MAV, not MEV), better position early in the session, and the compound lift slot when relevant.
@@ -303,14 +295,6 @@ Read profile.primary_goals, profile.muscle_priority, profile.aesthetic_preferenc
      "balanced"         → balanced default; rep ranges per goal rules above.
      "none"             → ignore
 • exercise_dislikes (multi-select): EXCLUDE entirely. Never emit any exercise matching a dislike tag.
-• specific_target (free text, e.g. "first pull-up", "lose 1 dress size by end of May"): bias selection toward progressive loading of that goal — e.g. pull-up progressions in every upper session.
-
-  DEADLINE AWARENESS: today's date is ${today}. If specific_target contains a date, month name, or "by [time]" pattern, compute approximate weeks until that deadline from today and apply:
-       ≥ 12 weeks  → no urgency; standard progression as spec'd in rules 7-8.
-       6-12 weeks  → bias toward compounds + slightly higher volume on muscle_priority groups (push toward MAV, not MEV).
-       2-6 weeks   → emphasize compound full-body sessions. If the user has a body-composition deadline (e.g. "lose 1 dress size by June"), explicitly acknowledge in the rationale that the program builds and protects muscle but the body-comp outcome is diet-driven. Don't promise the program will deliver the visual goal — name the actual lever (kitchen). Cardio follows the goal's cardio_policy (prescribed for fat-loss goals, opt-in for hypertrophy/strength) — the deadline itself doesn't add or remove it.
-       < 2 weeks   → in the per-session rationale, surface ONCE per mesocycle: "this is a tight timeline — strength training builds slowly; pair with diet for any weight-loss goal."
-  Body-composition targets ("dress size", "lose X lbs", "bikini body") are weight/shape goals, not strength goals — surface the diet-pairing note in rationale and do NOT promise the program alone will deliver it. Cardio follows the goal's cardio_policy (prescribed for fat-loss goals, opt-in otherwise) — don't override it here.
 
 • want_demo_videos: no effect on generation (UI concern only).
 • active_minutes (int, optional): ACTIVE LIFTING MINUTES — the user's work time only, rest between sets NOT counted. When present, use this (NOT time_budget_min) to cap set counts: assume ~60-90 seconds of actual work per set (reps × tempo), and set rest per rule 5.4. Example: active_minutes=45 on a pull day → ~25-30 working sets max across the session. If only time_budget_min is present, subtract ~30% to estimate active work time.

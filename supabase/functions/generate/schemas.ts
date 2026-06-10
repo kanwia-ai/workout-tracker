@@ -489,10 +489,9 @@ const annotateBlockSchema = {
   type: 'object',
   properties: {
     rationale: { type: 'string', maxLength: 800 },
-    specific_target_acknowledgment: { type: 'string', maxLength: 600 },
     cited_entries: { type: 'array', items: { type: 'string' } },
   },
-  propertyOrdering: ['rationale', 'specific_target_acknowledgment', 'cited_entries'],
+  propertyOrdering: ['rationale', 'cited_entries'],
 } as const
 
 const annotateSessionSchema = {

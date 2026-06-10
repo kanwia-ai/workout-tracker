@@ -29,10 +29,6 @@ describe('OnboardingFlow', () => {
     expectStep('muscle_priority')
     fireEvent.click(screen.getByTestId('step-skip'))
 
-    // specific target — skip
-    expectStep('specific_target')
-    fireEvent.click(screen.getByTestId('step-skip'))
-
     // sessions — pick 3
     expectStep('sessions')
     fireEvent.click(screen.getByRole('radio', { name: '3' }))
@@ -123,9 +119,10 @@ describe('OnboardingFlow', () => {
   it('footprint progress bar shows total steps and current index', () => {
     render(<OnboardingFlow onComplete={() => undefined} />)
     const bar = screen.getByRole('progressbar')
-    // 15 steps: removed the redundant "aesthetic" emphasis step (it just
-    // re-asked the primary goal). Day-picker sits between sessions and active_minutes.
-    expect(bar).toHaveAttribute('aria-valuemax', '15')
+    // 14 steps: removed the redundant "aesthetic" emphasis step and the
+    // optional "anything specific?" free-text step. Day-picker sits between
+    // sessions and active_minutes.
+    expect(bar).toHaveAttribute('aria-valuemax', '14')
     expect(bar).toHaveAttribute('aria-valuenow', '1')
   })
 
@@ -146,12 +143,6 @@ describe('OnboardingFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Glutes/i }))
     fireEvent.click(screen.getByRole('button', { name: /^Back$/i }))
     fireEvent.click(screen.getByTestId('step-muscle-priority-next'))
-
-    // specific target
-    fireEvent.change(screen.getByLabelText(/specific target/i), {
-      target: { value: 'first pull-up' },
-    })
-    fireEvent.click(screen.getByTestId('step-specific-target-next'))
 
     // sessions
     fireEvent.click(screen.getByRole('radio', { name: '4' }))
@@ -195,14 +186,12 @@ describe('OnboardingFlow', () => {
     expectStep('confirm')
     const confirmPanel = screen.getByTestId('onboarding-step-confirm')
     expect(within(confirmPanel).getByText(/strong \+ lean/i)).toBeInTheDocument()
-    expect(within(confirmPanel).getByText(/first pull-up/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Save and generate/i }))
 
     expect(onComplete).toHaveBeenCalled()
     const [profile] = onComplete.mock.calls[0]
     expect(profile.primary_goal).toBe('lean_and_strong')
     expect(profile.muscle_priority).toEqual(['glutes', 'back'])
-    expect(profile.specific_target).toBe('first pull-up')
     expect(profile.weight_kg).toBe(65)
     expect(profile.exercise_dislikes).toEqual(['burpees'])
     // Default fill for 4 sessions = Mon/Tue/Thu/Fri.

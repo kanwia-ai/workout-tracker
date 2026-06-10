@@ -67,7 +67,6 @@ describe('UserProgramProfileSchema', () => {
       primary_goal: 'build_muscle',
       muscle_priority: ['glutes', 'back'],
       aesthetic_preference: 'get_stronger',
-      specific_target: 'first pull-up',
       exercise_dislikes: ['burpees', 'running'],
       want_demo_videos: true,
       age: 32,
@@ -107,20 +106,6 @@ describe('UserProgramProfileSchema', () => {
     expect(bad.success).toBe(false)
   })
 
-  it('rejects specific_target over 200 chars', () => {
-    const bad = UserProgramProfileSchema.safeParse({
-      goal: 'general_fitness',
-      sessions_per_week: 3,
-      training_age_months: 0,
-      equipment: ['bodyweight_only'],
-      injuries: [],
-      time_budget_min: 45,
-      sex: 'prefer_not_to_say',
-      posture_notes: '',
-      specific_target: 'x'.repeat(201),
-    })
-    expect(bad.success).toBe(false)
-  })
 })
 
 describe('primaryGoalToLegacyGoal', () => {
