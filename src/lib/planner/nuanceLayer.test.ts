@@ -3,6 +3,7 @@ import {
   AnnotationResponseSchema,
   annotateWithNuance,
   buildAnnotationContext,
+  clampRationale,
   graftAnnotations,
 } from './nuanceLayer'
 import * as generateModule from '../generate'
@@ -356,5 +357,63 @@ describe('annotateWithNuance', () => {
     expect(receivedPayload.recentCheckins).toHaveLength(12)
     expect(receivedPayload.recentCheckins[0].session_id).toBe('s-8')
     expect(receivedPayload.recentCheckins[11].session_id).toBe('s-19')
+  })
+})
+
+describe('clampRationale + over-length tolerance', () => {
+  // Regression: 2026-06-10 — the live edge returned a valid annotation whose
+  // session rationales ran a few chars past the 280 cap. Zod max() rejected
+  // the ENTIRE response and the catch silently shipped the unannotated plan.
+  // The LLM layer had never produced user-visible output because of this.
+  it('passes short strings through untouched', () => {
+    expect(clampRationale('short and sweet.', 280)).toBe('short and sweet.')
+  })
+
+  it('truncates at a sentence boundary when one exists past the midpoint', () => {
+    const s = 'a sentence that is pretty long here. tail words continue past the cap'
+    const out = clampRationale(s, 40)
+    expect(out).toBe('a sentence that is pretty long here.')
+    expect(out.length).toBeLessThanOrEqual(40)
+  })
+
+  it('prefers a word boundary over a too-early sentence boundary', () => {
+    const s = 'short. but the second sentence is the bulk of the content and runs long'
+    const out = clampRationale(s, 60)
+    // The only sentence boundary sits before the midpoint — cutting there
+    // would discard most of the text, so the clamp keeps whole words instead.
+    expect(out.length).toBeLessThanOrEqual(60)
+    expect(out.length).toBeGreaterThan(30)
+    expect(s.startsWith(out)).toBe(true)
+  })
+
+  it('falls back to a word boundary when no sentence boundary fits', () => {
+    const s = 'one enormous unbroken clause that just keeps going and going without any period at all in range'
+    const out = clampRationale(s, 50)
+    expect(out.length).toBeLessThanOrEqual(50)
+    expect(out.endsWith(' ')).toBe(false)
+    expect(s.startsWith(out)).toBe(true)
+  })
+
+  it('AnnotationResponseSchema clamps over-long rationales instead of rejecting', () => {
+    const long = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ')
+    const result = AnnotationResponseSchema.safeParse({
+      block: { rationale: long(200), cited_entries: ['e1'] },
+      sessions: {
+        'session-wk1-s1': { rationale: long(80), cited_entries: [] },
+      },
+      exercises: {
+        'session-wk1-s1::fedb:rdl': { rationale: long(70), cited_entries: [] },
+      },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.block!.rationale!.length).toBeLessThanOrEqual(800)
+      expect(
+        result.data.sessions['session-wk1-s1']!.rationale!.length,
+      ).toBeLessThanOrEqual(280)
+      expect(
+        result.data.exercises['session-wk1-s1::fedb:rdl']!.rationale!.length,
+      ).toBeLessThanOrEqual(240)
+    }
   })
 })

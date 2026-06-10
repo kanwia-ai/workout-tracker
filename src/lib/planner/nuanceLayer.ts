@@ -41,10 +41,37 @@ import type { KBEntry } from '../knowledgeBase/types'
 // The compound exercise key is necessary because the same library_id can
 // appear in multiple sessions (e.g., barbell squat on both lower-A and
 // lower-B days) and the rationale may be different in each context.
+/**
+ * Truncate an over-long LLM string to `max` chars at the last sentence
+ * boundary (falling back to word boundary, then hard cut). LLMs can't count
+ * characters — a rationale a few chars over the cap must NOT void the whole
+ * annotation (that bug silently disabled this layer: the model's output
+ * validated 200 on the edge, then died here on a Zod max()).
+ */
+export function clampRationale(s: string, max: number): string {
+  if (s.length <= max) return s
+  const slice = s.slice(0, max)
+  const sentenceEnd = Math.max(
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('? '),
+  )
+  if (sentenceEnd > max * 0.5) return slice.slice(0, sentenceEnd + 1).trimEnd()
+  const wordEnd = slice.lastIndexOf(' ')
+  if (wordEnd > max * 0.5) return slice.slice(0, wordEnd).trimEnd()
+  return slice.trimEnd()
+}
+
+const clampedString = (max: number) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' ? clampRationale(v, max) : v),
+    z.string().max(max),
+  )
+
 export const AnnotationResponseSchema = z.object({
   block: z
     .object({
-      rationale: z.string().max(800).optional(),
+      rationale: clampedString(800).optional(),
       cited_entries: z.array(z.string()).default([]),
     })
     .optional(),
@@ -52,7 +79,7 @@ export const AnnotationResponseSchema = z.object({
     .record(
       z.string(),
       z.object({
-        rationale: z.string().max(280).optional(),
+        rationale: clampedString(280).optional(),
         cited_entries: z.array(z.string()).default([]),
       }),
     )
@@ -61,7 +88,7 @@ export const AnnotationResponseSchema = z.object({
     .record(
       z.string(),
       z.object({
-        rationale: z.string().max(240).optional(),
+        rationale: clampedString(240).optional(),
         cited_entries: z.array(z.string()).default([]),
       }),
     )

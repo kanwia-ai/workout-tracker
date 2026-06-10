@@ -128,6 +128,13 @@ interface LocalMesocycle {
   sessions_json: string             // JSON-stringified PlannedSession[]
   profile_snapshot_json: string     // JSON-stringified UserProgramProfile
   synced: boolean
+  /**
+   * Block-level coach rationale + KB citation ids from the nuance layer.
+   * Unindexed (Dexie persists undeclared props, but typing them keeps the
+   * put/load sites honest). Optional — pre-nuance rows simply lack them.
+   */
+  rationale?: string
+  cited_entries_json?: string       // JSON-stringified string[]
 }
 
 // Per-session routine (warmup, cool-down, cardio). Generated on demand via the

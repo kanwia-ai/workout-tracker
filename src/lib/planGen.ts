@@ -168,6 +168,10 @@ export async function generatePlanLocal(
       sessions_json: JSON.stringify(annotated.sessions),
       profile_snapshot_json: JSON.stringify(profile),
       synced: false,
+      ...(annotated.rationale ? { rationale: annotated.rationale } : {}),
+      ...(annotated.cited_entries
+        ? { cited_entries_json: JSON.stringify(annotated.cited_entries) }
+        : {}),
     })
   } catch (err) {
     console.error('generatePlanLocal: Dexie put failed', { id: annotated.id, err })
@@ -240,6 +244,10 @@ export async function generatePlanFromDirectives(
       sessions_json: JSON.stringify(annotated.sessions),
       profile_snapshot_json: JSON.stringify(profile),
       synced: false,
+      ...(annotated.rationale ? { rationale: annotated.rationale } : {}),
+      ...(annotated.cited_entries
+        ? { cited_entries_json: JSON.stringify(annotated.cited_entries) }
+        : {}),
     })
   } catch (err) {
     console.error('generatePlanFromDirectives: Dexie put failed', { id: annotated.id, err })
@@ -300,6 +308,10 @@ export async function generatePlan(
       sessions_json: JSON.stringify(meso.sessions),
       profile_snapshot_json: JSON.stringify(profile),
       synced: false,
+      ...(meso.rationale ? { rationale: meso.rationale } : {}),
+      ...(meso.cited_entries
+        ? { cited_entries_json: JSON.stringify(meso.cited_entries) }
+        : {}),
     })
   } catch (err) {
     console.error('generatePlan: Dexie put failed', { id: meso.id, err })
@@ -329,6 +341,10 @@ export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
     length_weeks: row.length_weeks,
     sessions: JSON.parse(row.sessions_json),
     profile_snapshot: JSON.parse(row.profile_snapshot_json),
+    ...(row.rationale ? { rationale: row.rationale } : {}),
+    ...(row.cited_entries_json
+      ? { cited_entries: JSON.parse(row.cited_entries_json) }
+      : {}),
   }
 
   // Back-fill missing fields for pre-2P.1 plans. Without this,
@@ -387,12 +403,15 @@ export async function loadMesocycle(id: string): Promise<Mesocycle | null> {
  * the user has no plan yet (first-time user, or they've never onboarded).
  */
 export async function loadLatestMesocycleForUser(userId: string): Promise<Mesocycle | null> {
-  const row = await db.mesocycles
+  // NOTE: .reverse() before .sortBy() makes Dexie sort DESCENDING — pairing
+  // it with rows[length - 1] returned the user's OLDEST plan (every
+  // regenerate was silently ignored on reload). Plain ascending sort, take
+  // the last row.
+  const rows = await db.mesocycles
     .where('user_id')
     .equals(userId)
-    .reverse()
     .sortBy('generated_at')
-  const latest = row[row.length - 1]
+  const latest = rows[rows.length - 1]
   if (!latest) return null
   return loadMesocycle(latest.id)
 }

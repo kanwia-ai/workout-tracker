@@ -56,9 +56,10 @@ const LLM_OPS = new Set([
   'annotate_plan',
 ])
 
-// Claude model ID. Opus 4.7 is the current highest-quality model. If cost
-// becomes a concern, swap to `claude-sonnet-4-7` (same API surface).
-const CLAUDE_MODEL = 'claude-opus-4-7'
+// Claude model ID. Opus 4.8 is the current highest-quality model (same API
+// surface and pricing as 4.7). If cost becomes a concern, swap to
+// `claude-sonnet-4-6` (same API surface).
+const CLAUDE_MODEL = 'claude-opus-4-8'
 
 // Narrow enrichment model — Sonnet is plenty for mapping a structured
 // Gemini extract onto rehab-protocol compatibility + one progression /
@@ -1007,7 +1008,42 @@ ${profile ? JSON.stringify(profile, null, 2) : '(no profile provided)'}`
           // citations, no creative planning. Opus would burn cost.
           model: CLAUDE_MODEL_SONNET,
         })
-        return new Response(text, { headers: JSON_HEADERS })
+        // Clamp rationale strings to the schema maxima before returning.
+        // LLMs can't count characters; a rationale a few chars over the cap
+        // must not void the whole annotation on the client's Zod parse.
+        const clamp = (s: string, max: number): string => {
+          if (s.length <= max) return s
+          const slice = s.slice(0, max)
+          const sentence = Math.max(
+            slice.lastIndexOf('. '),
+            slice.lastIndexOf('! '),
+            slice.lastIndexOf('? '),
+          )
+          if (sentence > max * 0.5) return slice.slice(0, sentence + 1).trimEnd()
+          const word = slice.lastIndexOf(' ')
+          return (word > max * 0.5 ? slice.slice(0, word) : slice).trimEnd()
+        }
+        let out = text
+        try {
+          const parsed = JSON.parse(text) as {
+            block?: { rationale?: string }
+            sessions?: Record<string, { rationale?: string }>
+            exercises?: Record<string, { rationale?: string }>
+          }
+          if (parsed.block?.rationale) {
+            parsed.block.rationale = clamp(parsed.block.rationale, 800)
+          }
+          for (const s of Object.values(parsed.sessions ?? {})) {
+            if (s?.rationale) s.rationale = clamp(s.rationale, 280)
+          }
+          for (const e of Object.values(parsed.exercises ?? {})) {
+            if (e?.rationale) e.rationale = clamp(e.rationale, 240)
+          }
+          out = JSON.stringify(parsed)
+        } catch {
+          // Non-JSON text falls through unchanged; the client surfaces it.
+        }
+        return new Response(out, { headers: JSON_HEADERS })
       } catch (err) {
         return new Response(JSON.stringify({ error: friendlyAnthropicError(err) }), {
           status: 502,
