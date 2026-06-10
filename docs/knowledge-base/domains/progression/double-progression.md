@@ -17,7 +17,7 @@ citations:
   - "Helms ER, Morgan A, Valdez A. The Muscle and Strength Pyramid: Training. 2nd ed. 2019."
   - "American College of Sports Medicine. Position Stand: Progression Models in Resistance Training for Healthy Adults. Med Sci Sports Exerc. 2009;41(3):687-708. PMID: 19204579."
 related: [progressive-overload-variables, bump-vs-hold-vs-drop-rules, autoprogress-by-training-age, rir-effort-signals]
-contradicts: [myth-overload-equals-add-weight, myth-linear-progression-forever]
+contradicts: []
 ---
 
 # Double progression — climb reps inside the range, then bump load

@@ -16,8 +16,8 @@ citations:
   - "Wolf M, Androulakis-Korakakis P, Fisher J, Schoenfeld BJ, Steele J. Partial vs full range of motion resistance training: A systematic review and meta-analysis. J Strength Cond Res. 2023. PMID: 37889928."
   - "Pedrosa GF, Lima FV, Schoenfeld BJ, et al. Partial range of motion training elicits favorable improvements in muscular adaptations when performed at long muscle lengths. Eur J Sport Sci. 2022;22(8):1250-1260. PMID: 33977835."
   - "Maeo S, Wu Y, Huang M, et al. Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead vs. neutral arm position. Eur J Sport Sci. 2023;23(7):1240-1250."
-related: [hypertrophy-rep-ranges, exercise-selection, session-structure-ordering]
-contradicts: [myth-partial-reps-cheating, myth-half-reps-build-mass-faster]
+related: [hypertrophy-rep-ranges, exercise-selection-compound-vs-isolation, session-structure-ordering]
+contradicts: []
 ---
 
 # Full range of motion is (mostly) superior for hypertrophy

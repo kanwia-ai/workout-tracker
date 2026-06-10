@@ -19,7 +19,7 @@ citations:
   - "Stronger by Science. Reps in Reserve: Overshooting and Undershooting. https://www.strongerbyscience.com/reps-in-reserve/"
   - "Helms ER, Byrnes RK, Cooke DM, et al. RPE vs. Percentage 1RM Loading in Periodized Programs Matched for Sets and Repetitions. Front Physiol. 2018;9:247."
 related: [proximity-to-failure-rir, hypertrophy-rep-ranges, strength-rep-ranges, load-intensity-zones]
-contradicts: [myth-everyone-can-feel-rir, myth-rir-objective-measurement]
+contradicts: []
 ---
 
 # RIR-based autoregulation accuracy by training age

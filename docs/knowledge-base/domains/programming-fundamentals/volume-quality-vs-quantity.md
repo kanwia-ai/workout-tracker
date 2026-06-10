@@ -17,7 +17,7 @@ citations:
   - "Israetel M, Hoffmann J, Smith C. Scientific Principles of Hypertrophy Training. Renaissance Periodization, 2017."
   - "Helms ER, Morgan A, Valdez A. The Muscle & Strength Pyramid: Training, 2nd ed. 2019."
 related: [proximity-to-failure-rir, set-volume-landmarks, training-frequency, session-structure-ordering]
-contradicts: [myth-more-sets-always-better, myth-junk-volume-still-counts, myth-three-sets-of-ten]
+contradicts: [more-volume-always-better]
 ---
 
 # Volume quality — effective sets vs junk volume

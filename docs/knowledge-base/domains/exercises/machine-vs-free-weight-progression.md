@@ -19,7 +19,7 @@ citations:
   - "Calatayud J, Vinstrup J, Jakobsen MD, et al. Importance of mind-muscle connection during progressive resistance training. Eur J Appl Physiol. 2016;116(3):527-533."
   - "Trainer conversation, docs/research/02-coaching-philosophy.md §7 (machine version first to teach the body the pattern)."
 related: [compound-vs-isolation-taxonomy, exercise-selection-compound-vs-isolation, hard-to-feel-exercises-catalog, lat-pulldown-cueing, squat-variants-knee-friendly]
-contradicts: [myth-machines-are-inferior]
+contradicts: []
 ---
 
 # Machines vs free weights — stepping stone, destination, or both

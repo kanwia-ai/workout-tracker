@@ -168,12 +168,50 @@ function refineGoalWithAesthetic(
   return base
 }
 
+// ─── Secondary-goal blend ───────────────────────────────────────────────────
+// primary_goals[1] is collected with the onboarding promise "adds a secondary
+// emphasis" (audit 2026-06-09: it was never read). Research-honest blend per
+// docs/research/01-strength-hypertrophy.md Principle 3: heavy-load main work
+// is the only categorical rep-range lever, so the more strength-leaning goal
+// of the pair drives the main compounds while accessories/finishers keep the
+// more hypertrophy-leaning goal's volume ranges. Everything else (adaptation,
+// cardio policy, aesthetic, block length) stays with the FIRST pick — first
+// is dominant by the profile contract.
+function blendSecondaryGoal(
+  primary: GoalDirectives,
+  secondary: GoalDirectives,
+): GoalDirectives {
+  // Lower main-compound bounds = more strength-leaning (3-5 beats 5-8).
+  const strengthScore = (g: GoalDirectives): number =>
+    g.rep_scheme_bias.main_compounds[0] * 100 + g.rep_scheme_bias.main_compounds[1]
+  // Higher accessory/finisher ceilings = more hypertrophy-leaning.
+  const hypertrophyScore = (g: GoalDirectives): number =>
+    g.rep_scheme_bias.accessories[1] * 100 + g.rep_scheme_bias.finishers[1]
+  // Ties go to the primary goal so a redundant second pick changes nothing.
+  const stronger =
+    strengthScore(secondary) < strengthScore(primary) ? secondary : primary
+  const hyper =
+    hypertrophyScore(secondary) > hypertrophyScore(primary) ? secondary : primary
+  return {
+    ...primary,
+    rep_scheme_bias: {
+      main_compounds: stronger.rep_scheme_bias.main_compounds,
+      accessories: hyper.rep_scheme_bias.accessories,
+      finishers: hyper.rep_scheme_bias.finishers,
+    },
+  }
+}
+
 function deriveGoalDirectives(profile: UserProgramProfile): GoalDirectives {
   const dominant: PrimaryGoal =
     profile.primary_goals?.[0] ??
     profile.primary_goal ??
     'general_fitness'
-  const base = GOAL_DEFAULTS[dominant]
+  const secondary = profile.primary_goals?.[1]
+  let base = GOAL_DEFAULTS[dominant]
+  if (secondary && secondary !== dominant) {
+    base = blendSecondaryGoal(base, GOAL_DEFAULTS[secondary])
+  }
   return refineGoalWithAesthetic(base, profile.aesthetic_preference)
 }
 

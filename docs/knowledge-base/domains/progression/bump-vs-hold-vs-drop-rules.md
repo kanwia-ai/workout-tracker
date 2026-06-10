@@ -17,7 +17,7 @@ citations:
   - "American College of Sports Medicine. Position Stand: Progression Models in Resistance Training for Healthy Adults. Med Sci Sports Exerc. 2009;41(3):687-708. PMID: 19204579."
   - "Stronger by Science. How to Choose the Right Load Progression Strategy. https://www.strongerbyscience.com/weekly-load-progression/ (accessed 2026-05)."
 related: [double-progression, rir-effort-signals, autoprogress-by-training-age, progressive-overload-variables, deload-mechanics]
-contradicts: [myth-tough-means-deload, myth-easy-means-add-double]
+contradicts: []
 ---
 
 # Bump vs. hold vs. drop — decision tree from prior-session signal

@@ -18,7 +18,7 @@ citations:
   - "Schoenfeld BJ, Contreras B, Krieger J, et al. Resistance Training Volume Enhances Muscle Hypertrophy but Not Strength in Trained Men. Med Sci Sports Exerc. 2019;51(1):94-103."
   - "Israetel M, Hoffmann J, Smith C. Scientific Principles of Hypertrophy Training. Renaissance Periodization, 2017. (Stimulus-to-fatigue ratio framework.)"
 related: [session-structure-ordering, muscle-group-grouping, set-volume-landmarks, range-of-motion]
-contradicts: [myth-only-compounds-build-muscle, myth-machines-are-inferior, myth-isolation-is-wasted]
+contradicts: []
 ---
 
 # Exercise selection — compounds and isolations are complementary

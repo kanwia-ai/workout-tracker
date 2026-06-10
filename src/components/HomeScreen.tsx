@@ -31,6 +31,7 @@ import { remapTitleIfGeneric } from '../lib/legacyTitleRemap'
 import type { PlannedSession, MuscleGroup } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import { BodyCheckSheet, loadBodyCheck, type BodyCheckState } from './BodyCheckSheet'
+import { EndOfBlockCard, isBlockComplete, mondayOfDate } from './EndOfBlockCard'
 
 // Persisted day selection — survives bottom-nav round-trips and browser
 // reload. WorkoutView reads the same key so entering a session honors the
@@ -67,6 +68,9 @@ interface HomeScreenProps {
   /** Triggered from the plan-less empty state ("Rebuild my plan"). Calls
    *  back into App to re-run generation with the stored UserProgramProfile. */
   onRetryGeneration?: () => void
+  /** Triggered from the end-of-block card ("build my next block"). Calls
+   *  back into App — replan when enough check-ins exist, else regenerate. */
+  onStartNextBlock?: () => void
 }
 
 const DAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -96,15 +100,6 @@ function todayDowMon0(): number {
   return d === 0 ? 6 : d - 1
 }
 
-function mondayOfDate(date: Date): Date {
-  const d = new Date(date)
-  // JS getDay: 0=Sun..6=Sat → shift to Mon=0..Sun=6 to subtract the right amount.
-  const dow = d.getDay() === 0 ? 6 : d.getDay() - 1
-  d.setDate(d.getDate() - dow)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
 function dateHeaderText(d: Date): string {
   return `${DAY_LABELS[todayDowMon0()]}, ${DAY_MONTH_NAMES[d.getMonth()].slice(0, 3)} ${d.getDate()}`
 }
@@ -123,6 +118,7 @@ export function HomeScreen({
   onOpenSettings,
   onStartSession,
   onRetryGeneration,
+  onStartNextBlock,
 }: HomeScreenProps) {
   // _profile (DisplayProfile.streak) is no longer surfaced — the day-streak
   // counter was replaced with an adherence (sessions completed / scheduled
@@ -313,7 +309,11 @@ export function HomeScreen({
   // failed, out of quota, or user wiped data). We render a single card in
   // place of the DayStrip/TodayCard/stats row so the user can rebuild
   // without seeing 7 rest moon-icons and a ghost-town dashboard.
-  const planIsEmpty = !loading && (!plan || weekSessions.length === 0)
+  const blockComplete = isBlockComplete(plan, today)
+  // When the block is over, the end-of-block card owns the "what next"
+  // affordance — suppress PlanMissingCard so an expired block whose visible
+  // week has no sessions doesn't show two competing cards.
+  const planIsEmpty = !loading && (!plan || weekSessions.length === 0) && !blockComplete
 
   return (
     <div
@@ -388,6 +388,12 @@ export function HomeScreen({
             mesocycleId={plan.id}
             rationale={plan.rationale}
           />
+        )}
+
+        {/* End-of-block CTA — without this, a finished block pins "Week 6
+            of 6" forever with no path to the next one (2026-06-09 audit). */}
+        {blockComplete && onStartNextBlock && (
+          <EndOfBlockCard onStartNextBlock={onStartNextBlock} />
         )}
 
         {planIsEmpty ? (

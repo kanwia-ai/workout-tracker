@@ -17,7 +17,7 @@ citations:
   - "Grgic J, Schoenfeld BJ, Davies TB, Lazinica B, Krieger JW, Pedisic Z. Effect of Resistance Training Frequency on Gains in Muscular Strength: A Systematic Review and Meta-Analysis. Sports Med. 2018;48(5):1207-1220. PMID: 29470825."
   - "Pelland JC, Robinson ZP, Remmert JF, et al. The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains. Sports Med. 2025. DOI: 10.1007/s40279-025-02344-w."
 related: [set-volume-landmarks, session-structure-ordering, muscle-group-grouping, hypertrophy-rep-ranges]
-contradicts: [myth-bro-split-required, myth-once-a-week-frequency-optimal, myth-everyday-is-better]
+contradicts: []
 ---
 
 # Training frequency — 2x/week per muscle when volume is matched

@@ -18,7 +18,7 @@ citations:
   - "NSCA. Essentials of Strength Training and Conditioning, 4th ed. (Haff & Triplett, eds.) 2016."
   - "Rippetoe M, Kilgore L. Practical Programming for Strength Training, 3rd ed. The Aasgaard Company, 2014."
 related: [hypertrophy-rep-ranges, proximity-to-failure-rir, rest-periods-by-role, load-intensity-zones]
-contradicts: [myth-high-reps-build-strength, myth-only-low-reps-build-strength-as-well-as-size]
+contradicts: []
 ---
 
 # Rep ranges for maximal strength

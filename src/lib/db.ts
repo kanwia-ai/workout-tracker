@@ -7,6 +7,9 @@ interface LocalSessionLog {
   id: string
   user_id: string
   workout_id: string
+  // Display title, mirrored from the cloud `session_logs.workout_title`
+  // column (v11). Optional because pre-v11 rows never carried it.
+  workout_title?: string
   date: string
   started_at: string
   ended_at?: string
@@ -21,6 +24,12 @@ interface LocalSetLog {
   id: string
   session_log_id: string
   exercise_id: string
+  // Owner + display name, mirrored from the cloud `set_logs` columns (v11).
+  // Optional because pre-v11 rows never carried them; rows without a
+  // user_id can't be pushed to the cloud (RLS requires it) and are skipped
+  // by the dirty sweep.
+  user_id?: string
+  exercise_name?: string
   set_number: number
   weight?: number
   reps_completed?: number
@@ -343,6 +352,33 @@ db.version(10).stores({
   cardioLogs: 'id, user_id, date, synced',
   personalRecords: 'id, user_id, exercise_id, synced',
   userWeights: 'id, user_id, exercise_id, date, synced',
+  exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
+  userProgramProfiles: 'user_id, updated_at, synced',
+  mesocycles: 'id, user_id, generated_at, synced',
+  routines: 'id, session_id, kind, generated_at, synced',
+  dayOverrides: 'id, user_id, date, session_id, synced',
+  customExercises: 'id, user_id, name, equipment, created_at, *primary_muscles, *secondary_muscles, synced',
+  sessionCheckins: 'session_id, user_id, completed_at, synced',
+  replanHistory: 'id, user_id, completed_mesocycle_id, created_at, synced',
+})
+
+// v11 — local-first persistence (additive). The persistence module now
+// writes workouts/PRs/weights to Dexie FIRST and syncs to the cloud in the
+// background, so these tables become the live source of truth:
+//   - setLogs gains a `user_id` index so the dirty-row sweep can scope to
+//     the signed-in user without a full scan.
+//   - personalRecords / userWeights gain a `[user_id+exercise_id]` compound
+//     index — the natural upsert key (mirrors the cloud `unique(user_id,
+//     exercise_id)` constraint) so "what's the PR for this lift?" is an O(1)
+//     lookup instead of an index walk + filter.
+// Row-shape additions (non-indexed, no migration needed): sessionLogs
+// `workout_title`, setLogs `user_id`/`exercise_name`.
+db.version(11).stores({
+  sessionLogs: 'id, user_id, workout_id, date, synced',
+  setLogs: 'id, session_log_id, exercise_id, user_id, synced',
+  cardioLogs: 'id, user_id, date, synced',
+  personalRecords: 'id, user_id, exercise_id, [user_id+exercise_id], synced',
+  userWeights: 'id, user_id, exercise_id, [user_id+exercise_id], date, synced',
   exerciseLibrary: 'id, name, category, equipment, level, *primaryMuscles, *secondaryMuscles',
   userProgramProfiles: 'user_id, updated_at, synced',
   mesocycles: 'id, user_id, generated_at, synced',

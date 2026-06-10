@@ -16,7 +16,7 @@ citations:
   - "Halperin I et al. Accuracy in predicting repetitions to task failure in resistance exercise: a scoping review and exploratory meta-analysis. Sports Med. 2022. (Confidence: HIGH on CLAIM that novices undersell RIR; MEDIUM on exact PMID/DOI.)"
   - "Helms ER, Cronin J, Storey A, Zourdos MC. Application of the Repetitions in Reserve-Based Rating of Perceived Exertion Scale for Resistance Training. Strength Cond J. 2016;38(4):42-49. DOI: 10.1519/SSC.0000000000000218."
 related: [rir-effort-signals, bump-vs-hold-vs-drop-rules, double-progression, autoprogress-by-training-age]
-contradicts: [myth-engine-knows-best, myth-auto-bump-on-easy]
+contradicts: []
 ---
 
 # When to bump — the user asks "could I do more?" = the moment to push

@@ -17,7 +17,7 @@ citations:
   - "Bell L, Ruddock A, Maden-Wilkinson T, Rogerson D. Deloading Practices in Strength and Physique Sports: A Cross-sectional Survey. Sports Med Open. 2022;8(1):103."
   - "Israetel M, Hoffmann J, Smith C. Scientific Principles of Hypertrophy Training. Renaissance Periodization, 2017."
 related: [mesocycle-volume-progression, set-volume-landmarks, proximity-to-failure-rir]
-contradicts: [myth-deload-makes-you-weaker, myth-must-train-hard-every-week]
+contradicts: []
 ---
 
 # Deload prescription — cut volume OR raise RIR, not both

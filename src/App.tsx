@@ -24,7 +24,8 @@ import { CardioPage } from './components/CardioPage'
 import { BottomNav, type AppView } from './components/BottomNav'
 import { TimerOverlay } from './components/TimerOverlay'
 import { OnboardingFlow, GeneratingPlan } from './components/Onboarding'
-import { SettingsScreen, type ReplanState } from './components/Settings'
+import { GenerationErrorSheet } from './components/GenerationErrorSheet'
+import { SettingsScreen, REPLAN_MIN_CHECKINS, type ReplanState } from './components/Settings'
 import { replanNextBlock, InsufficientCheckinsError } from './lib/planner/replan'
 import { generatePlanFromDirectives } from './lib/planGen'
 import { listCheckinsForUser } from './lib/checkins'
@@ -274,6 +275,57 @@ function App() {
     }
   }
 
+  // Retry generation after a failure surfaced via GenerationErrorSheet.
+  // Prefers the profile captured by the failed run; falls back to the stored
+  // profile (covers paths where the failure happened before runGeneration,
+  // e.g. loadProfileLocal itself threw).
+  async function retryFromGenerationError() {
+    if (!user?.id) return
+    try {
+      const p = pendingProfile ?? (await loadProfileLocal(user.id))
+      if (p) {
+        await runGeneration(p, user.id)
+      } else {
+        setGenerationError(
+          "Couldn't find your saved profile on this device. Settings → Start fresh will restart onboarding.",
+        )
+      }
+    } catch (err) {
+      console.error('retryFromGenerationError failed', err)
+      setGenerationError(friendlyGenerationError(err))
+    }
+  }
+
+  function dismissGenerationError() {
+    setGenerationError(null)
+    setPendingProfile(null)
+  }
+
+  // End-of-block CTA → next block. Adaptive replan when the user has logged
+  // enough check-ins (the replan review modal lives in Settings, so we open
+  // it); otherwise a stateless regenerate from the stored profile.
+  async function startNextBlock() {
+    if (!user?.id) return
+    if (checkinCount >= REPLAN_MIN_CHECKINS) {
+      setSettingsOpen(true)
+      await handleReplanNextBlock()
+      return
+    }
+    try {
+      const stored = await loadProfileLocal(user.id)
+      if (stored) {
+        await runGeneration(stored, user.id)
+      } else {
+        setGenerationError(
+          "Couldn't find your saved profile on this device. Settings → Start fresh will restart onboarding.",
+        )
+      }
+    } catch (err) {
+      console.error('startNextBlock failed', err)
+      setGenerationError(friendlyGenerationError(err))
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -412,18 +464,20 @@ function App() {
   // until the user hits "Apply new plan" in the modal.
   async function handleReplanNextBlock() {
     if (!user?.id) return
-    const meso = await (
-      await import('./lib/planGen')
-    ).loadLatestMesocycleForUser(user.id)
-    if (!meso) {
-      setReplanState({
-        phase: 'error',
-        error: "Couldn't find your current block. Generate a plan first.",
-      })
-      return
-    }
     setReplanState({ phase: 'loading' })
     try {
+      // Inside the try on purpose: a Dexie/parse failure here used to be an
+      // unhandled rejection — the user tapped "Re-plan" and nothing happened.
+      const meso = await (
+        await import('./lib/planGen')
+      ).loadLatestMesocycleForUser(user.id)
+      if (!meso) {
+        setReplanState({
+          phase: 'error',
+          error: "Couldn't find your current block. Generate a plan first.",
+        })
+        return
+      }
       const result = await replanNextBlock(user.id, meso.id)
       setPendingDirectives(result.directives)
       setReplanState({
@@ -506,17 +560,34 @@ function App() {
             // current prompt + backend. runGeneration flips isGenerating=true,
             // which causes App.tsx's top-level guard to render GeneratingPlan
             // above the settings overlay — so Settings closes implicitly.
-            void loadProfileLocal(user.id).then((p) => {
-              if (!p) {
-                console.warn(
-                  'Regenerate plan: no profile found for user — skipping.',
-                )
-                return
-              }
-              return runGeneration(p, user.id)
-            })
+            void loadProfileLocal(user.id)
+              .then((p) => {
+                if (!p) {
+                  console.warn(
+                    'Regenerate plan: no profile found for user — skipping.',
+                  )
+                  setGenerationError(
+                    "Couldn't find your saved profile on this device. Settings → Start fresh will restart onboarding.",
+                  )
+                  return
+                }
+                return runGeneration(p, user.id)
+              })
+              .catch((err) => {
+                // Without this, a Dexie/parse failure in loadProfileLocal was
+                // an unhandled rejection — the tap did nothing, silently.
+                console.error('Regenerate plan failed', err)
+                setGenerationError(friendlyGenerationError(err))
+              })
           }}
         />
+        {generationError && (
+          <GenerationErrorSheet
+            message={generationError}
+            onRetry={() => { void retryFromGenerationError() }}
+            onDismiss={dismissGenerationError}
+          />
+        )}
       </>
     )
   }
@@ -572,14 +643,22 @@ function App() {
           profile={profile}
           onOpenSettings={() => setSettingsOpen(true)}
           onStartSession={() => setSessionStarted(true)}
+          onStartNextBlock={() => { void startNextBlock() }}
           onRetryGeneration={async () => {
             // Retry from the plan-less empty state. Load the profile
             // captured during onboarding out of Dexie and re-run the
             // generator — runGeneration flips isGenerating=true so the
             // GeneratingPlan loader takes over until Dexie has a plan
             // again and HomeScreen re-renders with content.
-            const stored = await loadProfileLocal(user.id)
-            if (stored) await runGeneration(stored, user.id)
+            try {
+              const stored = await loadProfileLocal(user.id)
+              if (stored) await runGeneration(stored, user.id)
+            } catch (err) {
+              // loadProfileLocal can throw (Dexie/parse failure) — surface
+              // it instead of leaving the tap to fail silently.
+              console.error('Retry generation failed', err)
+              setGenerationError(friendlyGenerationError(err))
+            }
           }}
         />
       )}
@@ -665,6 +744,18 @@ function App() {
           label={globalTimer.label}
           type={globalTimer.type}
           onClose={() => setGlobalTimer(null)}
+        />
+      )}
+
+      {/* Generation-failure sheet — un-gated from !hasProfile (2026-06-09
+          audit): existing users' failed regenerates used to vanish silently
+          because the only error UI lived in the onboarding branch. Renders
+          over every tab so the failure is visible wherever the user is. */}
+      {generationError && (
+        <GenerationErrorSheet
+          message={generationError}
+          onRetry={() => { void retryFromGenerationError() }}
+          onDismiss={dismissGenerationError}
         />
       )}
     </>

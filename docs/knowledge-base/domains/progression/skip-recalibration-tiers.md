@@ -19,7 +19,7 @@ citations:
   - "Bosquet L, Berryman N, Dupuy O, Mekary S, Arvisais D, Bherer L, Mujika I. Effect of training cessation on muscular performance: a meta-analysis. Scand J Med Sci Sports. 2013;23(3):e140-e149. PMID: 23145482."
   - "Magnusson SP, Langberg H, Kjaer M. The pathogenesis of tendinopathy: balancing the response to loading. Nat Rev Rheumatol. 2010;6(5):262-268. PMID: 20308995."
 related: [detraining-after-layoff, deload-mechanics, autoprogress-by-training-age]
-contradicts: [myth-two-weeks-off-lose-everything, myth-aggressive-relayoff-cut]
+contradicts: []
 ---
 
 # Skip recalibration tiers — load multiplier ladder by gap and training age

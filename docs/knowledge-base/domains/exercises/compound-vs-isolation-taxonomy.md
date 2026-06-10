@@ -19,7 +19,7 @@ citations:
   - "Haff GG, Triplett NT (eds). NSCA Essentials of Strength Training and Conditioning, 4th ed. Human Kinetics 2016, Ch. 13–17."
   - "Trainer conversation, docs/research/02-coaching-philosophy.md §5."
 related: [chest-supported-not-compound, exercise-selection-compound-vs-isolation, session-structure-ordering, muscle-group-grouping, machine-vs-free-weight-progression]
-contradicts: [myth-only-compounds-build-muscle]
+contradicts: []
 ---
 
 # Compound vs isolation — what actually defines a compound

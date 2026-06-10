@@ -17,7 +17,7 @@ citations:
   - "Coleman M / Bell L et al. Delphi consensus paper on deloading. Sports Med. 2024. Cited as 'Delphi consensus 2024' in the engine audit (`docs/audits/2026-05-07-adaptive-logic-audit.md` §1 TL;DR + §4 deload section) AND in engine code (`buildMesocycle.ts:617`, `buildMesocycle.test.ts:287`). Confidence: LOW on exact citation metadata — referenced consistently but specific DOI/PMID not verified in this entry. The CLAIM the paper supports (cut volume OR intensity, not both) IS the consensus position in the broader deload literature (Bell 2022 survey, Bell 2023 RCT)."
   - "Pelland JC, Robinson ZP, Remmert JF, Cerminaro RM, Benitez B, John TA, Helms ER, Zourdos MC. Methods for Controlling and Reporting Resistance Training Proximity to Failure: Current Issues and Future Directions. Sports Med. 2022;52(7):1461-1472. PMID: 35262869."
 related: [deload-triggers, block-progression-arc, bump-vs-hold-vs-drop-rules, detraining-after-layoff, skip-recalibration-tiers]
-contradicts: [myth-deload-week-off, myth-deload-always-both-volume-and-intensity]
+contradicts: []
 ---
 
 # Deload mechanics — cut volume OR intensity, not both

@@ -17,7 +17,7 @@ citations:
   - "NSCA. Essentials of Strength Training and Conditioning, 4th ed., 2016, Ch. 17."
   - "Zatsiorsky VM, Kraemer WJ. Science and Practice of Strength Training, 3rd ed. Human Kinetics, 2020."
 related: [hypertrophy-rep-ranges, strength-rep-ranges, proximity-to-failure-rir]
-contradicts: [myth-muscular-endurance-builds-strength, myth-only-1rm-matters]
+contradicts: []
 ---
 
 # Load intensity zones (% 1RM) and their adaptations

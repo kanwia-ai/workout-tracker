@@ -1,5 +1,5 @@
 // =============================================================================
-// INTEGRATION SIMULATION — NOT a regression suite.
+// INTEGRATION SIMULATION — permanent regression suite.
 //
 // This file simulates a 6-week (or 5-week strength) training block end-to-end
 // through the adaptive engine. The goal is to find cross-module bugs between
@@ -7,21 +7,27 @@
 // skipRecalibration / planSelectors. Unit tests for each module pass; this
 // file exists to catch *integration* drift.
 //
-// All `it()` blocks soft-assert (`expect(true).toBe(true)`) — the value is in
-// the printed traces and the markdown report at /tmp/integration_sim_report.md.
+// Every scenario asserts the block invariants (see assertBlockInvariants):
+// no duplicate exercise per session, main lift matches the session's
+// movement pattern, injury-banned variants absent, weekly session count
+// matches the profile. The printed traces remain useful for eyeballing
+// weight trajectories.
 //
 // Run with:
 //   npx vitest run src/lib/planner/integration.simulation.test.ts --reporter=verbose
-//
-// When done analyzing the run, this file can be deleted — it is a one-shot
-// diagnostic, not a permanent fixture.
 // =============================================================================
 
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { computeAutoProgressionForSession } from './autoProgress'
-import { buildMesocycle } from './buildMesocycle'
+import {
+  buildMesocycle,
+  mergeDirectivesForSession,
+  SESSION_MAIN_PATTERN,
+} from './buildMesocycle'
+import { MAIN_VARIANTS, ACCESSORY_VARIANTS, type VariantSpec } from './variants'
 import { interpretProfile } from './interpretProfile'
+import type { ProgrammingDirectives, SessionType } from '../../types/directives'
 import { saveCheckin } from '../checkins'
 import { getSessionForDateWithRecalibration } from '../planSelectors'
 import { saveProfileLocal } from '../profileRepo'
@@ -218,6 +224,7 @@ async function resetDexie(): Promise<void> {
 async function buildBlock(profile: UserProgramProfile, userId: string): Promise<{
   meso: { length_weeks: number; sessions: PlannedSession[] }
   byWeek: Map<number, PlannedSession[]>
+  directives: ProgrammingDirectives
 }> {
   // Persist profile so computeAutoProgressionForSession picks up training_age_months.
   await saveProfileLocal(userId, profile)
@@ -229,7 +236,81 @@ async function buildBlock(profile: UserProgramProfile, userId: string): Promise<
     byWeek.get(s.week_number)!.push(s)
   }
   for (const arr of byWeek.values()) arr.sort((a, b) => a.ordinal - b.ordinal)
-  return { meso: built, byWeek }
+  return { meso: built, byWeek, directives }
+}
+
+// ─── BLOCK INVARIANTS (real assertions — audit 2026-06-09 fix 6) ───────────
+// Previously every scenario soft-asserted expect(true).toBe(true); the
+// duplicate-hip-thrust and rehab-leak bugs sailed through. These checks make
+// the simulation a true regression net.
+
+const SUBTITLE_TO_SESSION_TYPE: Record<string, SessionType> = {
+  'LOWER · SQUAT-DOMINANT': 'lower_squat_focus',
+  'LOWER · HINGE-DOMINANT': 'lower_hinge_focus',
+  'UPPER · PUSH': 'upper_push',
+  'UPPER · PULL': 'upper_pull',
+  'FULL · SQUAT + PUSH + PULL': 'full_body_a',
+  'FULL · HINGE + PRESS + PULL': 'full_body_b',
+  CONDITIONING: 'conditioning',
+  'REHAB · MOBILITY': 'rehab_mobility',
+}
+
+function variantForLibraryId(libraryId: string): VariantSpec | null {
+  for (const pool of [MAIN_VARIANTS, ACCESSORY_VARIANTS]) {
+    for (const v of Object.values(pool)) {
+      if ((v.library_id ?? `variant:${v.id}`) === libraryId) return v
+    }
+  }
+  return null
+}
+
+function assertBlockInvariants(
+  meso: { length_weeks: number; sessions: PlannedSession[] },
+  byWeek: Map<number, PlannedSession[]>,
+  profile: UserProgramProfile,
+  directives: ProgrammingDirectives,
+): void {
+  // 1. Weekly session count matches the profile, every week of the block.
+  for (let week = 1; week <= meso.length_weeks; week += 1) {
+    const sessions = byWeek.get(week) ?? []
+    expect(
+      sessions.length,
+      `week ${week}: expected ${profile.sessions_per_week} sessions`,
+    ).toBe(profile.sessions_per_week)
+  }
+
+  for (const s of meso.sessions) {
+    const where = `wk${s.week_number} "${s.subtitle}"`
+
+    // 2. No duplicate exercise within a session.
+    const ids = s.exercises.map((e) => e.library_id)
+    expect(new Set(ids).size, `${where}: duplicate exercise`).toBe(ids.length)
+
+    const sessionType = SUBTITLE_TO_SESSION_TYPE[s.subtitle]
+    expect(sessionType, `${where}: unknown subtitle`).toBeDefined()
+
+    // 3. The leading main lift matches the session's movement pattern
+    //    (squat day squats, push day presses — the audit's leak check).
+    const mainLift = s.exercises.find((e) => e.role === 'main lift')
+    expect(mainLift, `${where}: no main lift`).toBeDefined()
+    const mainVariant = variantForLibraryId(mainLift!.library_id)
+    expect(mainVariant, `${where}: unresolvable main "${mainLift!.name}"`).not.toBeNull()
+    expect(
+      mainVariant!.pattern,
+      `${where}: main "${mainLift!.name}" off-pattern`,
+    ).toBe(SESSION_MAIN_PATTERN[sessionType!])
+
+    // 4. Injury-banned variants are absent from the session.
+    const ctx = mergeDirectivesForSession(sessionType!, s.week_number, directives)
+    for (const e of s.exercises) {
+      const v = variantForLibraryId(e.library_id)
+      if (!v) continue
+      expect(
+        ctx.banned_variants.has(v.id),
+        `${where}: "${e.name}" is banned for this profile/week`,
+      ).toBe(false)
+    }
+  }
 }
 
 // ─── SCENARIO RUNNERS ───────────────────────────────────────────────────────
@@ -243,7 +324,7 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
   it('SCENARIO 1 — Beast mode (every session easy, ceiling met)', async () => {
     const userId = 'user-beast'
     const profile = mkProfile({ training_age_months: 24, primary_goal: 'build_muscle', primary_goals: ['build_muscle'] })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
     console.log(`\n[Beast] meso length_weeks=${meso.length_weeks}, ${meso.sessions.length} sessions`)
 
     const tracker = new StartEndTracker()
@@ -268,14 +349,14 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       }
     }
     printSummary('1 Beast mode (24mo build_muscle, 6wk)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 2
   it('SCENARIO 2 — Steady (60% easy/ceiling, 30% solid/floor, 10% tough/ceiling)', async () => {
     const userId = 'user-steady'
     const profile = mkProfile({ training_age_months: 12 })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
 
     const tracker = new StartEndTracker()
     const baseDate = new Date(2026, 0, 1)
@@ -308,14 +389,14 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       }
     }
     printSummary('2 Steady (12mo build_muscle, 6wk)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 3
   it('SCENARIO 3 — Stalling (tough/floor every session)', async () => {
     const userId = 'user-stall'
     const profile = mkProfile({ training_age_months: 36 })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
 
     const tracker = new StartEndTracker()
     const baseDate = new Date(2026, 0, 1)
@@ -339,14 +420,14 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       }
     }
     printSummary('3 Stalling (36mo build_muscle, 6wk)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 4
   it('SCENARIO 4 — Failing (easy weeks 1-2, two-strike fail in week 3)', async () => {
     const userId = 'user-fail'
     const profile = mkProfile({ training_age_months: 6 })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
 
     const tracker = new StartEndTracker()
     const baseDate = new Date(2026, 0, 1)
@@ -375,14 +456,14 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       }
     }
     printSummary('4 Failing (6mo build_muscle, 6wk)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 5
   it('SCENARIO 5 — Skipped a week (layoff mid-block, recalibration banner)', async () => {
     const userId = 'user-skip'
     const profile = mkProfile({ training_age_months: 24 })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
 
     const tracker = new StartEndTracker()
     const baseDate = new Date(2026, 0, 1)
@@ -453,17 +534,11 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
 
       // Verify expectations: trained 14d → deload_mild, 0.92×, same week.
       const recal = result.recalibration
-      if (recal) {
-        const okAction = recal.action === 'deload_mild'
-        const okMult = recal.load_multiplier === 0.92
-        const okWeek = recal.effective_week_number === firstW4.week_number
-        const noStrength = !/strength loss/i.test(recal.rationale)
-        console.log(
-          `  [Layoff] expectations: action=${okAction} mult=${okMult} sameWeek=${okWeek} noStrengthCopy=${noStrength}`,
-        )
-      } else {
-        console.log('  [Layoff] BUG?: no recalibration returned')
-      }
+      expect(recal, '14-day gap should produce a recalibration').toBeDefined()
+      expect(recal!.action).toBe('deload_mild')
+      expect(recal!.load_multiplier).toBe(0.92)
+      expect(recal!.effective_week_number).toBe(firstW4.week_number)
+      expect(recal!.rationale).not.toMatch(/strength loss/i)
 
       // Resume normally for the rest of the block.
       for (let week = 4; week <= meso.length_weeks; week += 1) {
@@ -483,14 +558,14 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
     }
 
     printSummary('5 Skipped Week (24mo build_muscle, 6wk, 14d gap)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 6
   it('SCENARIO 6 — Novice fast-tracking (every session easy/ceiling)', async () => {
     const userId = 'user-novice'
     const profile = mkProfile({ training_age_months: 1, primary_goal: 'build_muscle', primary_goals: ['build_muscle'] })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
 
     const tracker = new StartEndTracker()
     const baseDate = new Date(2026, 0, 1)
@@ -514,7 +589,7 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       }
     }
     printSummary('6 Novice (1mo build_muscle, 6wk)', tracker)
-    expect(true).toBe(true)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 
   // ---------------------------------------------------------------- 7
@@ -525,7 +600,7 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
       primary_goal: 'lean_and_strong',
       primary_goals: ['lean_and_strong'],
     })
-    const { meso, byWeek } = await buildBlock(profile, userId)
+    const { meso, byWeek, directives } = await buildBlock(profile, userId)
     console.log(`\n[Strength] meso length_weeks=${meso.length_weeks}`)
 
     const tracker = new StartEndTracker()
@@ -560,18 +635,20 @@ describe('INTEGRATION SIMULATION — full block end-to-end', () => {
     // - RIR same as work weeks (NOT +1)
     const w4 = byWeek.get(4) ?? []
     const w5 = byWeek.get(5) ?? []
-    if (w4.length > 0 && w5.length > 0) {
-      const w4Main = w4[0]!.exercises[0]!
-      const w5Main = w5[0]!.exercises[0]!
-      console.log(
-        `\n[Strength] deload check W4 ${w4Main.name}: sets=${w4Main.sets} rir=${w4Main.rir}; W5 sets=${w5Main.sets} rir=${w5Main.rir}`,
-      )
-      const setsCutOk = w5Main.sets <= Math.ceil(w4Main.sets * 0.5)
-      const rirSameOk = w5Main.rir === w4Main.rir
-      console.log(`[Strength] setsCutOk=${setsCutOk} rirSameOk=${rirSameOk}`)
-    }
+    expect(w4.length).toBeGreaterThan(0)
+    expect(w5.length).toBeGreaterThan(0)
+    const w4Main = w4[0]!.exercises[0]!
+    const w5Main = w5[0]!.exercises[0]!
+    console.log(
+      `\n[Strength] deload check W4 ${w4Main.name}: sets=${w4Main.sets} rir=${w4Main.rir}; W5 sets=${w5Main.sets} rir=${w5Main.rir}`,
+    )
+    expect(w5Main.sets, 'deload week should cut sets to ≤50%').toBeLessThanOrEqual(
+      Math.ceil(w4Main.sets * 0.5),
+    )
+    expect(w5Main.rir, 'deload keeps RIR flat (volume cut only)').toBe(w4Main.rir)
 
     printSummary('7 Strength block (24mo lean_and_strong, 5wk)', tracker)
     expect(meso.length_weeks).toBe(5)
+    assertBlockInvariants(meso, byWeek, profile, directives)
   })
 })

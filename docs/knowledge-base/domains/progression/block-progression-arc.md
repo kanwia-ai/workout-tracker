@@ -19,7 +19,7 @@ citations:
   - "Renaissance Periodization. Training Volume Landmarks for Muscle Growth. https://rpstrength.com/blogs/articles/training-volume-landmarks-muscle-growth (accessed 2026-05)."
   - "Delphi consensus 2024 on deload structure — cited consistently across audit (`docs/audits/2026-05-07-adaptive-logic-audit.md`) and engine code (`buildMesocycle.ts:617`). Confidence: LOW on exact citation metadata, MEDIUM on the CLAIM (deload week dissipates fatigue while preserving fitness)."
 related: [deload-mechanics, deload-triggers, double-progression, autoprogress-by-training-age]
-contradicts: [myth-every-session-is-a-pr-session, myth-flat-volume-flat-intensity-blocks]
+contradicts: []
 ---
 
 # Block progression arc — build volume, push intensity, attempt PR, deload

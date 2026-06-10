@@ -2,6 +2,7 @@ import { db } from './db'
 import {
   UserProgramProfileSchema,
   legacyGoalToPrimaryGoal,
+  ExerciseDislike,
   type UserProgramProfile,
 } from '../types/profile'
 import { supabase } from './supabase'
@@ -32,21 +33,49 @@ import { supabase } from './supabase'
  *   - `strong_defined` → `get_stronger`
  *   - `athletic` → `balanced`
  * Without this, every existing user's profile fails Zod parse on next load.
+ *
+ * 2026-06-09 — `exercise_dislikes` value `high_rep_cardio` was renamed
+ * `cardio_machines` (51ff614, 2026-05-24) with no data migration: profiles
+ * saved 2026-04-18 → 05-24 with that dislike failed Zod parse on load and
+ * silently dumped the user back into onboarding. We remap the rename AND
+ * defensively drop any dislike value that has since left the enum, so a
+ * stale dislike can never brick a stored profile again.
  */
 function migrateLegacyProfile(raw: unknown): unknown {
   if (raw === null || typeof raw !== 'object') return raw
-  const obj = raw as Record<string, unknown>
+  let obj = raw as Record<string, unknown>
+
   const pref = obj.aesthetic_preference
-  if (typeof pref !== 'string') return obj
-  const remap: Record<string, string> = {
-    toned_lean: 'build_muscle',
-    muscle_size_bulk: 'build_muscle',
-    strong_defined: 'get_stronger',
-    athletic: 'balanced',
+  if (typeof pref === 'string') {
+    const remap: Record<string, string> = {
+      toned_lean: 'build_muscle',
+      muscle_size_bulk: 'build_muscle',
+      strong_defined: 'get_stronger',
+      athletic: 'balanced',
+    }
+    if (pref in remap) {
+      obj = { ...obj, aesthetic_preference: remap[pref] }
+    }
   }
-  if (pref in remap) {
-    return { ...obj, aesthetic_preference: remap[pref] }
+
+  if (Array.isArray(obj.exercise_dislikes)) {
+    const dislikeRemap: Record<string, string> = {
+      high_rep_cardio: 'cardio_machines',
+    }
+    const known = new Set<string>(ExerciseDislike.options)
+    // De-dupe via Set in case the remap collides with an already-present
+    // value (e.g. ['high_rep_cardio', 'cardio_machines']).
+    const migrated = [
+      ...new Set(
+        obj.exercise_dislikes
+          .filter((d): d is string => typeof d === 'string')
+          .map((d) => dislikeRemap[d] ?? d)
+          .filter((d) => known.has(d)),
+      ),
+    ]
+    obj = { ...obj, exercise_dislikes: migrated }
   }
+
   return obj
 }
 

@@ -93,6 +93,101 @@ describe('profileRepo', () => {
     })
   })
 
+  // ─── Legacy exercise_dislikes migration ────────────────────────────
+  // `high_rep_cardio` was renamed `cardio_machines` (51ff614, 2026-05-24)
+  // with no data migration. Profiles saved 2026-04-18 → 05-24 with that
+  // dislike failed Zod parse on load — the user was silently dumped back
+  // into onboarding as if brand new. These tests pin the remap + the
+  // defensive "drop anything unknown" behavior.
+  describe('legacy exercise_dislikes migration', () => {
+    it('loads an exact April-era stored profile (high_rep_cardio + myth aesthetic + specific_target, no units/active_minutes/preferred_days)', async () => {
+      // Byte-faithful shape of a profile saved between 2026-04-18 and
+      // 2026-05-24: high_rep_cardio dislike, myth-taxonomy aesthetic value,
+      // the since-removed `specific_target` field, and none of the newer
+      // fields (units / active_minutes / preferred_days).
+      const aprilProfile = {
+        goal: 'glutes',
+        sessions_per_week: 4,
+        training_age_months: 24,
+        equipment: ['full_gym'],
+        injuries: [
+          { part: 'left_meniscus', severity: 'modify', note: 'old tear, avoid deep flexion' },
+          { part: 'lower_back', severity: 'chronic' },
+        ],
+        time_budget_min: 60,
+        sex: 'female',
+        posture_notes: 'desk job, tight hip flexors',
+        primary_goal: 'build_muscle',
+        muscle_priority: ['glutes', 'hamstrings'],
+        aesthetic_preference: 'toned_lean',
+        exercise_dislikes: ['high_rep_cardio', 'burpees'],
+        want_demo_videos: true,
+        age: 31,
+        weight_kg: 70,
+        height_cm: 170,
+        first_name: 'Kyra',
+        specific_target: 'glutes',
+      }
+      await db.userProgramProfiles.put({
+        user_id: 'user-april',
+        profile_json: JSON.stringify(aprilProfile),
+        updated_at: '2026-04-20T10:00:00.000Z',
+        synced: true,
+      })
+
+      const loaded = await loadProfileLocal('user-april')
+      expect(loaded).not.toBeNull()
+      expect(loaded?.exercise_dislikes).toEqual(['cardio_machines', 'burpees'])
+      expect(loaded?.aesthetic_preference).toBe('build_muscle')
+      // Post-parse back-fills still apply on top of the pre-parse migration.
+      expect(loaded?.units).toBe('metric')
+      expect(loaded?.active_minutes).toBe(60)
+      expect(loaded?.first_name).toBe('Kyra')
+    })
+
+    it('drops unknown dislike values instead of failing the parse', async () => {
+      await db.userProgramProfiles.put({
+        user_id: 'user-unknown-dislike',
+        profile_json: JSON.stringify({
+          ...VALID_PROFILE,
+          exercise_dislikes: ['high_rep_cardio', 'vibes_based_cardio', 'burpees'],
+        }),
+        updated_at: new Date().toISOString(),
+        synced: true,
+      })
+      const loaded = await loadProfileLocal('user-unknown-dislike')
+      expect(loaded?.exercise_dislikes).toEqual(['cardio_machines', 'burpees'])
+    })
+
+    it('dedupes when the remap collides with an already-present value', async () => {
+      await db.userProgramProfiles.put({
+        user_id: 'user-dupe-dislike',
+        profile_json: JSON.stringify({
+          ...VALID_PROFILE,
+          exercise_dislikes: ['high_rep_cardio', 'cardio_machines'],
+        }),
+        updated_at: new Date().toISOString(),
+        synced: true,
+      })
+      const loaded = await loadProfileLocal('user-dupe-dislike')
+      expect(loaded?.exercise_dislikes).toEqual(['cardio_machines'])
+    })
+
+    it('leaves already-current dislike values alone', async () => {
+      await db.userProgramProfiles.put({
+        user_id: 'user-current-dislike',
+        profile_json: JSON.stringify({
+          ...VALID_PROFILE,
+          exercise_dislikes: ['burpees', 'box_jumps'],
+        }),
+        updated_at: new Date().toISOString(),
+        synced: true,
+      })
+      const loaded = await loadProfileLocal('user-current-dislike')
+      expect(loaded?.exercise_dislikes).toEqual(['burpees', 'box_jumps'])
+    })
+  })
+
   describe('syncProfileUp', () => {
     it('upserts dirty row to supabase and marks local synced', async () => {
       // Stub BEFORE save so the background fire-and-forget sync that

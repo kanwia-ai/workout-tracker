@@ -17,8 +17,8 @@ citations:
   - "Spineti J, de Salles BF, Rhea MR, et al. Influence of exercise order on maximum strength and muscle volume in nonlinear periodized resistance training. J Strength Cond Res. 2010;24(11):2962-2969. PMID: 20940643."
   - "NSCA. Essentials of Strength Training and Conditioning, 4th ed. (Haff & Triplett, eds.) 2016, Ch. 17 Program Design for Resistance Training."
   - "Trainer conversation, docs/research/02-coaching-philosophy.md §5."
-related: [muscle-group-grouping, hypertrophy-rep-ranges, strength-rep-ranges, warmup-prescription]
-contradicts: [myth-pre-exhaust-superior, myth-order-doesnt-matter]
+related: [muscle-group-grouping, hypertrophy-rep-ranges, strength-rep-ranges, warmup-set-purpose]
+contradicts: []
 ---
 
 # Session structure — compound lifts first

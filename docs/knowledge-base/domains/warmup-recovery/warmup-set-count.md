@@ -16,7 +16,7 @@ citations:
   - "Jeffreys I. The Warm-Up: Maximize Performance and Improve Long-Term Athletic Development. Human Kinetics 2019 (Potentiate phase scaling guidance)."
   - "Haff GG, Triplett NT (eds). NSCA Essentials of Strength Training and Conditioning, 4th ed. Human Kinetics 2016."
   - "Rippetoe M, Kilgore L. Practical Programming for Strength Training, 3rd ed. (warmup-set scaling on heavy compounds)."
-related: [warmup-set-purpose, ramp-method, exercises-hard-to-feel, warmup-cardio-integration]
+related: [warmup-set-purpose, ramp-method, hard-to-feel-exercises-catalog, warmup-cardio-integration]
 contradicts: []
 ---
 

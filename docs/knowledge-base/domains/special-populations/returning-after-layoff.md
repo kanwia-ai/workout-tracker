@@ -21,7 +21,7 @@ citations:
   - "Magnusson SP, Langberg H, Kjaer M. The pathogenesis of tendinopathy: balancing the response to loading. Nat Rev Rheumatol. 2010;6(5):262-268. PMID: 20308995."
   - "Hyldahl RD, Chen TC, Nosaka K. Mechanisms and mediators of the skeletal muscle repeated bout effect. Exerc Sport Sci Rev. 2017;45(1):24-33. PMID: 27782911."
 related: [detraining-after-layoff, skip-recalibration-tiers, deload-mechanics, autoprogress-by-training-age]
-contradicts: [myth-two-weeks-off-lose-everything, myth-soreness-is-progress]
+contradicts: [soreness-is-progress]
 ---
 
 # Returning from a layoff — strength comes back faster than it was lost

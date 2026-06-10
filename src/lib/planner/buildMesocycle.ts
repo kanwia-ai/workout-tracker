@@ -33,6 +33,10 @@ import {
   MAIN_VARIANTS,
   ACCESSORY_VARIANTS,
   resolveVariant,
+  equipmentAccessFor,
+  variantAllowedByEquipment,
+  isVariantDisliked,
+  type MovementPattern,
   type VariantSpec,
 } from './variants'
 import { suggestStartingWeight } from './startingWeights'
@@ -150,6 +154,154 @@ const SESSION_DEFAULTS: Record<SessionType, SessionDefaults> = {
   },
 }
 
+// ─── Session main-slot movement pattern ────────────────────────────────────
+// The movement pattern of each session type's MAIN-lift slot. Protocol stage
+// constraints (allowed_main_variants, rep overrides, stage warmups) only
+// apply to sessions whose main slot matches the pattern of the stage's
+// variants — a squat-pattern meniscus stage must not rewrite the bench or
+// row slot. Exported so integration tests can assert main-lift/focus match.
+export const SESSION_MAIN_PATTERN: Record<SessionType, MovementPattern> = {
+  lower_squat_focus: 'squat',
+  lower_hinge_focus: 'hinge',
+  upper_push: 'push',
+  upper_pull: 'pull',
+  full_body_a: 'squat',
+  full_body_b: 'hinge',
+  conditioning: 'hinge',
+  rehab_mobility: 'hinge',
+}
+
+// Reverse lookup: persisted session subtitle → SessionType. The subtitle is
+// the stable session-shape marker the planner stamps on every session, so
+// downstream consumers (local swap safety, rehab continuity) can recover the
+// session type from a stored PlannedSession without re-deriving the week
+// template.
+const SUBTITLE_TO_SESSION_TYPE: ReadonlyMap<string, SessionType> = new Map(
+  (Object.entries(SESSION_DEFAULTS) as Array<[SessionType, SessionDefaults]>).map(
+    ([type, defaults]) => [defaults.subtitle, type],
+  ),
+)
+
+export function sessionTypeForSubtitle(subtitle: string): SessionType | null {
+  return SUBTITLE_TO_SESSION_TYPE.get(subtitle) ?? null
+}
+
+// ─── Per-muscle weekly volume landmarks (MEV / MAV / MRV) ──────────────────
+// docs/research/00-MASTER-SYNTHESIS.md "Volume landmarks per muscle per week"
+// (R1 P2 — Israetel/Schoenfeld). Hard sets/muscle/week at RIR 0-3. Where the
+// research publishes a range we take the conservative end: MEV is the floor
+// the engine must hit for every muscle the split claims to train, MAV (low
+// end) is the accumulation target, MRV (low end) is the ceiling additions
+// may never breach. The audit finding this implements: "MEV/MAV/MRV volume
+// landmarks are implemented nowhere — fixed 4/3/3 sets + time filler".
+export interface VolumeLandmark {
+  mev: number
+  mav: number
+  mrv: number
+}
+
+export const VOLUME_LANDMARKS: Readonly<Partial<Record<MuscleGroup, VolumeLandmark>>> = {
+  chest: { mev: 8, mav: 12, mrv: 20 },
+  back: { mev: 10, mav: 14, mrv: 22 },
+  shoulders: { mev: 8, mav: 14, mrv: 22 },
+  biceps: { mev: 8, mav: 14, mrv: 20 },
+  triceps: { mev: 6, mav: 10, mrv: 18 },
+  quads: { mev: 8, mav: 12, mrv: 20 },
+  hamstrings: { mev: 6, mav: 10, mrv: 16 },
+  glutes: { mev: 6, mav: 8, mrv: 16 },
+  calves: { mev: 8, mav: 12, mrv: 20 },
+  core: { mev: 4, mav: 8, mrv: 15 },
+}
+
+// Deterministic enforcement order when the user has no muscle_priority —
+// the landmark table's own order (upper-body pressing/pulling first).
+const ORDERED_LANDMARK_MUSCLES = Object.keys(VOLUME_LANDMARKS) as MuscleGroup[]
+
+// Reverse index: PlannedExercise.library_id → VariantSpec. Variants with a
+// curated library link (e.g. ex-hip-thrust) emit that id, everything else
+// emits `variant:<id>` — mirror variantToExercise's derivation exactly.
+const LIBRARY_ID_TO_VARIANT: ReadonlyMap<string, VariantSpec> = (() => {
+  const m = new Map<string, VariantSpec>()
+  for (const pool of [MAIN_VARIANTS, ACCESSORY_VARIANTS]) {
+    for (const v of Object.values(pool)) {
+      const key = v.library_id ?? `variant:${v.id}`
+      if (!m.has(key)) m.set(key, v)
+    }
+  }
+  return m
+})()
+
+// Rehab, mobility, and cardio work isn't a "hard set" — only stimulus roles
+// count toward (and receive) landmark volume.
+const COUNTED_VOLUME_ROLES = new Set(['main lift', 'accessory', 'isolation', 'core'])
+
+// Per-exercise weekly working-set ceiling: straight sets stay the backbone;
+// past 5 sets of one movement the marginal stimulus drops — spread further
+// volume across movements instead.
+const SET_CAP_PER_EXERCISE = 5
+
+// A freshly-added volume exercise starts at 2 sets — the minimum honest dose.
+const NEW_EXERCISE_SETS = 2
+
+type TrainingTier = 'novice' | 'intermediate' | 'advanced'
+
+// Same breakpoints as autoProgress/startingWeights: <12mo novice, <36mo
+// intermediate, 36+ advanced; unknown → intermediate (long-standing default).
+function trainingTierFor(months: number | undefined): TrainingTier {
+  if (months === undefined) return 'intermediate'
+  if (months < 12) return 'novice'
+  if (months < 36) return 'intermediate'
+  return 'advanced'
+}
+
+/**
+ * Weekly set target for one muscle: start the block at MEV, ramp linearly to
+ * the tier ceiling by the last work week (deload week is excluded upstream).
+ * Tier ceilings per the research overlay: novice caps at MEV+2, intermediate
+ * targets MAV, advanced may push slightly past MAV (never past MRV).
+ */
+export function weeklyVolumeTarget(
+  lm: VolumeLandmark,
+  weekNumber: number,
+  lengthWeeks: number,
+  tier: TrainingTier,
+  bias = 0,
+): number {
+  const ceiling =
+    tier === 'novice' ? lm.mev + 2
+    : tier === 'advanced' ? Math.min(lm.mav + 2, lm.mrv)
+    : lm.mav
+  const workWeeks = Math.max(2, lengthWeeks - 1)
+  const t = Math.min(1, Math.max(0, (weekNumber - 1) / (workWeeks - 1)))
+  const base = lm.mev + (ceiling - lm.mev) * t
+  // volume_bias: ±2 sets per step, floored just under MEV (a "ran hot" block
+  // starts as a recovery block, not a collapse) and capped at MRV.
+  const floor = Math.max(1, lm.mev - 2)
+  return Math.min(lm.mrv, Math.max(floor, Math.round(base + bias * 2)))
+}
+
+/**
+ * Count weekly hard sets per muscle across a week's sessions. Primary muscles
+ * get full credit, secondaries half credit (indirect volume counts ~half per
+ * the RP convention). Exported so tests audit emitted plans with the same
+ * accounting the engine enforces.
+ */
+export function countWeeklySetsPerMuscle(
+  sessions: readonly PlannedSession[],
+): Map<MuscleGroup, number> {
+  const out = new Map<MuscleGroup, number>()
+  for (const s of sessions) {
+    for (const ex of s.exercises) {
+      if (!COUNTED_VOLUME_ROLES.has(ex.role)) continue
+      const v = LIBRARY_ID_TO_VARIANT.get(ex.library_id)
+      if (!v) continue
+      for (const m of v.primary_muscles) out.set(m, (out.get(m) ?? 0) + ex.sets)
+      for (const m of v.secondary_muscles) out.set(m, (out.get(m) ?? 0) + ex.sets * 0.5)
+    }
+  }
+  return out
+}
+
 // ─── Stage resolution ──────────────────────────────────────────────────────
 // For a given week and injury directive, pick the applicable rehab stage
 // considering stage_weeks offset (user may ENTER the plan mid-rehab).
@@ -217,20 +369,42 @@ export function mergeDirectivesForSession(
     if (inj.severity === 'rehab') {
       const stage = resolveStage(protocol, weekNumber, inj.stage_weeks)
       if (stage) {
+        // Bans are safety constraints — they apply to every session type.
         for (const b of stage.banned_variants) banned.add(b)
+        // Everything else in the stage only constrains the session slot whose
+        // movement pattern matches the stage's target. A meniscus stage lists
+        // squat variants — it owns squat-pattern slots, NOT the bench/row/
+        // hinge slots (the audit's "goblet squat on every day" leak). When a
+        // stage lists variants across patterns (e.g. shoulder rehab allows
+        // both modified presses and rows), each variant routes only to its
+        // matching slot. A stage whose variants resolve to no pattern at all
+        // (loose protocol ids) is treated as pattern-agnostic — conservative
+        // old behavior for overrides/warmups, with nothing to prefer.
+        const slotPattern = SESSION_MAIN_PATTERN[sessionType]
+        const stagePatterns = new Set<MovementPattern>()
         for (const a of stage.allowed_main_variants) {
-          if (!preferred.includes(a)) preferred.push(a)
+          const p = resolveVariant(a)?.pattern
+          if (p) stagePatterns.add(p)
         }
-        for (const el of stage.warmup_protocol) {
-          // Swap static stretches for dynamic equivalents (or drop) — static
-          // holds pre-lift transiently cut force output. See
-          // staticStretchSubstitution.ts.
-          const sub = substituteStaticStretch(el.name)
-          if (sub && !warmupElements.includes(sub)) warmupElements.push(sub)
-        }
-        if (stage.rep_scheme_override) {
-          // First-in wins for rep override (most-rehab-active injury drives)
-          if (!repOverride) repOverride = stage.rep_scheme_override
+        const constrainsThisSlot =
+          stagePatterns.size === 0 || stagePatterns.has(slotPattern)
+        if (constrainsThisSlot) {
+          for (const a of stage.allowed_main_variants) {
+            const v = resolveVariant(a)
+            if (v?.pattern !== slotPattern) continue
+            if (!preferred.includes(a)) preferred.push(a)
+          }
+          for (const el of stage.warmup_protocol) {
+            // Swap static stretches for dynamic equivalents (or drop) — static
+            // holds pre-lift transiently cut force output. See
+            // staticStretchSubstitution.ts.
+            const sub = substituteStaticStretch(el.name)
+            if (sub && !warmupElements.includes(sub)) warmupElements.push(sub)
+          }
+          if (stage.rep_scheme_override) {
+            // First-in wins for rep override (most-rehab-active injury drives)
+            if (!repOverride) repOverride = stage.rep_scheme_override
+          }
         }
       }
     }
@@ -352,36 +526,116 @@ export function mergeDirectivesForSession(
   }
 }
 
+// ─── Profile-driven selection filters ──────────────────────────────────────
+// Equipment + dislikes computed once per session build and applied at every
+// selection point. Injury bans stay the stronger filter: selection relaxes
+// dislikes (then equipment) before it would ever breach a ban.
+interface SelectionFilters {
+  access: Set<string> | null          // null = unrestricted equipment
+  dislikes: NonNullable<UserProgramProfile['exercise_dislikes']>
+}
+
+function filtersFor(profile?: UserProgramProfile): SelectionFilters {
+  return {
+    access: equipmentAccessFor(profile?.equipment),
+    dislikes: profile?.exercise_dislikes ?? [],
+  }
+}
+
+function passesFilters(v: VariantSpec, f: SelectionFilters): boolean {
+  return variantAllowedByEquipment(v, f.access) && !isVariantDisliked(v, f.dislikes)
+}
+
 // ─── Main-lift selection ───────────────────────────────────────────────────
 // Prefer the first preferred_variant that isn't banned. Fall back to the
 // session-type default (unless banned — then use the first accepted preferred).
 function pickMainLift(
   sessionType: SessionType,
   context: MergedSessionContext,
+  filters: SelectionFilters,
 ): VariantSpec {
   // 1. Check preferred_variants (from stages) first
   for (const id of context.preferred_variants) {
     if (context.banned_variants.has(id)) continue
     const v = resolveVariant(id)
-    if (v) return v
+    if (v && passesFilters(v, filters)) return v
   }
   // 2. Fall back to session-type default if not banned
   const defaults = SESSION_DEFAULTS[sessionType]
   if (!context.banned_variants.has(defaults.default_main)) {
     const v = resolveVariant(defaults.default_main)
-    if (v) return v
+    if (v && passesFilters(v, filters)) return v
   }
-  // 3. Scan all MAIN_VARIANTS for first non-banned option matching session focus
+  // 3. Scan MAIN_VARIANTS for the first non-banned, filter-passing variant on
+  //    the session's main-slot movement pattern (bench gone → another press,
+  //    never a squat on push day).
+  const slotPattern = SESSION_MAIN_PATTERN[sessionType]
+  for (const [id, v] of Object.entries(MAIN_VARIANTS)) {
+    if (context.banned_variants.has(id)) continue
+    if (v.pattern !== slotPattern) continue
+    if (passesFilters(v, filters)) return v
+  }
+  // 4. Same scan, matching session focus muscles instead of pattern.
   for (const [id, v] of Object.entries(MAIN_VARIANTS)) {
     if (context.banned_variants.has(id)) continue
     const overlap = v.primary_muscles.some((m) => defaults.focus.includes(m))
-    if (overlap) return v
+    if (overlap && passesFilters(v, filters)) return v
   }
-  // 4. Last-resort: first unbanned main variant
-  const [, fallback] = Object.entries(MAIN_VARIANTS).find(
+  // 5. Relax dislikes (preference yields to having a workout at all), keep
+  //    equipment honest — bodyweight variants always pass this gate.
+  for (const [id, v] of Object.entries(MAIN_VARIANTS)) {
+    if (context.banned_variants.has(id)) continue
+    if (variantAllowedByEquipment(v, filters.access)) return v
+  }
+  // 6. Last-resort: first unbanned main variant (never breach a ban).
+  const fallback = Object.entries(MAIN_VARIANTS).find(
     ([id]) => !context.banned_variants.has(id),
-  )!
-  return fallback
+  )
+  return fallback ? fallback[1] : MAIN_VARIANTS.split_squat_bodyweight!
+}
+
+// ─── Secondary-lift selection ──────────────────────────────────────────────
+// The session default when it survives bans + filters; otherwise the first
+// same-pattern substitute (a user who dislikes overhead pressing still gets
+// a second press, not a hole in the session). Returns null when nothing fits.
+function pickSecondary(
+  sessionType: SessionType,
+  context: MergedSessionContext,
+  filters: SelectionFilters,
+  takenLibraryIds: ReadonlySet<string>,
+): VariantSpec | null {
+  const defaults = SESSION_DEFAULTS[sessionType]
+  const defaultId = defaults.default_secondary
+  if (!defaultId) return null
+  const libIdOf = (v: VariantSpec): string => v.library_id ?? `variant:${v.id}`
+  const def = resolveVariant(defaultId)
+  if (
+    def &&
+    !context.banned_variants.has(defaultId) &&
+    passesFilters(def, filters) &&
+    !takenLibraryIds.has(libIdOf(def))
+  ) {
+    return def
+  }
+  const pattern = def?.pattern ?? SESSION_MAIN_PATTERN[sessionType]
+  // Rehab-stage variants first — when the default secondary is stage-banned,
+  // the substitute should come from what the stage allows, not the full pool.
+  for (const id of context.preferred_variants) {
+    const v = resolveVariant(id)
+    if (!v || v.pattern !== pattern) continue
+    if (context.banned_variants.has(id)) continue
+    if (!passesFilters(v, filters)) continue
+    if (takenLibraryIds.has(libIdOf(v))) continue
+    return v
+  }
+  for (const [id, v] of Object.entries(MAIN_VARIANTS)) {
+    if (v.pattern !== pattern) continue
+    if (context.banned_variants.has(id)) continue
+    if (!passesFilters(v, filters)) continue
+    if (takenLibraryIds.has(libIdOf(v))) continue
+    return v
+  }
+  return null
 }
 
 // ─── Rep-scheme selection ──────────────────────────────────────────────────
@@ -443,43 +697,68 @@ function warmupSetsFor(ramp: VariantSpec['ramp_style']): WarmupSet[] {
 }
 
 // ─── Accessory selection ───────────────────────────────────────────────────
-// Take priority_accessories first (injury-driven), then fill from session
-// defaults up to target count. Add decompression_pair as a tail element.
+// Take priority_accessories first (injury-driven), then accessories targeting
+// the user's priority muscles, then session defaults up to target count. Add
+// decompression_pair as a tail element. Equipment + dislikes hard-filter every
+// step; when the defaults are wiped out by the equipment filter, a pool scan
+// on the session's focus muscles keeps the card from going bare.
 function pickAccessories(
   sessionType: SessionType,
   context: MergedSessionContext,
   targetCount: number,
+  filters: SelectionFilters,
+  priorityMuscles: readonly MuscleGroup[],
 ): VariantSpec[] {
   const picked: VariantSpec[] = []
   const pickedIds = new Set<string>()
+  const defaults = SESSION_DEFAULTS[sessionType]
 
-  for (const id of context.priority_accessories) {
-    if (pickedIds.has(id) || context.banned_variants.has(id)) continue
+  const tryAdd = (id: string): void => {
+    if (pickedIds.has(id) || context.banned_variants.has(id)) return
     const v = resolveVariant(id)
-    if (!v) continue
+    if (!v || !passesFilters(v, filters)) return
     picked.push(v)
     pickedIds.add(id)
+  }
+
+  for (const id of context.priority_accessories) {
+    tryAdd(id)
+    if (picked.length >= targetCount) break
+  }
+
+  // Muscle-priority bias: pull pool accessories whose primary muscle is one
+  // of the user's picks onto sessions that already train that muscle, in
+  // priority order (first pick's accessories lead).
+  for (const muscle of priorityMuscles) {
+    if (!defaults.focus.includes(muscle)) continue
+    for (const [id, v] of Object.entries(ACCESSORY_VARIANTS)) {
+      if (v.primary_muscles[0] !== muscle) continue
+      tryAdd(id)
+      if (picked.length >= targetCount) break
+    }
     if (picked.length >= targetCount) break
   }
 
   if (picked.length < targetCount) {
-    const defaults = SESSION_DEFAULTS[sessionType].default_accessories
-    for (const id of defaults) {
-      if (pickedIds.has(id) || context.banned_variants.has(id)) continue
-      const v = resolveVariant(id)
-      if (!v) continue
-      picked.push(v)
-      pickedIds.add(id)
+    for (const id of defaults.default_accessories) {
+      tryAdd(id)
       if (picked.length >= targetCount) break
     }
   }
 
+  // Equipment-poor fallback: the session HAS default accessories but the
+  // filters removed them — scan the pool for anything matching the session
+  // focus so minimal-equipment users still get a complete card.
+  if (picked.length < 2 && defaults.default_accessories.length > 0) {
+    for (const [id, v] of Object.entries(ACCESSORY_VARIANTS)) {
+      if (!v.primary_muscles.some((m) => defaults.focus.includes(m))) continue
+      tryAdd(id)
+      if (picked.length >= 2) break
+    }
+  }
+
   for (const id of context.decompression_pair) {
-    if (pickedIds.has(id) || context.banned_variants.has(id)) continue
-    const v = resolveVariant(id)
-    if (!v) continue
-    picked.push(v)
-    pickedIds.add(id)
+    tryAdd(id)
   }
 
   return picked
@@ -637,6 +916,27 @@ function applyDeload(exercises: PlannedExercise[]): PlannedExercise[] {
   }))
 }
 
+// ─── Session wall-clock accounting ─────────────────────────────────────────
+// One working set costs its rest window plus ~0.8 min of actual lifting.
+// Estimated session minutes add fixed warmup (10) + cooldown (5) so the card
+// matches the wall-clock experience, not just lifting time.
+const WORK_MINUTES_PER_SET = 0.8
+const WARMUP_MINUTES = 10
+const COOLDOWN_MINUTES = 5
+
+function liftingMinutesOf(exercises: readonly PlannedExercise[]): number {
+  return exercises.reduce(
+    (acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + WORK_MINUTES_PER_SET),
+    0,
+  )
+}
+
+function estimateSessionMinutes(exercises: readonly PlannedExercise[]): number {
+  return Math.round(
+    Math.min(120, Math.max(25, liftingMinutesOf(exercises) + WARMUP_MINUTES + COOLDOWN_MINUTES)),
+  )
+}
+
 // ─── Session builder ───────────────────────────────────────────────────────
 export function buildSession(args: {
   sessionType: SessionType
@@ -662,21 +962,27 @@ export function buildSession(args: {
   // Main lift. Modifications are captured in the rationale (below) — don't
   // leak raw protocol-key strings into the exercise's notes field, which
   // renders directly in the UI.
-  const main = pickMainLift(sessionType, context)
+  const filters = filtersFor(profile)
+  const priorityMuscles = profile?.muscle_priority ?? []
+  const main = pickMainLift(sessionType, context, filters)
   const mainScheme = pickRepScheme('main lift', directives.goal, context.rep_scheme_override)
   const exercises: PlannedExercise[] = [
     variantToExercise(main, 4, mainScheme.reps, mainScheme.rir, mainScheme.rest, profile),
   ]
 
-  // Secondary lift (if session has one)
-  if (defaults.default_secondary && !context.banned_variants.has(defaults.default_secondary)) {
-    const sec = resolveVariant(defaults.default_secondary)
-    if (sec) {
-      const secScheme = pickRepScheme(sec.role, directives.goal, context.rep_scheme_override)
-      exercises.push(
-        variantToExercise(sec, 3, secScheme.reps, secScheme.rir, secScheme.rest, profile),
-      )
-    }
+  // Secondary lift (if session has one) — pickSecondary substitutes a
+  // same-pattern variant when the default is banned/disliked/unavailable.
+  const sec = pickSecondary(
+    sessionType,
+    context,
+    filters,
+    new Set(exercises.map((e) => e.library_id)),
+  )
+  if (sec) {
+    const secScheme = pickRepScheme(sec.role, directives.goal, context.rep_scheme_override)
+    exercises.push(
+      variantToExercise(sec, 3, secScheme.reps, secScheme.rir, secScheme.rest, profile),
+    )
   }
 
   // Accessories — budget-driven. Pull the priority list (injury-forward + session
@@ -686,7 +992,7 @@ export function buildSession(args: {
   // being the same fixed shape.
   const targetMin = directives.target_lifting_minutes ?? 60
   const minutesPerExercise = (ex: PlannedExercise): number =>
-    ex.sets * (ex.rest_seconds / 60 + 0.8)
+    ex.sets * (ex.rest_seconds / 60 + WORK_MINUTES_PER_SET)
   const currentMinutes = (): number =>
     exercises.reduce((acc, ex) => acc + minutesPerExercise(ex), 0)
   // Fetch a wide pool — we'll filter based on budget.
@@ -696,14 +1002,23 @@ export function buildSession(args: {
   // producing two "Barbell Hip Thrust" rows in the same session. Pick by
   // library_id, not name, so variant aliases still collapse correctly.
   const alreadyPickedIds = new Set(exercises.map((e) => e.library_id))
-  const accessoryPool = pickAccessories(sessionType, context, 8)
+  const accessoryPool = pickAccessories(sessionType, context, 8, filters, priorityMuscles)
   for (const acc of accessoryPool) {
-    const accLibraryId = `variant:${acc.id}`
+    // Mirror variantToExercise's library_id derivation EXACTLY — variants
+    // with a curated library link (e.g. glute_max_bridge_or_hip_thrust →
+    // ex-hip-thrust) emit that id, and comparing against `variant:${id}`
+    // let the same hip thrust through twice (the audit's dedupe bug).
+    const accLibraryId = acc.library_id ?? `variant:${acc.id}`
     if (alreadyPickedIds.has(accLibraryId)) continue
     const accScheme = pickRepScheme(acc.role, directives.goal, null)
+    // The user's FIRST priority muscle earns an extra set on its accessories
+    // (the second pick gets selection preference only — first pick stronger).
+    const boosted =
+      priorityMuscles.length > 0 &&
+      acc.primary_muscles.includes(priorityMuscles[0]!)
     const candidate = variantToExercise(
       acc,
-      3,
+      boosted ? 4 : 3,
       accScheme.reps,
       accScheme.rir,
       accScheme.rest,
@@ -754,20 +1069,6 @@ export function buildSession(args: {
   }
   const rationale = rationaleParts.join(' ').slice(0, 280)
 
-  // Estimated minutes: sum of (sets × (rest + ~0.8 min work)) per lift +
-  // fixed warmup (10 min) + cooldown (5 min) so the session card matches
-  // the wall-clock experience, not just lifting time.
-  const liftingMinutes = finalExercises.reduce(
-    (acc, ex) => acc + ex.sets * (ex.rest_seconds / 60 + 0.8),
-    0,
-  )
-  const WARMUP_MIN = 10
-  const COOLDOWN_MIN = 5
-  const estimatedMinutes = Math.min(
-    120,
-    Math.max(25, liftingMinutes + WARMUP_MIN + COOLDOWN_MIN),
-  )
-
   return {
     id: `session-wk${weekNumber}-s${ordinal}`,
     week_number: weekNumber,
@@ -775,11 +1076,233 @@ export function buildSession(args: {
     focus: defaults.focus,
     title: defaults.title,
     subtitle: defaults.subtitle,
-    estimated_minutes: Math.round(estimatedMinutes),
+    estimated_minutes: estimateSessionMinutes(finalExercises),
     exercises: finalExercises,
     day_of_week: dayOfWeek,
     rationale,
     status: 'upcoming',
+  }
+}
+
+// ─── Weekly volume enforcement (MEV floors → MAV ramp, MRV-capped) ─────────
+// Runs once per work week AFTER the week's sessions are built. Counts hard
+// sets per muscle across the week, then closes per-muscle deficits against
+// the week's ramped target: first by deepening existing exercises that train
+// the muscle (fewest sets first, capped per exercise), then by adding a
+// direct-work exercise from the pool. Every addition respects injury bans,
+// equipment, dislikes, MRV ceilings, and the session minute cap. The deload
+// week is excluded — it stays at 50% of base volume via applyDeload.
+
+interface WeekSessionRef {
+  session: PlannedSession
+  sessionType: SessionType
+  context: MergedSessionContext
+  /** Conditioning / rehab_mobility sessions never receive landmark volume. */
+  receivesVolume: boolean
+  minutes: number
+  changed: boolean
+}
+
+function fitsUnderMrv(
+  v: VariantSpec,
+  counts: Map<MuscleGroup, number>,
+  increment: number,
+): boolean {
+  for (const m of v.primary_muscles) {
+    const lm = VOLUME_LANDMARKS[m]
+    if (!lm) continue
+    if ((counts.get(m) ?? 0) + increment > lm.mrv) return false
+  }
+  // Secondaries earn half credit, so they breach MRV half as fast — but they
+  // still breach it (the audit's cap is on TOTAL counted volume).
+  for (const m of v.secondary_muscles) {
+    const lm = VOLUME_LANDMARKS[m]
+    if (!lm) continue
+    if ((counts.get(m) ?? 0) + increment * 0.5 > lm.mrv) return false
+  }
+  return true
+}
+
+function creditSets(counts: Map<MuscleGroup, number>, v: VariantSpec, n: number): void {
+  for (const m of v.primary_muscles) counts.set(m, (counts.get(m) ?? 0) + n)
+  for (const m of v.secondary_muscles) counts.set(m, (counts.get(m) ?? 0) + n * 0.5)
+}
+
+// +1 set on the existing exercise that trains the muscle with the fewest
+// working sets (spread before deepening). Deterministic tie-break: session
+// order, then exercise order within the session.
+function addSetForMuscle(
+  muscle: MuscleGroup,
+  refs: WeekSessionRef[],
+  counts: Map<MuscleGroup, number>,
+  capMinutes: number,
+): boolean {
+  let best: { ref: WeekSessionRef; ex: PlannedExercise; v: VariantSpec } | null = null
+  for (const ref of refs) {
+    if (!ref.receivesVolume) continue
+    for (const ex of ref.session.exercises) {
+      if (!COUNTED_VOLUME_ROLES.has(ex.role)) continue
+      if (ex.sets >= SET_CAP_PER_EXERCISE) continue
+      const v = LIBRARY_ID_TO_VARIANT.get(ex.library_id)
+      if (!v || !v.primary_muscles.includes(muscle)) continue
+      const setCost = ex.rest_seconds / 60 + WORK_MINUTES_PER_SET
+      if (ref.minutes + setCost > capMinutes) continue
+      if (!fitsUnderMrv(v, counts, 1)) continue
+      if (!best || ex.sets < best.ex.sets) best = { ref, ex, v }
+    }
+  }
+  if (!best) return false
+  best.ex.sets += 1
+  best.ref.minutes += best.ex.rest_seconds / 60 + WORK_MINUTES_PER_SET
+  best.ref.changed = true
+  creditSets(counts, best.v, 1)
+  return true
+}
+
+// Add a direct-work exercise for the muscle to the session with the most
+// remaining time. Candidate order: accessories whose FIRST primary muscle is
+// the target (true direct work), then any accessory training it, then main
+// variants — so a chest deficit gets a fly before a second press.
+function addExerciseForMuscle(
+  muscle: MuscleGroup,
+  refs: WeekSessionRef[],
+  counts: Map<MuscleGroup, number>,
+  capMinutes: number,
+  directives: ProgrammingDirectives,
+  filters: SelectionFilters,
+  profile?: UserProgramProfile,
+): boolean {
+  const candidates: VariantSpec[] = []
+  const seen = new Set<string>()
+  for (const [id, v] of Object.entries(ACCESSORY_VARIANTS)) {
+    if (v.primary_muscles[0] === muscle) {
+      candidates.push(v)
+      seen.add(id)
+    }
+  }
+  for (const [id, v] of Object.entries(ACCESSORY_VARIANTS)) {
+    if (!seen.has(id) && v.primary_muscles.includes(muscle)) candidates.push(v)
+  }
+  for (const v of Object.values(MAIN_VARIANTS)) {
+    if (v.primary_muscles.includes(muscle)) candidates.push(v)
+  }
+
+  // Host sessions: already train the muscle (focus or an existing exercise),
+  // most headroom first; tie-break by ordinal for determinism.
+  const hosts = refs
+    .filter(
+      (r) =>
+        r.receivesVolume &&
+        (r.session.focus.includes(muscle) ||
+          r.session.exercises.some((e) =>
+            LIBRARY_ID_TO_VARIANT.get(e.library_id)?.primary_muscles.includes(muscle),
+          )),
+    )
+    .sort((a, b) => a.minutes - b.minutes || a.session.ordinal - b.session.ordinal)
+
+  for (const v of candidates) {
+    if (!COUNTED_VOLUME_ROLES.has(v.role)) continue
+    if (!passesFilters(v, filters)) continue
+    if (!fitsUnderMrv(v, counts, NEW_EXERCISE_SETS)) continue
+    const scheme = pickRepScheme(v.role, directives.goal, null)
+    const cost = NEW_EXERCISE_SETS * (scheme.rest / 60 + WORK_MINUTES_PER_SET)
+    const libId = v.library_id ?? `variant:${v.id}`
+    for (const ref of hosts) {
+      if (ref.context.banned_variants.has(v.id)) continue
+      if (ref.session.exercises.some((e) => e.library_id === libId)) continue
+      if (ref.minutes + cost > capMinutes) continue
+      ref.session.exercises.push(
+        variantToExercise(v, NEW_EXERCISE_SETS, scheme.reps, scheme.rir, scheme.rest, profile),
+      )
+      ref.minutes += cost
+      ref.changed = true
+      creditSets(counts, v, NEW_EXERCISE_SETS)
+      return true
+    }
+  }
+  return false
+}
+
+function applyWeeklyVolume(args: {
+  refs: WeekSessionRef[]
+  weekNumber: number
+  lengthWeeks: number
+  directives: ProgrammingDirectives
+  profile?: UserProgramProfile
+}): void {
+  const { refs, weekNumber, lengthWeeks, directives, profile } = args
+  const tier = trainingTierFor(profile?.training_age_months)
+  const filters = filtersFor(profile)
+  const targetMin = directives.target_lifting_minutes ?? 60
+  // Week 1 honors the onboarding time budget with the same +10% tolerance the
+  // base builder uses. Later weeks earn +5% of target per week: the research
+  // mandates ~1-2 added sets/muscle/week, and a frozen cap would stall the
+  // ramp at week 2 for tight budgets. Peak week tops out at +30%.
+  const capMinutes = targetMin * (1.1 + 0.05 * (weekNumber - 1))
+
+  const counts = countWeeklySetsPerMuscle(refs.map((r) => r.session))
+
+  // Coverage = muscles the split claims to train this week. A session under
+  // active rehab-stage constraints pins its focus muscles to MEV — never ramp
+  // volume through a healing joint ("injury: cap at MEV until cleared").
+  const coverage: MuscleGroup[] = []
+  const rehabCapped = new Set<MuscleGroup>()
+  for (const r of refs) {
+    if (!r.receivesVolume) continue
+    for (const m of r.session.focus) {
+      if (!VOLUME_LANDMARKS[m]) continue
+      if (!coverage.includes(m)) coverage.push(m)
+      if (r.context.preferred_variants.length > 0 || r.context.rep_scheme_override) {
+        rehabCapped.add(m)
+      }
+    }
+  }
+
+  // Deterministic order: the user's muscle_priority picks win the time budget
+  // first; everything else follows the landmark table's canonical order.
+  const priorities = (profile?.muscle_priority ?? []).filter((m) => coverage.includes(m))
+  const order = [
+    ...priorities,
+    ...ORDERED_LANDMARK_MUSCLES.filter(
+      (m) => coverage.includes(m) && !priorities.includes(m),
+    ),
+  ]
+
+  for (const muscle of order) {
+    const lm = VOLUME_LANDMARKS[muscle]!
+    const capped = rehabCapped.has(muscle)
+    const target = capped
+      ? lm.mev
+      : weeklyVolumeTarget(lm, weekNumber, lengthWeeks, tier, directives.volume_bias ?? 0)
+    let guard = 0
+    while (guard < 40) {
+      guard += 1
+      const deficit = target - (counts.get(muscle) ?? 0)
+      if (deficit <= 0) break
+      if (addSetForMuscle(muscle, refs, counts, capMinutes)) continue
+      // A new exercise lands at NEW_EXERCISE_SETS sets. On a rehab-capped
+      // muscle that may not overshoot the MEV ceiling — staying one set shy
+      // beats adding load above the cap on a healing joint.
+      if (!capped || deficit >= NEW_EXERCISE_SETS) {
+        if (
+          addExerciseForMuscle(muscle, refs, counts, capMinutes, directives, filters, profile)
+        ) {
+          continue
+        }
+      }
+      break // time/equipment too tight — deficit stands, priority already won
+    }
+  }
+
+  // Restore the categorical ordering rules + honest time estimates on any
+  // session the pass touched.
+  for (const ref of refs) {
+    if (!ref.changed) continue
+    ref.session.exercises = reorderExercisesForSession(
+      ref.session.exercises,
+      ref.session.focus,
+    )
+    ref.session.estimated_minutes = estimateSessionMinutes(ref.session.exercises)
   }
 }
 
@@ -848,21 +1371,41 @@ export function buildMesocycle(
 
   const sessions: PlannedSession[] = []
   for (let week = 1; week <= resolvedLength; week += 1) {
+    const weekRefs: WeekSessionRef[] = []
     for (let i = 0; i < template.length; i += 1) {
       const sessionType = template[i]!
       const ordinal = i + 1
       const dow = dayOfWeekSpread[i] ?? 0
-      sessions.push(
-        buildSession({
-          sessionType,
-          weekNumber: week,
-          ordinal,
-          directives,
-          dayOfWeek: dow,
-          profile,
-          lengthWeeks: resolvedLength,
-        }),
-      )
+      const session = buildSession({
+        sessionType,
+        weekNumber: week,
+        ordinal,
+        directives,
+        dayOfWeek: dow,
+        profile,
+        lengthWeeks: resolvedLength,
+      })
+      sessions.push(session)
+      weekRefs.push({
+        session,
+        sessionType,
+        context: mergeDirectivesForSession(sessionType, week, directives),
+        receivesVolume:
+          sessionType !== 'conditioning' && sessionType !== 'rehab_mobility',
+        minutes: liftingMinutesOf(session.exercises),
+        changed: false,
+      })
+    }
+    // Deload week (the last week) stays at 50% of base volume — only work
+    // weeks get the MEV→MAV accounting.
+    if (week < resolvedLength) {
+      applyWeeklyVolume({
+        refs: weekRefs,
+        weekNumber: week,
+        lengthWeeks: resolvedLength,
+        directives,
+        profile,
+      })
     }
   }
 

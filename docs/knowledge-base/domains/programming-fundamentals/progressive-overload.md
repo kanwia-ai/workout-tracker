@@ -18,7 +18,7 @@ citations:
   - "Plotkin D, Coleman M, Van Every D, et al. Progressive overload without progressing load? The effects of load or repetition progression on muscular adaptations. PeerJ. 2022;10:e14142. PMID: 36157070."
   - "Grgic J, Schoenfeld BJ. Are the Hypertrophic Adaptations to High and Low-Load Resistance Training Muscle Fiber Type Specific? Front Physiol. 2018;9:402."
 related: [hypertrophy-rep-ranges, set-volume-landmarks, mesocycle-volume-progression, autoregulation-rir-novices-vs-trained]
-contradicts: [myth-just-do-the-program, myth-overload-only-means-load]
+contradicts: []
 ---
 
 # Progressive overload — something must increase over time

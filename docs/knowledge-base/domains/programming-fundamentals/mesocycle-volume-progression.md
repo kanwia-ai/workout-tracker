@@ -19,7 +19,7 @@ citations:
   - "Coleman M, Bell L, Helms E, Burke R, Schoenfeld BJ. Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach. Sports Med. 2024. PMC10511399."
   - "Renaissance Periodization. Training Volume Landmarks for Muscle Growth. https://rpstrength.com/blogs/articles/training-volume-landmarks-muscle-growth"
 related: [set-volume-landmarks, proximity-to-failure-rir, deload-prescription, autoregulation-rir-novices-vs-trained]
-contradicts: [myth-add-weight-forever, myth-deload-makes-you-weaker]
+contradicts: []
 ---
 
 # Mesocycle volume progression — MEV → MAV → deload

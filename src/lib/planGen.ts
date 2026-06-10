@@ -5,6 +5,10 @@ import type { UserProgramProfile } from '../types/profile'
 import { orchestratePlan } from './planner/orchestrate'
 import { buildMesocycle } from './planner/buildMesocycle'
 import { annotateWithNuance } from './planner/nuanceLayer'
+import {
+  computeRehabStageOffsets,
+  type RehabStageOffsets,
+} from './planner/rehabContinuity'
 import { listCheckinsForUser } from './checkins'
 import type { ProgrammingDirectives } from '../types/directives'
 
@@ -125,7 +129,17 @@ export async function generatePlanLocal(
   userId: string,
   weeks: number = 6,
 ): Promise<Mesocycle> {
-  const { mesocycle } = orchestratePlan(profile, userId, weeks)
+  // Cross-block rehab continuity: a substantially-completed prior block
+  // advances the rehab stage clock instead of restarting at stage 1
+  // (audit 2026-06-09 critical #2). Fail-soft like the check-in read — a
+  // Dexie hiccup degrades to the note-derived starting stage, never a crash.
+  let rehabOffsets: RehabStageOffsets = {}
+  try {
+    rehabOffsets = await computeRehabStageOffsets(userId, profile)
+  } catch (err) {
+    console.warn('generatePlanLocal: failed to compute rehab continuity', err)
+  }
+  const { mesocycle } = orchestratePlan(profile, userId, weeks, rehabOffsets)
 
   // ── LLM nuance pass ──
   // After the engine produces a structurally-valid plan, run the nuance

@@ -18,7 +18,7 @@ citations:
   - "Halperin I et al. Accuracy in predicting repetitions to task failure in resistance exercise: a scoping review and exploratory meta-analysis. Sports Med. 2022. (Confidence: HIGH on existence and CLAIM — novices systematically underestimate proximity to failure; MEDIUM on exact PMID/DOI.)"
   - "Stronger by Science. Reps in Reserve — overshooting and undershooting. https://www.strongerbyscience.com/reps-in-reserve/ (accessed 2026-05)."
 related: [progressive-overload-variables, double-progression, bump-vs-hold-vs-drop-rules, when-to-bump-judgment]
-contradicts: [myth-load-alone-tracks-progress, myth-novices-can-estimate-rir-accurately]
+contradicts: []
 ---
 
 # Per-set effort rating is more informative than load alone

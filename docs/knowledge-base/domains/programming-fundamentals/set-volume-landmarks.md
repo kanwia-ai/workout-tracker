@@ -18,7 +18,7 @@ citations:
   - "Schoenfeld BJ, Contreras B, Krieger J, et al. Resistance Training Volume Enhances Muscle Hypertrophy but Not Strength in Trained Men. Med Sci Sports Exerc. 2019;51(1):94-103. PMID: 30153194."
   - "Helms ER, Morgan A, Valdez A. The Muscle & Strength Pyramid: Training, 2nd ed. 2019."
 related: [hypertrophy-rep-ranges, training-frequency, volume-quality-vs-quantity, mesocycle-volume-progression, proximity-to-failure-rir]
-contradicts: [myth-more-volume-always-better, myth-one-size-volume-fits-all]
+contradicts: [more-volume-always-better]
 ---
 
 # Set volume landmarks (MV / MEV / MAV / MRV) per muscle per week

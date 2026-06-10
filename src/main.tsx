@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { AppErrorBoundary } from './components/AppErrorBoundary.tsx'
 import { seedExerciseLibraryIfEmpty } from './data/seedExerciseLibrary'
 
 // Fire-and-forget: populates Dexie `exerciseLibrary` on first load.
@@ -30,6 +31,10 @@ const updateSW = registerSW({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {/* Root error boundary: a render-time throw anywhere in the tree shows
+        the recovery screen (reload / start fresh) instead of a white screen. */}
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </StrictMode>,
 )

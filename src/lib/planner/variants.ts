@@ -10,6 +10,13 @@
 // add an entry here + reference it in one or more rehab protocols.
 
 import type { MuscleGroup } from '../../types/plan'
+import type { ExerciseDislike, UserProgramProfile } from '../../types/profile'
+
+// Movement pattern of a main-lift variant. The planner uses this to keep
+// protocol stage constraints scoped to the session slot they actually target
+// (a squat-pattern rehab stage must not rewrite the bench slot) and to find
+// pattern-appropriate fallbacks when a default main is filtered out.
+export type MovementPattern = 'squat' | 'hinge' | 'push' | 'pull'
 
 export interface VariantSpec {
   id: string
@@ -18,6 +25,8 @@ export interface VariantSpec {
   secondary_muscles: MuscleGroup[]
   equipment: string[]
   role: 'main lift' | 'accessory' | 'isolation' | 'core' | 'rehab' | 'mobility' | 'cardio'
+  // Set on every MAIN_VARIANTS entry; accessories may omit it.
+  pattern?: MovementPattern
   library_id?: string           // link to EXERCISE_LIBRARY when a 1:1 match exists
   // Warmup ramping behaviour. Main compounds get 3 ramp sets, accessories 1,
   // rehab/mobility/core get 0. Planner reads this to emit warmup_sets arrays.
@@ -35,6 +44,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['dumbbell', 'plates'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 150,
   },
@@ -45,6 +55,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -55,6 +66,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['barbell', 'box'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -65,6 +77,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'hamstrings'],
     equipment: ['bench'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 90,
   },
@@ -75,6 +88,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: [],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 90,
   },
@@ -85,6 +99,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['barbell', 'rack'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -95,6 +110,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['barbell', 'rack', 'plates'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -105,6 +121,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'hamstrings'],
     equipment: ['barbell', 'rack'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -115,6 +132,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'hamstrings'],
     equipment: ['barbell', 'rack'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -125,6 +143,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['barbell', 'rack'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -135,6 +154,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: [],
     equipment: ['leg_press_machine'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 120,
   },
@@ -147,6 +167,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: [],
     equipment: ['hack_squat_machine'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'compound',
     default_rest_seconds: 150,
   },
@@ -157,6 +178,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['hamstrings', 'core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 120,
   },
@@ -167,6 +189,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 90,
   },
@@ -177,6 +200,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['hamstrings', 'core'],
     equipment: ['dumbbell', 'bench'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 120,
   },
@@ -187,6 +211,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['hamstrings', 'core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'squat',
     ramp_style: 'accessory',
     default_rest_seconds: 120,
   },
@@ -199,6 +224,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'quads'],
     equipment: ['trap_bar', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -209,6 +235,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'quads'],
     equipment: ['trap_bar', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -219,6 +246,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['back', 'core'],
     equipment: ['kettlebell'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'accessory',
     default_rest_seconds: 90,
   },
@@ -229,6 +257,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['back', 'core'],
     equipment: ['barbell', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -239,6 +268,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['back', 'core'],
     equipment: ['barbell', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 150,
   },
@@ -249,6 +279,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core', 'quads'],
     equipment: ['barbell', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 240,
   },
@@ -261,6 +292,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['back', 'core'],
     equipment: ['barbell', 'plates'],
     role: 'main lift',
+    pattern: 'hinge',
     library_id: 'ex-sumo-deadlift',
     ramp_style: 'compound',
     default_rest_seconds: 180,
@@ -274,6 +306,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['back', 'core'],
     equipment: ['smith_machine'],
     role: 'main lift',
+    pattern: 'hinge',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -286,6 +319,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps', 'chest', 'core'],
     equipment: ['barbell', 'landmine'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -296,6 +330,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps'],
     equipment: ['dumbbell', 'bench'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -306,6 +341,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps', 'core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -316,6 +352,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps'],
     equipment: ['dumbbell', 'bench'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -326,6 +363,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps', 'core'],
     equipment: ['dumbbell'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 120,
   },
@@ -336,6 +374,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['triceps', 'core'],
     equipment: ['barbell'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -346,6 +385,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: [],
     equipment: ['barbell', 'bench'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -356,6 +396,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['shoulders'],
     equipment: ['barbell', 'bench'],
     role: 'main lift',
+    pattern: 'push',
     ramp_style: 'compound',
     default_rest_seconds: 180,
   },
@@ -368,6 +409,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['biceps'],
     equipment: ['cable_machine'],
     role: 'main lift',
+    pattern: 'pull',
     ramp_style: 'compound',
     default_rest_seconds: 90,
   },
@@ -378,6 +420,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['biceps'],
     equipment: ['dumbbell', 'bench'],
     role: 'main lift',
+    pattern: 'pull',
     ramp_style: 'compound',
     default_rest_seconds: 90,
   },
@@ -388,6 +431,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['biceps'],
     equipment: ['cable_machine'],
     role: 'main lift',
+    pattern: 'pull',
     ramp_style: 'compound',
     default_rest_seconds: 90,
   },
@@ -398,6 +442,7 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['pullup_bar'],
     role: 'main lift',
+    pattern: 'pull',
     ramp_style: 'compound',
     default_rest_seconds: 150,
   },
@@ -408,8 +453,46 @@ export const MAIN_VARIANTS: Record<string, VariantSpec> = {
     secondary_muscles: ['core'],
     equipment: ['pullup_bar', 'band'],
     role: 'main lift',
+    pattern: 'pull',
     ramp_style: 'compound',
     default_rest_seconds: 120,
+  },
+
+  // ── Minimal-equipment staples ───────────────────────────────────────
+  // Guarantee every movement pattern has a band/bodyweight option so the
+  // equipment filter can never empty a session's main-lift pool.
+  push_up: {
+    id: 'push_up',
+    name: 'Push-Up',
+    primary_muscles: ['chest', 'shoulders', 'triceps'],
+    secondary_muscles: ['core'],
+    equipment: [],
+    role: 'main lift',
+    pattern: 'push',
+    ramp_style: 'accessory',
+    default_rest_seconds: 90,
+  },
+  banded_row: {
+    id: 'banded_row',
+    name: 'Banded Row',
+    primary_muscles: ['back', 'biceps'],
+    secondary_muscles: [],
+    equipment: ['band'],
+    role: 'main lift',
+    pattern: 'pull',
+    ramp_style: 'accessory',
+    default_rest_seconds: 90,
+  },
+  glute_bridge_bodyweight: {
+    id: 'glute_bridge_bodyweight',
+    name: 'Glute Bridge',
+    primary_muscles: ['glutes', 'hamstrings'],
+    secondary_muscles: ['core'],
+    equipment: [],
+    role: 'main lift',
+    pattern: 'hinge',
+    ramp_style: 'none',
+    default_rest_seconds: 90,
   },
 }
 
@@ -516,9 +599,181 @@ export const ACCESSORY_VARIANTS: Record<string, VariantSpec> = {
     ramp_style: 'none',
     default_rest_seconds: 0,
   },
+  band_pull_apart: {
+    id: 'band_pull_apart',
+    name: 'Band Pull-Apart',
+    primary_muscles: ['back', 'shoulders'],
+    secondary_muscles: [],
+    equipment: ['band'],
+    role: 'isolation',
+    ramp_style: 'none',
+    default_rest_seconds: 45,
+  },
+
+  // ── Direct-work staples for the weekly volume model ──────────────────
+  // The MEV/MAV enforcement in buildMesocycle needs single-muscle options
+  // for the groups the compound slots underfeed (chest/biceps/triceps/
+  // shoulders/quads). Bread-and-butter picks, library-linked where a 1:1
+  // entry exists so demos and history attach cleanly.
+  dumbbell_chest_fly: {
+    id: 'dumbbell_chest_fly',
+    name: 'Dumbbell Chest Fly',
+    primary_muscles: ['chest'],
+    secondary_muscles: ['shoulders'],
+    equipment: ['dumbbell', 'bench'],
+    role: 'isolation',
+    ramp_style: 'accessory',
+    default_rest_seconds: 60,
+  },
+  dumbbell_curl: {
+    id: 'dumbbell_curl',
+    name: 'Dumbbell Curl',
+    primary_muscles: ['biceps'],
+    secondary_muscles: [],
+    equipment: ['dumbbell'],
+    role: 'isolation',
+    library_id: 'ex-dumbbell-curl',
+    ramp_style: 'none',
+    default_rest_seconds: 60,
+  },
+  hammer_curl: {
+    id: 'hammer_curl',
+    name: 'Hammer Curl',
+    primary_muscles: ['biceps'],
+    secondary_muscles: [],
+    equipment: ['dumbbell'],
+    role: 'isolation',
+    library_id: 'ex-hammer-curl',
+    ramp_style: 'none',
+    default_rest_seconds: 60,
+  },
+  triceps_rope_pushdown: {
+    id: 'triceps_rope_pushdown',
+    name: 'Tricep Rope Pushdown',
+    primary_muscles: ['triceps'],
+    secondary_muscles: [],
+    equipment: ['cable_machine', 'rope'],
+    role: 'isolation',
+    library_id: 'ex-tricep-extension',
+    ramp_style: 'none',
+    default_rest_seconds: 60,
+  },
+  overhead_triceps_extension: {
+    id: 'overhead_triceps_extension',
+    name: 'Overhead Tricep Extension',
+    primary_muscles: ['triceps'],
+    secondary_muscles: [],
+    equipment: ['dumbbell'],
+    role: 'isolation',
+    library_id: 'ex-overhead-tricep-extension',
+    ramp_style: 'none',
+    default_rest_seconds: 60,
+  },
+  dumbbell_lateral_raise: {
+    id: 'dumbbell_lateral_raise',
+    name: 'Lateral Raise',
+    primary_muscles: ['shoulders'],
+    secondary_muscles: [],
+    equipment: ['dumbbell'],
+    role: 'isolation',
+    library_id: 'ex-lateral-raise',
+    ramp_style: 'none',
+    default_rest_seconds: 45,
+  },
+  // Partial range on purpose — the top-half ROM skips the deep-flexion
+  // position that stresses the meniscus, so it's safe as a default for the
+  // knee-flagged users this app serves.
+  leg_extension_partial: {
+    id: 'leg_extension_partial',
+    name: 'Leg Extension (Partial Range)',
+    primary_muscles: ['quads'],
+    secondary_muscles: [],
+    equipment: ['leg_extension_machine'],
+    role: 'isolation',
+    library_id: 'ex-leg-extension-partial',
+    ramp_style: 'accessory',
+    default_rest_seconds: 60,
+  },
 }
 
 // Lookup helper — consult both pools.
 export function resolveVariant(id: string): VariantSpec | null {
   return MAIN_VARIANTS[id] ?? ACCESSORY_VARIANTS[id] ?? null
+}
+
+// ─── Profile-driven pool filters ───────────────────────────────────────────
+// Equipment + dislikes hard-filter the variant pool BEFORE selection. Injury
+// bans remain the strongest filter (selection never breaches a ban to honor
+// a preference); bodyweight variants (empty equipment list) pass every
+// equipment gate, so the pool can never go fully empty.
+
+type EquipmentKind = UserProgramProfile['equipment'][number]
+
+// Which equipment tokens each onboarding option unlocks. `null` = everything
+// (full gym). cable_machine / barbell are ADDITIVE on top of other picks.
+// home_weights includes bench + plates: an adjustable bench is standard home
+// kit, and "plates" only gates heel elevation (any household riser works).
+const EQUIPMENT_TOKENS: Record<EquipmentKind, string[] | null> = {
+  full_gym: null,
+  home_weights: ['dumbbell', 'kettlebell', 'band', 'bench', 'plates'],
+  bands_only: ['band'],
+  bodyweight_only: [],
+  cable_machine: ['cable_machine', 'rope'],
+  barbell: ['barbell', 'plates', 'rack', 'bench'],
+}
+
+/**
+ * Union of equipment tokens the profile has access to. `null` = unrestricted
+ * (full gym present, or no equipment answer at all — legacy profiles).
+ */
+export function equipmentAccessFor(
+  equipment: EquipmentKind[] | undefined,
+): Set<string> | null {
+  if (!equipment || equipment.length === 0) return null
+  const out = new Set<string>()
+  for (const kind of equipment) {
+    const tokens = EQUIPMENT_TOKENS[kind]
+    if (tokens === null) return null
+    for (const t of tokens) out.add(t)
+  }
+  return out
+}
+
+/** Bodyweight variants ([] equipment) always pass — final fallback by design. */
+export function variantAllowedByEquipment(
+  v: VariantSpec,
+  access: Set<string> | null,
+): boolean {
+  if (access === null) return true
+  return v.equipment.every((t) => access.has(t))
+}
+
+// Dislike token → variant matcher. Matched against the variant's id + name
+// (snake_case flattened to spaces) so synonyms like trap bar/hex bar and
+// future pool additions are caught without enumerating ids. Deliberately
+// narrow: "rowing_machine" is the cardio erg, NOT cable/dumbbell rows;
+// landmine press is the classic overhead-press substitute, so it survives
+// the overhead_pressing dislike.
+const DISLIKE_MATCHERS: Record<ExerciseDislike, (hay: string, v: VariantSpec) => boolean> = {
+  burpees: (hay) => hay.includes('burpee'),
+  running: (hay) => /\brun(ning)?\b|sprint/.test(hay),
+  jumping: (hay) => /jump|plyo|bound/.test(hay),
+  overhead_pressing: (hay) => /overhead.*press|shoulder press/.test(hay),
+  cardio_machines: (hay) =>
+    /treadmill|elliptical|stair ?(master|climber)|stationary bike|spin bike|assault bike|rowing machine|\berg\b/.test(hay),
+  hex_bar: (hay, v) => v.equipment.includes('trap_bar') || /trap bar|hex bar/.test(hay),
+  battle_ropes: (hay) => hay.includes('battle rope'),
+  bike_sprints: (hay) => /bike sprint|assault bike|spin sprint/.test(hay),
+  rowing_machine: (hay) => /rowing machine|row erg|\berg\b/.test(hay),
+  kettlebell_swings: (hay) => hay.includes('swing'),
+  box_jumps: (hay) => hay.includes('box jump'),
+}
+
+export function isVariantDisliked(
+  v: VariantSpec,
+  dislikes: readonly ExerciseDislike[] | undefined,
+): boolean {
+  if (!dislikes || dislikes.length === 0) return false
+  const hay = `${v.id.replace(/_/g, ' ')} ${v.name}`.toLowerCase()
+  return dislikes.some((d) => DISLIKE_MATCHERS[d]?.(hay, v) ?? false)
 }

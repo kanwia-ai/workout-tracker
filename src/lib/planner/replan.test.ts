@@ -1,12 +1,18 @@
-// Tests for `replanNextBlock` — the end-of-block adaptive re-plan that
-// feeds the last 6 weeks of check-ins to Claude Opus and gets back
-// adjusted ProgrammingDirectives for the NEXT block.
+// Tests for `replanNextBlock` — the end-of-block adaptive re-plan.
+//
+// Two paths under test:
+//   - EDGE path (VITE_USE_LOCAL_PLANNER='false'): feeds the block's
+//     check-ins to Claude Opus via `replan_mesocycle`, gated on 18
+//     check-ins. Falls back to the local replan when the edge dies.
+//   - LOCAL path (default): deterministic on-device replan — check-in
+//     signals drive volume steps, pain notes guard rehab advancement, and
+//     the rehab stage continues across blocks. No check-in gate.
 //
 // Everything hits the database via fake-indexeddb; the edge function
 // (`callEdge`) is ALWAYS mocked — no real API traffic in these tests.
 
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock `../generate` BEFORE importing replan so the mocked `callEdge` is in
 // play by the time the module under test binds to it.
@@ -24,7 +30,9 @@ import {
   replanNextBlock,
 } from './replan'
 import { orchestratePlan } from './orchestrate'
-import type { SessionCheckin } from '../../types/checkin'
+import { buildMesocycle, type BuiltMesocycle } from './buildMesocycle'
+import { MesocycleSchema } from '../../types/plan'
+import type { SessionCheckin, ExerciseRating } from '../../types/checkin'
 import type { UserProgramProfile } from '../../types/profile'
 import type { ProgrammingDirectives } from '../../types/directives'
 
@@ -135,13 +143,21 @@ async function seedPlanAndProfile(): Promise<{
   }
 }
 
-describe('replanNextBlock', () => {
+describe('replanNextBlock (edge mode)', () => {
   beforeEach(async () => {
+    // The edge path is opt-in now (local replan is the default) — these
+    // tests pin the legacy behavior explicitly.
+    vi.stubEnv('VITE_USE_LOCAL_PLANNER', 'false')
     vi.mocked(callEdge).mockReset()
     await db.sessionCheckins.clear()
+    await db.sessionLogs.clear()
     await db.mesocycles.clear()
     await db.userProgramProfiles.clear()
     await db.replanHistory.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it('MIN_CHECKINS_FOR_REPLAN is 18 (75% of a 6×4 block)', () => {
@@ -269,5 +285,206 @@ describe('replanNextBlock', () => {
       /no profile found/,
     )
     expect(callEdge).not.toHaveBeenCalled()
+  })
+})
+
+// ─── Local replan (audit 2026-06-09 fix: dead backend must degrade) ─────────
+describe('replanNextBlock — local replan', () => {
+  beforeEach(async () => {
+    vi.mocked(callEdge).mockReset()
+    await db.sessionCheckins.clear()
+    await db.sessionLogs.clear()
+    await db.mesocycles.clear()
+    await db.userProgramProfiles.clear()
+    await db.replanHistory.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  // One check-in with an explicit signal shape, persisted via the real
+  // saveCheckin path.
+  async function seedSignalCheckin(
+    sessionId: string,
+    opts: {
+      feel: 1 | 2 | 3 | 4 | 5
+      rating: ExerciseRating
+      at: string
+      notes?: string
+    },
+  ): Promise<void> {
+    await saveCheckin({
+      session_id: sessionId,
+      user_id: TEST_USER_ID,
+      completed_at: opts.at,
+      week_number: 1,
+      overall_feel: opts.feel,
+      ...(opts.notes ? { overall_notes: opts.notes } : {}),
+      exercises: [
+        { library_id: 'ex:back-squat', name: 'Back Squat', rating: opts.rating },
+      ],
+      synced: false,
+    })
+  }
+
+  async function squatSessionIdsOf(mesocycleId: string): Promise<string[]> {
+    const row = await db.mesocycles.get(mesocycleId)
+    const sessions = JSON.parse(row!.sessions_json) as Array<{
+      id: string
+      subtitle: string
+    }>
+    return sessions
+      .filter((s) => s.subtitle === 'LOWER · SQUAT-DOMINANT')
+      .map((s) => s.id)
+  }
+
+  it('local mode: replans with sparse history and never calls the edge', async () => {
+    const { mesocycleId, sessionIds } = await seedPlanAndProfile()
+    // Way below the edge path's 18-check-in gate — the local path softens it.
+    await seedCheckins(TEST_USER_ID, sessionIds.slice(0, 5))
+
+    const result = await replanNextBlock(TEST_USER_ID, mesocycleId)
+
+    expect(callEdge).not.toHaveBeenCalled()
+    expect(result.directives.week_shape.sessions_per_week).toBe(4)
+    expect(result.adjustments_summary.length).toBeGreaterThan(0)
+    expect(result.rationale_for_user.length).toBeGreaterThan(0)
+
+    const history = await db.replanHistory
+      .where('user_id')
+      .equals(TEST_USER_ID)
+      .toArray()
+    expect(history).toHaveLength(1)
+    expect(history[0]!.completed_mesocycle_id).toBe(mesocycleId)
+  })
+
+  it('local mode: works with zero check-ins', async () => {
+    const { mesocycleId } = await seedPlanAndProfile()
+
+    const result = await replanNextBlock(TEST_USER_ID, mesocycleId)
+
+    expect(callEdge).not.toHaveBeenCalled()
+    expect(result.adjustments_summary.length).toBeGreaterThan(0)
+  })
+
+  it('volume steps follow check-in signals and produce different valid blocks', async () => {
+    const { mesocycleId, sessionIds } = await seedPlanAndProfile()
+
+    // Consistently too hard → one volume step down.
+    for (let i = 0; i < 8; i++) {
+      await seedSignalCheckin(sessionIds[i]!, {
+        feel: i % 2 === 0 ? 1 : 2,
+        rating: 'tough',
+        at: new Date(2026, 2, i + 1).toISOString(),
+      })
+    }
+    const hard = await replanNextBlock(TEST_USER_ID, mesocycleId)
+    expect(hard.directives.target_lifting_minutes).toBe(50)
+
+    // Consistently too easy → one volume step up.
+    await db.sessionCheckins.clear()
+    await db.replanHistory.clear()
+    for (let i = 0; i < 8; i++) {
+      await seedSignalCheckin(sessionIds[i]!, {
+        feel: 5,
+        rating: 'easy',
+        at: new Date(2026, 2, i + 1).toISOString(),
+      })
+    }
+    const easy = await replanNextBlock(TEST_USER_ID, mesocycleId)
+    expect(easy.directives.target_lifting_minutes).toBe(70)
+
+    // Both sets of directives must build a schema-valid next block, and the
+    // two blocks must actually differ (the easy one carries more work).
+    const build = (d: ProgrammingDirectives): BuiltMesocycle =>
+      buildMesocycle(d, 6, TEST_PROFILE)
+    const hardBlock = build(hard.directives)
+    const easyBlock = build(easy.directives)
+    for (const b of [hardBlock, easyBlock]) {
+      const parsed = MesocycleSchema.safeParse({
+        id: b.id,
+        user_id: TEST_USER_ID,
+        generated_at: b.generated_at,
+        length_weeks: b.length_weeks,
+        sessions: b.sessions,
+        profile_snapshot: TEST_PROFILE,
+      })
+      expect(parsed.success).toBe(true)
+    }
+    const wk1Sets = (b: BuiltMesocycle): number =>
+      b.sessions
+        .filter((s) => s.week_number === 1)
+        .reduce(
+          (acc, s) => acc + s.exercises.reduce((a, e) => a + e.sets, 0),
+          0,
+        )
+    expect(wk1Sets(easyBlock)).toBeGreaterThan(wk1Sets(hardBlock))
+  })
+
+  it('a completed pain-free block advances the rehab stage', async () => {
+    const { mesocycleId } = await seedPlanAndProfile()
+    const squatIds = await squatSessionIdsOf(mesocycleId)
+    expect(squatIds.length).toBe(6)
+    // All squat-pattern sessions completed after the block was generated.
+    const base = Date.now() + 60_000
+    for (let i = 0; i < squatIds.length; i++) {
+      await seedSignalCheckin(squatIds[i]!, {
+        feel: 3,
+        rating: 'solid',
+        at: new Date(base + i * 1000).toISOString(),
+      })
+    }
+
+    const result = await replanNextBlock(TEST_USER_ID, mesocycleId)
+    const inj = result.directives.injury_directives.find(
+      (d) => d.source === 'left_meniscus',
+    )!
+    // Note-derived base ('rehab week 3') + the completed 6-week block.
+    expect(inj.stage_weeks).toBe(9)
+    expect(result.adjustments_summary.join(' ')).toMatch(/moves up/i)
+  })
+
+  it('pain notes withhold the rehab stage advancement', async () => {
+    const { mesocycleId } = await seedPlanAndProfile()
+    const squatIds = await squatSessionIdsOf(mesocycleId)
+    const base = Date.now() + 60_000
+    for (let i = 0; i < squatIds.length; i++) {
+      await seedSignalCheckin(squatIds[i]!, {
+        feel: 3,
+        rating: 'solid',
+        at: new Date(base + i * 1000).toISOString(),
+        ...(i < 2 ? { notes: 'left knee pain on the way down' } : {}),
+      })
+    }
+
+    const result = await replanNextBlock(TEST_USER_ID, mesocycleId)
+    const inj = result.directives.injury_directives.find(
+      (d) => d.source === 'left_meniscus',
+    )!
+    // The block was completed, but the pain notes hold the stage where the
+    // note put it ('rehab week 3') instead of pushing ahead.
+    expect(inj.stage_weeks).toBe(3)
+    expect(result.adjustments_summary.join(' ')).toMatch(/pain/i)
+  })
+
+  it('edge mode: a dead edge falls back to the local replan', async () => {
+    vi.stubEnv('VITE_USE_LOCAL_PLANNER', 'false')
+    const { mesocycleId, sessionIds } = await seedPlanAndProfile()
+    await seedCheckins(TEST_USER_ID, sessionIds.slice(0, 20))
+    vi.mocked(callEdge).mockRejectedValue(
+      new Error('edge replan_mesocycle network error: NXDOMAIN'),
+    )
+
+    const result = await replanNextBlock(TEST_USER_ID, mesocycleId)
+
+    expect(callEdge).toHaveBeenCalledTimes(1)
+    expect(result.adjustments_summary.length).toBeGreaterThan(0)
+    expect(result.rationale_for_user.length).toBeGreaterThan(0)
+    const history = await db.replanHistory
+      .where('user_id')
+      .equals(TEST_USER_ID)
+      .toArray()
+    expect(history).toHaveLength(1)
   })
 })

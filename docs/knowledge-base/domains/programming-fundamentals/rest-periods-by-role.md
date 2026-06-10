@@ -17,7 +17,7 @@ citations:
   - "Piqueras-Sanchiz F, et al. Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy. PMC11349676 (2024)."
   - "de Salles BF, Simão R, Miranda F, et al. Rest interval between sets in strength training. Sports Med. 2009;39(9):765-777. PMID: 19691365."
 related: [hypertrophy-rep-ranges, strength-rep-ranges, session-structure-ordering, proximity-to-failure-rir]
-contradicts: [myth-60s-rest-hypertrophy, myth-short-rest-builds-more-muscle]
+contradicts: [short-rest-burns-more-fat]
 ---
 
 # Rest intervals scale by exercise role

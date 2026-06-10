@@ -12,7 +12,8 @@
 //   - We can swap this for embedding-based RAG later without changing the
 //     prompt or the surface area of `annotateWithNuance`.
 
-import type { KBEntry } from './types'
+import type { KBDomain, KBEntry } from './types'
+import { BodyPart } from '../../types/profile'
 import type { PrimaryGoal, UserProgramProfile } from '../../types/profile'
 import type { Mesocycle } from '../../types/plan'
 import { loadKnowledgeBase } from './loader'
@@ -66,6 +67,11 @@ const LEGACY_GOAL_TO_CANONICAL: Record<string, PrimaryGoal> = {
   get_strong: 'get_stronger',
   strong: 'get_stronger',
   general: 'general_fitness',
+  // Tag-concept tokens — KB tags describe topics ('hypertrophy', 'toning')
+  // rather than enum goals. Mapping them here lets the myth-relevance check
+  // reuse the single normalization policy.
+  hypertrophy: 'build_muscle',
+  toning: 'lean_and_strong',
 }
 
 const CANONICAL_GOALS: ReadonlySet<string> = new Set<PrimaryGoal>([
@@ -139,6 +145,56 @@ export function injuriesForProfile(profile: UserProgramProfile): string[] {
   return (profile.injuries ?? []).map((i) => i.part)
 }
 
+// ─── Injury-token normalization ────────────────────────────────────────────
+// Mirrors `normalizeGoalToken`: KB frontmatter accumulated generic injury
+// tokens ('knee', 'meniscus', 'shoulder', ...) that never equal the sided
+// BodyPart enum the profile uses ('left_meniscus', 'right_shoulder', ...).
+// Exact-equality matching made every entry carrying a generic token
+// permanently unreachable — including squat-variants-knee-friendly, the most
+// owner-relevant entry in the KB.
+//
+// Each generic token expands to the set of BodyPart values it covers; the
+// matcher then intersects that set with the user's actual injuries. A
+// loader-level test asserts every applicability.injuries token in the live KB
+// expands to at least one enum value, so future drift fails CI instead of
+// silently orphaning entries.
+const BODY_PART_VALUES: ReadonlySet<string> = new Set(BodyPart.options)
+
+const GENERIC_INJURY_TO_BODY_PARTS: Record<string, ReadonlyArray<BodyPart>> = {
+  // A meniscus tear IS a knee issue, so the bare 'knee' token covers both the
+  // knee and meniscus enum values.
+  knee: ['left_knee', 'right_knee', 'left_meniscus', 'right_meniscus'],
+  meniscus: ['left_meniscus', 'right_meniscus'],
+  // No dedicated enum value — patellofemoral pain presents as knee pain.
+  patellofemoral: ['left_knee', 'right_knee'],
+  shoulder: ['left_shoulder', 'right_shoulder'],
+  trap: ['left_trap', 'right_trap'],
+  back: ['lower_back', 'upper_back'],
+  // Sciatica originates at the lower back; that's the flag users can set.
+  sciatica: ['lower_back'],
+  // Closest enum value — the profile has no generic 'hip' part.
+  hip: ['hip_flexors'],
+}
+
+/**
+ * Expand a KB injury token (canonical sided BodyPart value OR generic token)
+ * to the BodyPart enum values it covers. Canonical tokens pass through as a
+ * singleton; unknown tokens expand to [] (they can never match a user, and
+ * the loader validation test keeps them out of the live KB). Pure, total.
+ */
+export function expandInjuryToken(token: string): string[] {
+  if (BODY_PART_VALUES.has(token)) return [token]
+  return [...(GENERIC_INJURY_TO_BODY_PARTS[token] ?? [])]
+}
+
+/** True iff any entry injury token covers any of the user's injured parts. */
+function entryInjuriesMatchUser(
+  entryInjuries: ReadonlyArray<string>,
+  userParts: ReadonlySet<string>,
+): boolean {
+  return entryInjuries.some((t) => expandInjuryToken(t).some((p) => userParts.has(p)))
+}
+
 // ─── Filter predicate ──────────────────────────────────────────────────────
 // True iff this entry's applicability is consistent with the user's profile.
 // Includes (everything-permissive bias):
@@ -194,11 +250,12 @@ export function entryMatchesProfile(
   // ── injuries ──
   // If the entry is injury-specific, the user must have a matching injury.
   // If the entry's injuries[] is empty, this filter is a pass-through.
+  // Tokens are normalized via expandInjuryToken so generic KB tokens
+  // ('knee', 'shoulder') match the sided enum values users actually have.
   const entryInjuries = a.injuries ?? []
   if (entryInjuries.length > 0) {
     const userInjuries = new Set(injuriesForProfile(profile))
-    const injuryPass = entryInjuries.some((part) => userInjuries.has(part))
-    if (!injuryPass) return false
+    if (!entryInjuriesMatchUser(entryInjuries, userInjuries)) return false
   }
 
   return true
@@ -211,8 +268,11 @@ export function entryMatchesProfile(
 //   +5  direct goal match on user's dominant goal (primary_goals[0])
 //   +3  goal match on a secondary goal
 //   +6  injury-specific entry whose injuries[] includes one of the user's
-//   +2  myth entry (always useful as guardrail; cap doesn't hurt)
+//   +2  myth entry whose tags touch the user's goals or the plan's content
+//       (a flat myth bonus let nutrition/cardio myths flood the cap for
+//       every profile — see the domain-stratified cut below)
 //   +2  the user's primary muscle-priority is in the entry's tags
+//   +1  sex-specific entry matching the user's sex (beats sex:any ties)
 //   +1  the entry's domain matches a domain the plan touches:
 //       - body-composition  → user has 'fat_loss' goal
 //       - injuries          → user has any injury
@@ -220,7 +280,38 @@ export function entryMatchesProfile(
 //   +confidence weighting: high=+2, medium=+1, low=+0
 //
 // Negative pruning: none. Filter is the gate; ranking just orders within.
-export function scoreEntry(entry: KBEntry, profile: UserProgramProfile): number {
+
+/**
+ * True iff a myth is about something this user or this plan actually touches:
+ * a tag normalizes to one of the profile's canonical goals (tags are
+ * hyphenated topic words — 'fat-loss', 'hypertrophy' — so we underscore +
+ * normalize before comparing), or a tag (or one of its hyphen-parts) appears
+ * in the plan's exercise-name tokens.
+ */
+function mythTouchesUserOrPlan(
+  entry: KBEntry,
+  profileGoals: ReadonlyArray<string>,
+  planTokens?: ReadonlySet<string>,
+): boolean {
+  const goalSet = new Set(profileGoals)
+  for (const rawTag of entry.frontmatter.tags ?? []) {
+    const tag = rawTag.toLowerCase()
+    if (goalSet.has(normalizeGoalToken(tag.replace(/-/g, '_')))) return true
+    if (planTokens) {
+      if (planTokens.has(tag)) return true
+      for (const part of tag.split('-')) {
+        if (part.length >= 4 && planTokens.has(part)) return true
+      }
+    }
+  }
+  return false
+}
+
+export function scoreEntry(
+  entry: KBEntry,
+  profile: UserProgramProfile,
+  planTokens?: ReadonlySet<string>,
+): number {
   let score = 0
   const a = entry.frontmatter.applicability
 
@@ -246,13 +337,20 @@ export function scoreEntry(entry: KBEntry, profile: UserProgramProfile): number 
   // semantics encoded.
   const userInjuries = new Set(injuriesForProfile(profile))
   const entryInjuries = a.injuries ?? []
-  if (entryInjuries.length > 0 && entryInjuries.some((p) => userInjuries.has(p))) {
+  if (entryInjuries.length > 0 && entryInjuriesMatchUser(entryInjuries, userInjuries)) {
     score += 6
   }
 
-  // Myths — always +2 so the nuance layer has guardrails against common
-  // gym-bro defaults the LLM might regress to without them.
-  if (entry.frontmatter.type === 'myth') score += 2
+  // Myths — +2 only when the myth is about something this user's goals or
+  // this plan's exercises touch. The old flat bonus pushed ~20 myths (incl.
+  // nutrition/cardio ones) into the top-30 for every profile, crowding out
+  // entire domains.
+  if (
+    entry.frontmatter.type === 'myth' &&
+    mythTouchesUserOrPlan(entry, allGoalTokens, planTokens)
+  ) {
+    score += 2
+  }
 
   // Muscle-priority tag match
   if (profile.muscle_priority && profile.muscle_priority.length > 0) {
@@ -260,6 +358,11 @@ export function scoreEntry(entry: KBEntry, profile: UserProgramProfile): number 
     const topPriority = profile.muscle_priority[0]
     if (topPriority && tags.has(topPriority.toLowerCase())) score += 2
   }
+
+  // Sex-specific entries that match the user beat generic (sex: any) ties —
+  // e.g. women-training-fundamentals over adolescents-youth-training for a
+  // female profile. The filter already rejected mismatches.
+  if ((a.sex ?? 'any') !== 'any' && a.sex === profile.sex) score += 1
 
   // Domain relevance
   const domain = entry.frontmatter.domain
@@ -289,13 +392,75 @@ export interface RetrievalResult {
   scores: Record<string, number>
 }
 
+// ─── Domain-stratified cut ─────────────────────────────────────────────────
+// A flat top-N cut let one domain flood the prompt budget (myths took ~20 of
+// 30 slots for the owner's profile, leaving zero programming-fundamentals /
+// progression / warmup-recovery entries). Instead, reserve slots per domain
+// group, guarantee every domain with at least one eligible entry is
+// represented, and fill the remainder by raw score.
+const RESERVED_DOMAIN_SLOTS: ReadonlyArray<{
+  domains: ReadonlyArray<KBDomain>
+  slots: number
+}> = [
+  { domains: ['injuries'], slots: 6 },
+  { domains: ['programming-fundamentals', 'progression'], slots: 6 },
+  { domains: ['exercises'], slots: 4 },
+  { domains: ['myths'], slots: 6 },
+  { domains: ['warmup-recovery'], slots: 2 },
+  { domains: ['special-populations'], slots: 2 },
+]
+
+interface ScoredEntry {
+  entry: KBEntry
+  score: number
+}
+
+function stratifiedCut(scoredDesc: ScoredEntry[], cap: number): ScoredEntry[] {
+  const picked = new Set<ScoredEntry>()
+  const pickedDomains = new Set<KBDomain>()
+  const take = (candidates: ScoredEntry[], slots: number): void => {
+    let remaining = slots
+    for (const c of candidates) {
+      if (remaining <= 0 || picked.size >= cap) break
+      if (picked.has(c)) continue
+      picked.add(c)
+      pickedDomains.add(c.entry.frontmatter.domain)
+      remaining--
+    }
+  }
+
+  for (const group of RESERVED_DOMAIN_SLOTS) {
+    take(
+      scoredDesc.filter((s) => group.domains.includes(s.entry.frontmatter.domain)),
+      group.slots,
+    )
+  }
+
+  // Floor: any eligible domain still unrepresented (warmup-recovery,
+  // special-populations, … have no reservation) gets its top entry.
+  const eligibleDomains = new Set(scoredDesc.map((s) => s.entry.frontmatter.domain))
+  for (const domain of eligibleDomains) {
+    if (!pickedDomains.has(domain)) {
+      take(
+        scoredDesc.filter((s) => s.entry.frontmatter.domain === domain),
+        1,
+      )
+    }
+  }
+
+  // Remainder by raw score across everything not yet picked.
+  take(scoredDesc, cap - picked.size)
+
+  return [...picked].sort((a, b) => b.score - a.score)
+}
+
 /**
  * Given the user profile + the engine's plan, return the relevant KB entries
- * sorted by descending relevance. The `mesocycle` argument is reserved for a
- * future enhancement (e.g. "this session contains lat pulldown → boost
- * `lat-pulldown-cueing`"); the current implementation reads only the
- * profile. We keep it in the signature so the nuance layer wires through
- * the plan reference, future-proofing the API.
+ * sorted by descending relevance. The plan feeds two signals: exercise-name
+ * tokens boost entries tagged with those exercises (+1), and they make
+ * exercise-specific myths eligible for the myth bonus. The final cut is
+ * domain-stratified (see `stratifiedCut`) so no single domain floods the
+ * prompt budget.
  */
 export function retrieveRelevantEntries(
   profile: UserProgramProfile,
@@ -307,27 +472,27 @@ export function retrieveRelevantEntries(
 
   const eligible = kb.filter((e) => entryMatchesProfile(e, profile))
 
-  // Plan-aware boost: when the plan contains an exercise whose name OR
-  // library_id matches one of the entry's tags, give that entry +1. Lets
-  // exercise-specific entries (lat-pulldown-cueing, hip-thrust-glute-priority)
-  // pop without forcing the LLM to dig for them.
-  const planTags = new Set<string>()
+  // Plan-aware boost: when the plan contains an exercise whose name matches
+  // one of the entry's tags, give that entry +1. Lets exercise-specific
+  // entries (lat-pulldown-cueing, hip-thrust-glute-priority) pop without
+  // forcing the LLM to dig for them.
+  const planTokens = new Set<string>()
   if (mesocycle) {
     for (const sess of mesocycle.sessions) {
       for (const ex of sess.exercises) {
         for (const token of ex.name.toLowerCase().split(/\s+/)) {
-          if (token.length >= 4) planTags.add(token)
+          if (token.length >= 4) planTokens.add(token)
         }
       }
     }
   }
 
-  const scored = eligible.map((entry) => {
-    let score = scoreEntry(entry, profile)
-    if (planTags.size > 0) {
+  const scored: ScoredEntry[] = eligible.map((entry) => {
+    let score = scoreEntry(entry, profile, planTokens)
+    if (planTokens.size > 0) {
       const tags = (entry.frontmatter.tags ?? []).map((t) => t.toLowerCase())
       for (const tag of tags) {
-        if (planTags.has(tag)) {
+        if (planTokens.has(tag)) {
           score += 1
           break
         }
@@ -337,7 +502,7 @@ export function retrieveRelevantEntries(
   })
 
   scored.sort((a, b) => b.score - a.score)
-  const top = scored.slice(0, cap)
+  const top = scored.length <= cap ? scored : stratifiedCut(scored, cap)
 
   return {
     entries: top.map((s) => s.entry),

@@ -18,7 +18,7 @@ citations:
   - "Stronger by Science. How to Choose the Right Load Progression Strategy. https://www.strongerbyscience.com/weekly-load-progression/ (accessed 2026-05)."
   - "Rippetoe M, Kilgore L. Practical Programming for Strength Training. 3rd ed. The Aasgaard Company; 2014."
 related: [progressive-overload-variables, double-progression, bump-vs-hold-vs-drop-rules, block-progression-arc]
-contradicts: [myth-everyone-progresses-at-the-same-rate, myth-advanced-lifters-dont-gain]
+contradicts: []
 ---
 
 # Bump magnitude scales with training age — novices absorb bigger jumps

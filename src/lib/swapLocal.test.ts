@@ -213,3 +213,153 @@ describe('swapVariantLocal', () => {
     expect(replacement.library_id).toBe('variant:split_squat_bodyweight')
   })
 })
+
+// ─── Injury-aware swaps (audit 2026-06-09 fix: swap safety) ────────────────
+// swapVariantLocal used to bypass injury bans entirely — a week-1 meniscus
+// rehab user tapping "too easy" on a goblet squat was offered Back Squat.
+// Swap candidates must pass the same protocol filters as initial generation:
+// stage bans are absolute, and when a rehab stage owns the session's main
+// slot, offers stay within the stage's allowed variants.
+describe('swapVariantLocal — injury awareness', () => {
+  const meniscusProfile: UserProgramProfile = {
+    ...baseProfile,
+    injuries: [{ part: 'left_meniscus', severity: 'modify' }],
+  }
+
+  // Week 1 of a fresh meniscus-modify profile = stage 1 of the protocol.
+  const STAGE_1_ALLOWED = [
+    'heel_elevated_goblet_squat',
+    'box_squat_high',
+    'split_squat_rear_foot_elevated_bodyweight',
+    'leg_press_narrow_rom',
+  ]
+
+  // Walk the swap until it runs out of candidates, collecting every offer.
+  function collectOffers(
+    current: PlannedExercise,
+    session: PlannedSession,
+    profile: UserProgramProfile,
+    reason: 'too_easy' | 'too_hard' | 'generic',
+  ): { offered: string[]; exhausted: boolean } {
+    const attempted: string[] = []
+    const offered: string[] = []
+    let exhausted = false
+    for (let i = 0; i < 40; i++) {
+      try {
+        const { replacement } = swapVariantLocal({
+          currentExercise: current,
+          session,
+          profile,
+          reason,
+          attemptedIds: attempted,
+        })
+        const id = replacement.library_id.startsWith('variant:')
+          ? replacement.library_id.slice('variant:'.length)
+          : replacement.library_id
+        offered.push(id)
+        attempted.push(id)
+      } catch {
+        exhausted = true
+        break
+      }
+    }
+    return { offered, exhausted }
+  }
+
+  it('never offers a banned or out-of-stage squat to a week-1 meniscus user (too_easy)', () => {
+    const current = makePlannedExercise({
+      library_id: 'variant:heel_elevated_goblet_squat',
+      name: 'Heel-Elevated Goblet Squat',
+    })
+    const session = makeSession([current])
+
+    const { offered } = collectOffers(current, session, meniscusProfile, 'too_easy')
+
+    expect(offered.length).toBeGreaterThan(0)
+    // The audit bug: Back Squat offered to a healing knee. Never again —
+    // not under any alias, and nothing outside the stage's allowed list.
+    expect(offered).not.toContain('back_squat')
+    expect(offered).not.toContain('back_squat_moderate_load')
+    expect(offered).not.toContain('bulgarian_split_squat_loaded')
+    for (const id of offered) {
+      expect(STAGE_1_ALLOWED).toContain(id)
+    }
+  })
+
+  it('exhausts the stage-allowed pool and throws instead of breaching the protocol', () => {
+    const current = makePlannedExercise({
+      library_id: 'variant:heel_elevated_goblet_squat',
+      name: 'Heel-Elevated Goblet Squat',
+    })
+    const session = makeSession([current])
+
+    const { offered, exhausted } = collectOffers(current, session, meniscusProfile, 'generic')
+
+    // Stage 1 allows 4 variants; the current one is excluded → at most 3
+    // offers, then a clean throw (the UI surfaces "can't swap" instead of
+    // a knee-hostile movement).
+    expect(offered.length).toBeLessThanOrEqual(3)
+    expect(exhausted).toBe(true)
+  })
+
+  it('accessory swaps in a rehab-constrained session stay open (bans only)', () => {
+    const main = makePlannedExercise({
+      library_id: 'variant:heel_elevated_goblet_squat',
+      name: 'Heel-Elevated Goblet Squat',
+    })
+    const legCurl = makePlannedExercise({
+      library_id: 'variant:seated_leg_curl',
+      name: 'Seated Leg Curl',
+      role: 'isolation',
+      rest_seconds: 75,
+      warmup_sets: [],
+    })
+    const session = makeSession([main, legCurl])
+
+    const { replacement } = swapVariantLocal({
+      currentExercise: legCurl,
+      session,
+      profile: meniscusProfile,
+      reason: 'machine_busy',
+    })
+    // Hamstring isolation swap still works — the stage restriction only
+    // owns the session's main-pattern slot.
+    expect(replacement.library_id).toBe('variant:nordic_hamstring_curl')
+  })
+
+  it('uninjured profiles keep the full pool (regression)', () => {
+    const current = makePlannedExercise({
+      library_id: 'variant:heel_elevated_goblet_squat',
+      name: 'Heel-Elevated Goblet Squat',
+    })
+    const session = makeSession([current])
+
+    const { offered } = collectOffers(current, session, baseProfile, 'too_easy')
+    // Without an injury, harder squat progressions are fair game.
+    expect(offered).toContain('back_squat')
+  })
+
+  it('honors exercise dislikes when alternatives exist', () => {
+    const dislikeProfile: UserProgramProfile = {
+      ...baseProfile,
+      exercise_dislikes: ['overhead_pressing'],
+    }
+    const current = makePlannedExercise({
+      library_id: 'variant:bench_press_moderate',
+      name: 'Bench Press',
+      rest_seconds: 180,
+    })
+    const session: PlannedSession = {
+      ...makeSession([current]),
+      ordinal: 2,
+      focus: ['chest', 'shoulders', 'triceps'],
+      subtitle: 'UPPER · PUSH',
+    }
+
+    const { offered } = collectOffers(current, session, dislikeProfile, 'generic')
+    expect(offered.length).toBeGreaterThan(0)
+    expect(offered).not.toContain('overhead_dumbbell_press')
+    expect(offered).not.toContain('overhead_barbell_press_moderate')
+    expect(offered).not.toContain('dumbbell_shoulder_press_neutral_grip')
+  })
+})

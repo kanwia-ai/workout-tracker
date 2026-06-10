@@ -23,6 +23,7 @@ import { MesocycleSchema, type Mesocycle } from '../../types/plan'
 import type { UserProgramProfile } from '../../types/profile'
 import { interpretProfile } from './interpretProfile'
 import { buildMesocycle } from './buildMesocycle'
+import { applyRehabStageOffsets, type RehabStageOffsets } from './rehabContinuity'
 import type { ProgrammingDirectives } from '../../types/directives'
 
 export interface OrchestrationResult {
@@ -35,8 +36,17 @@ export function orchestratePlan(
   profile: UserProgramProfile,
   userId: string,
   lengthWeeks = 6,
+  /**
+   * Cross-block rehab stage continuity (see rehabContinuity.ts). Callers
+   * with Dexie access compute these via `computeRehabStageOffsets`; the
+   * default keeps orchestration pure for first-block / test callers.
+   */
+  rehabStageOffsets: RehabStageOffsets = {},
 ): OrchestrationResult {
-  const directives = interpretProfile(profile)
+  const directives = applyRehabStageOffsets(
+    interpretProfile(profile),
+    rehabStageOffsets,
+  )
   const built = buildMesocycle(directives, lengthWeeks, profile)
 
   // Adapt BuiltMesocycle → Mesocycle (the existing persistence schema).

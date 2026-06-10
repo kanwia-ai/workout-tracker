@@ -184,6 +184,53 @@ describe('interpretProfile — goal interpretation', () => {
   })
 })
 
+describe('interpretProfile — secondary goal blend (audit B2: primary_goals[1] was never read)', () => {
+  it('build_muscle + get_stronger: mains take the strength scheme, accessories stay hypertrophy', () => {
+    const profile: UserProgramProfile = {
+      ...HYPERTROPHY_BEGINNER,
+      aesthetic_preference: 'none',
+      primary_goals: ['build_muscle', 'get_stronger'],
+    }
+    const d = interpretProfile(profile)
+    // Main compounds from get_stronger (the more strength-leaning pick).
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([3, 5])
+    // Accessories + finishers keep build_muscle's hypertrophy ranges.
+    expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
+    expect(d.goal.rep_scheme_bias.finishers).toEqual([12, 15])
+    // The FIRST pick stays dominant for everything else.
+    expect(d.goal.primary_adaptation).toBe('size')
+    expect(d.goal.cardio_policy).toBe('optional')
+  })
+
+  it('get_stronger + build_muscle: mains already strength, accessories gain the hypertrophy emphasis', () => {
+    const profile: UserProgramProfile = {
+      ...POWERLIFTER_CRANKY_SHOULDER,
+      primary_goals: ['get_stronger', 'build_muscle'],
+    }
+    const d = interpretProfile(profile)
+    expect(d.goal.rep_scheme_bias.main_compounds).toEqual([3, 5])
+    expect(d.goal.rep_scheme_bias.accessories).toEqual([8, 12])
+    expect(d.goal.rep_scheme_bias.finishers).toEqual([12, 15])
+    // Dominant goal still owns adaptation + cardio.
+    expect(d.goal.primary_adaptation).toBe('strength_power')
+    expect(d.goal.cardio_policy).toBe('minimal')
+  })
+
+  it('a single goal (or a duplicated second pick) leaves the base directives unchanged', () => {
+    const single = interpretProfile({
+      ...HYPERTROPHY_BEGINNER,
+      aesthetic_preference: 'none',
+    })
+    const duplicated = interpretProfile({
+      ...HYPERTROPHY_BEGINNER,
+      aesthetic_preference: 'none',
+      primary_goals: ['build_muscle', 'build_muscle'],
+    })
+    expect(single.goal).toEqual(duplicated.goal)
+    expect(single.goal.rep_scheme_bias.main_compounds).toEqual([5, 8])
+  })
+})
+
 describe('interpretProfile — week shape', () => {
   it('4 sessions → upper_lower with all 4 session types distinct', () => {
     const d = interpretProfile(KYRA_PROFILE)

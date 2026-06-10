@@ -6,6 +6,8 @@ import {
   splitFrontmatter,
   extractEntrySections,
 } from './loader'
+import { expandInjuryToken } from './retrieval'
+import { BodyPart } from '../../types/profile'
 
 describe('splitFrontmatter', () => {
   it('returns null when the file has no frontmatter', () => {
@@ -136,5 +138,38 @@ describe('loadKnowledgeBase (glob-backed)', () => {
       seen.add(e.frontmatter.id)
     }
     expect(dupes).toEqual([])
+  })
+
+  it('every applicability.injuries token resolves to at least one BodyPart enum value', () => {
+    // Retrieval matches entry injury tokens against profile.injuries[].part
+    // (the sided BodyPart enum). A token that expands to nothing means the
+    // entry can never match any user — injury-token drift made the most
+    // owner-relevant entries permanently unreachable.
+    const bodyParts = new Set<string>(BodyPart.options)
+    const unresolvable: string[] = []
+    for (const e of loadKnowledgeBase()) {
+      for (const token of e.frontmatter.applicability.injuries) {
+        const expanded = expandInjuryToken(token)
+        if (expanded.length === 0 || !expanded.every((p) => bodyParts.has(p))) {
+          unresolvable.push(`${e.frontmatter.id}: '${token}' -> [${expanded.join(', ')}]`)
+        }
+      }
+    }
+    expect(unresolvable).toEqual([])
+  })
+
+  it('every related/contradicts cross-reference resolves to a live entry id', () => {
+    // The cross-reference graph is only useful if every edge points at a real
+    // entry. Phantom ids (e.g. 'myth-*' refs that were never written) silently
+    // break "see also" traversal and the contradicts guardrails.
+    const entries = loadKnowledgeBase()
+    const ids = new Set(entries.map((e) => e.frontmatter.id))
+    const phantoms: string[] = []
+    for (const e of entries) {
+      for (const ref of [...e.frontmatter.related, ...e.frontmatter.contradicts]) {
+        if (!ids.has(ref)) phantoms.push(`${e.frontmatter.id} -> ${ref}`)
+      }
+    }
+    expect(phantoms).toEqual([])
   })
 })

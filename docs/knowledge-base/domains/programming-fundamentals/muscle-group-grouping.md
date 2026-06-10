@@ -16,7 +16,7 @@ citations:
   - "Simão R, de Salles BF, Figueiredo T, Dias I, Willardson JM. Exercise order in resistance training. Sports Med. 2012;42(3):251-265. PMID: 22299337. (Supports the more general claim that order within a muscle matters; does not directly RCT-test ping-pong vs grouped ordering.)"
   - "Schoenfeld BJ. Science and Development of Muscle Hypertrophy, 2nd ed. Human Kinetics 2020. (Discusses tension continuity and mechanical tension as the primary hypertrophy mechanism.)"
 related: [session-structure-ordering, hypertrophy-rep-ranges, volume-quality-vs-quantity, training-frequency]
-contradicts: [myth-muscle-confusion, myth-ping-pong-for-pump]
+contradicts: [muscle-confusion]
 ---
 
 # Group same-muscle work together — don't ping-pong

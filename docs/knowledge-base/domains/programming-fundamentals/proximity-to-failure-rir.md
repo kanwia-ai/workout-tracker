@@ -18,7 +18,7 @@ citations:
   - "Zourdos MC, Klemp A, Dolan C, et al. Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve. J Strength Cond Res. 2016;30(1):267-275. PMID: 26049792."
   - "Stronger by Science. Reps in Reserve: Overshooting and Undershooting. https://www.strongerbyscience.com/reps-in-reserve/"
 related: [hypertrophy-rep-ranges, strength-rep-ranges, set-volume-landmarks, autoregulation-rir-novices-vs-trained, volume-quality-vs-quantity]
-contradicts: [myth-every-set-to-failure, myth-failure-required-for-growth, myth-no-pain-no-gain]
+contradicts: [train-to-failure-every-set, soreness-is-progress]
 ---
 
 # Proximity to failure (RIR 0–3)

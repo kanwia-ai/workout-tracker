@@ -16,7 +16,7 @@ citations:
   - "Wilk M, Zajac A, Tufano JJ. The Influence of Movement Tempo During Resistance Training on Muscular Strength and Hypertrophy Responses: A Review. Sports Med. 2021;51(8):1629-1650. PMID: 34043184."
   - "Schoenfeld BJ, Grgic J. Eccentric Overload Training: A Viable Methodology to Improve Muscular Hypertrophy. Strength Cond J. 2018;40(2):78-81."
 related: [hypertrophy-rep-ranges, proximity-to-failure-rir, range-of-motion]
-contradicts: [myth-3-1-1-0-tempo-magic, myth-slow-reps-build-more, myth-tut-determines-growth]
+contradicts: [tempo-prescriptions-drive-growth]
 ---
 
 # Tempo and time-under-tension — not a primary programming variable

@@ -13,7 +13,20 @@
 // intensity. Rest-seconds gets replaced with the variant default because
 // different movements actually need different rest windows.
 
-import { MAIN_VARIANTS, ACCESSORY_VARIANTS, resolveVariant, type VariantSpec } from './planner/variants'
+import {
+  MAIN_VARIANTS,
+  ACCESSORY_VARIANTS,
+  resolveVariant,
+  isVariantDisliked,
+  type VariantSpec,
+} from './planner/variants'
+import { interpretProfile } from './planner/interpretProfile'
+import {
+  mergeDirectivesForSession,
+  sessionTypeForSubtitle,
+  SESSION_MAIN_PATTERN,
+} from './planner/buildMesocycle'
+import { SessionTypeSchema, type SessionType } from '../types/directives'
 import type { PlannedExercise, PlannedSession } from '../types/plan'
 import type { UserProgramProfile } from '../types/profile'
 import type { SwapReason } from './swap'
@@ -149,6 +162,55 @@ function explainSwap(chosen: VariantSpec, reason: SwapReason): string {
   }
 }
 
+// ─── Injury / protocol context ─────────────────────────────────────────────
+// Reuse the planner's own directive merge so swap candidates pass the exact
+// filters initial generation applied (audit 2026-06-09: the local swap was
+// injury-blind and offered Back Squat to a week-1 meniscus user).
+//
+// Two constraints fall out of the merged context:
+//   - banned_variants are absolute — never offered, any role, any reason.
+//   - when a rehab stage owns this session's main slot (preferred_variants
+//     non-empty and the current lift is on that slot's pattern), offers stay
+//     WITHIN the stage's allowed list — mirroring pickMainLift's
+//     preferred-first contract. Running out of allowed variants throws
+//     rather than breaching the protocol.
+interface SwapSafetyContext {
+  banned: ReadonlySet<string>
+  stageAllowed: ReadonlySet<string>
+  stageConstrained: boolean
+}
+
+function safetyContextFor(
+  current: VariantSpec,
+  session: PlannedSession,
+  profile: UserProgramProfile,
+): SwapSafetyContext {
+  const directives = interpretProfile(profile)
+  const sessionType: SessionType | null =
+    sessionTypeForSubtitle(session.subtitle) ??
+    directives.week_shape.template[session.ordinal - 1] ??
+    null
+
+  if (!sessionType) {
+    // Unknown session shape — union every session type's bans. Bans are
+    // safety constraints; over-banning beats under-banning.
+    const union = new Set<string>()
+    for (const t of SessionTypeSchema.options) {
+      const ctx = mergeDirectivesForSession(t, session.week_number, directives)
+      for (const b of ctx.banned_variants) union.add(b)
+    }
+    return { banned: union, stageAllowed: new Set(), stageConstrained: false }
+  }
+
+  const ctx = mergeDirectivesForSession(sessionType, session.week_number, directives)
+  const stageAllowed = new Set(ctx.preferred_variants)
+  const stageConstrained =
+    stageAllowed.size > 0 &&
+    current.role === 'main lift' &&
+    current.pattern === SESSION_MAIN_PATTERN[sessionType]
+  return { banned: ctx.banned_variants, stageAllowed, stageConstrained }
+}
+
 // ─── Main entry ───────────────────────────────────────────────────────────
 export function swapVariantLocal(opts: SwapVariantLocalOpts): SwapVariantLocalResult {
   const { currentExercise, session, profile, reason } = opts
@@ -171,17 +233,41 @@ export function swapVariantLocal(opts: SwapVariantLocalOpts): SwapVariantLocalRe
     ...Object.values(ACCESSORY_VARIANTS),
   ]
 
-  const candidates = pool.filter(v => {
+  const safety = safetyContextFor(current, session, profile)
+
+  const passesBase = (
+    v: VariantSpec,
+    honorDislikes: boolean,
+    honorAttempted = true,
+  ): boolean => {
     if (v.id === current.id) return false
-    if (attempted.has(v.id)) return false
+    if (honorAttempted && attempted.has(v.id)) return false
     if (v.role !== current.role) return false
+    // Injury bans + stage restriction are absolute — same filters the
+    // planner applied when it picked this slot in the first place.
+    if (safety.banned.has(v.id)) return false
+    if (safety.stageConstrained && !safety.stageAllowed.has(v.id)) return false
+    // Honor the swap copy's "same movement pattern" promise: when both sides
+    // declare a pattern, never swap across patterns (squat ↛ hinge).
+    if (current.pattern && v.pattern && v.pattern !== current.pattern) return false
     const sharesPrimary = v.primary_muscles.some(m => current.primary_muscles.includes(m))
     if (!sharesPrimary) return false
     if (!variantEquipmentCompatible(v, profile.equipment)) return false
+    if (honorDislikes && isVariantDisliked(v, profile.exercise_dislikes)) return false
     const candidateLibraryId = v.library_id ?? `variant:${v.id}`
     if (inSessionLibraryIds.has(candidateLibraryId)) return false
     return true
-  })
+  }
+
+  // Dislikes are a preference, not a safety constraint — mirror generation's
+  // relaxation order (dislikes yield before the pool goes empty; bans never).
+  // Relax ONLY when the slot genuinely has no non-disliked option; a pool
+  // exhausted by "try another" attempts throws instead, so repeated taps
+  // never walk into something the user said to avoid.
+  let candidates = pool.filter(v => passesBase(v, true))
+  if (candidates.length === 0 && !pool.some(v => passesBase(v, true, false))) {
+    candidates = pool.filter(v => passesBase(v, false))
+  }
 
   const seed = `${current.id}:${attempted.size}`
   const ranked = rankCandidates(candidates, reason, seed)

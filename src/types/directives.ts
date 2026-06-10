@@ -152,6 +152,13 @@ export const ProgrammingDirectivesSchema = z.object({
    * accessories, less time → trimmed. Defaults to 60 when missing.
    */
   target_lifting_minutes: z.number().int().min(15).max(180).default(60),
+  /**
+   * Per-block volume shift from last block's check-in signals (local replan).
+   * ±1 step = ±2 weekly sets per muscle against the landmark targets — the
+   * research's "1-2 sets/muscle/week" granularity. "Cruised through it" → +1,
+   * "ran hot" → -1. Rehab-capped muscles ignore it (pinned at MEV).
+   */
+  volume_bias: z.number().int().min(-1).max(1).optional(),
   // Meta: record how the directives were produced so telemetry can audit.
   source: z.enum(['rules', 'llm', 'hybrid']),
   unhandled_inputs: z.array(z.string()),  // inputs that produced no directive

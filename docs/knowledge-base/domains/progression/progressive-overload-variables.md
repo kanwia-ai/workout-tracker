@@ -17,7 +17,7 @@ citations:
   - "Schoenfeld BJ, Ogborn D, Krieger JW. Effect of repetition duration on hypertrophy. Sports Med. 2015;45. (Cited in `docs/research/00-MASTER-SYNTHESIS.md` primary sources. The CLAIM — null hypertrophy benefit in the 0.5–8 s/rep tempo range — is well-supported.)"
   - "Wolf M et al. Range of motion hypertrophy meta-analysis. J Strength Cond Res. 2023. (As cited in `docs/research/00-MASTER-SYNTHESIS.md` primary-sources list — 'Wolf M et al. ROM hypertrophy meta. JSCR 2023'. Confidence: MEDIUM on full citation metadata; the claim that fuller ROM tends to produce equal/superior hypertrophy is well-supported in the broader Schoenfeld & Grgic ROM systematic-review literature — Schoenfeld BJ, Grgic J. ROM systematic review. SAGE Open Med. 2020;8.)"
 related: [double-progression, rir-effort-signals, bump-vs-hold-vs-drop-rules, autoprogress-by-training-age, when-to-bump-judgment]
-contradicts: [myth-overload-equals-add-weight]
+contradicts: []
 ---
 
 # Progressive overload is multi-variable — not just "add weight"

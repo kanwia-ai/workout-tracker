@@ -18,7 +18,7 @@ citations:
   - "Halperin I et al. Accuracy in predicting repetitions to task failure in resistance exercise: a scoping review and exploratory meta-analysis. Sports Med. 2022. (Confidence: HIGH on existence and CLAIM; MEDIUM on exact PMID/DOI.)"
   - "Bishop PA, Jones E, Woods AK. Recovery from training: a brief review. J Strength Cond Res. 2008;22(3):1015-1024. PMID: 18438210."
 related: [deload-mechanics, rir-effort-signals, block-progression-arc, bump-vs-hold-vs-drop-rules, skip-recalibration-tiers]
-contradicts: [myth-tough-means-deload, myth-deload-every-four-weeks-no-matter-what]
+contradicts: []
 ---
 
 # Deload triggers — scheduled (end of block) vs. ad-hoc (real fatigue signal)

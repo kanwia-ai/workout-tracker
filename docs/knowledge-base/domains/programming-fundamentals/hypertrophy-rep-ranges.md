@@ -16,7 +16,7 @@ citations:
   - "Schoenfeld BJ, Grgic J, Van Every DW, Plotkin DL. Loading Recommendations for Muscle Strength, Hypertrophy, and Local Endurance: A Re-Examination of the Repetition Continuum. Sports (Basel). 2021;9(2):32. PMID: 33671664. DOI: 10.3390/sports9020032."
   - "Lasevicius T, Ugrinowitsch C, Schoenfeld BJ, et al. Effects of different intensities of resistance training with equated volume load on muscle strength and hypertrophy. Eur J Sport Sci. 2018;18(6):772-780. PMID: 29564973."
 related: [strength-rep-ranges, proximity-to-failure-rir, set-volume-landmarks, load-intensity-zones, volume-quality-vs-quantity]
-contradicts: [myth-high-reps-tone, myth-only-6-12-builds-muscle, myth-light-weight-cant-grow-muscle]
+contradicts: [high-reps-for-tone]
 ---
 
 # Rep ranges for hypertrophy

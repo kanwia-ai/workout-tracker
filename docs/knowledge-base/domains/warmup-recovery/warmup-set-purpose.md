@@ -16,7 +16,7 @@ citations:
   - "Jeffreys I. The Warm-Up: Maximize Performance and Improve Long-Term Athletic Development. Human Kinetics 2019."
   - "Calatayud J, Vinstrup J, Jakobsen MD, et al. Importance of mind-muscle connection during progressive resistance training. Eur J Appl Physiol 2016; 116(3):527-533. DOI 10.1007/s00421-015-3305-7"
   - "Trainer conversation 2026-05-26 — coaching philosophy doc (docs/research/02-coaching-philosophy.md §2, §7)."
-related: [ramp-method, warmup-set-count, exercises-hard-to-feel, static-vs-dynamic-stretching]
+related: [ramp-method, warmup-set-count, hard-to-feel-exercises-catalog, static-vs-dynamic-stretching]
 contradicts: []
 ---
 
