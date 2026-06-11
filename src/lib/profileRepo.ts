@@ -76,6 +76,33 @@ function migrateLegacyProfile(raw: unknown): unknown {
     obj = { ...obj, exercise_dislikes: migrated }
   }
 
+  // 2026-06-10 — the 'lean_and_strong' hybrid goal card was removed from
+  // onboarding (the pick-two multi-select expresses it as get_stronger +
+  // build_muscle, and "lean" as a training outcome is the body-composition
+  // myth the research pass stripped). Stored profiles expand
+  // deterministically: the hybrid becomes 'get_stronger' in place, and
+  // 'build_muscle' is appended only when a second slot is free — the user's
+  // OTHER explicit pick always survives over the implied half.
+  if (obj.primary_goal === 'lean_and_strong') {
+    obj = { ...obj, primary_goal: 'get_stronger' }
+  }
+  if (
+    Array.isArray(obj.primary_goals) &&
+    obj.primary_goals.includes('lean_and_strong')
+  ) {
+    const expanded = [
+      ...new Set(
+        obj.primary_goals
+          .filter((g): g is string => typeof g === 'string')
+          .map((g) => (g === 'lean_and_strong' ? 'get_stronger' : g)),
+      ),
+    ]
+    if (expanded.length < 2 && !expanded.includes('build_muscle')) {
+      expanded.push('build_muscle')
+    }
+    obj = { ...obj, primary_goals: expanded.slice(0, 2) }
+  }
+
   return obj
 }
 

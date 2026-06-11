@@ -11,10 +11,13 @@ describe('StepPrimaryGoal', () => {
     expect(pool.some((line) => bubble.includes(line))).toBe(true)
   })
 
-  it('renders all 7 goals with radio semantics', () => {
+  it('renders the 6 selectable goals (hybrid card removed 2026-06-10)', () => {
     render(<StepPrimaryGoal onNext={() => undefined} />)
     const checkboxes = screen.getAllByRole('checkbox')
-    expect(checkboxes.length).toBe(7)
+    expect(checkboxes.length).toBe(6)
+    // The hybrid is expressed by picking two goals, never as its own card —
+    // and 'lean' as a training outcome is the body-comp myth we stripped.
+    expect(screen.queryByText(/strong \+ lean/i)).toBeNull()
   })
 
   it('disables Next until a goal is picked', () => {

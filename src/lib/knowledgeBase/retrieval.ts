@@ -71,7 +71,10 @@ const LEGACY_GOAL_TO_CANONICAL: Record<string, PrimaryGoal> = {
   // rather than enum goals. Mapping them here lets the myth-relevance check
   // reuse the single normalization policy.
   hypertrophy: 'build_muscle',
-  toning: 'lean_and_strong',
+  // 'toning' used to map to the lean_and_strong hybrid; that goal is no
+  // longer selectable (profiles migrate to get_stronger + build_muscle on
+  // load), and "toned" content is hypertrophy content.
+  toning: 'build_muscle',
 }
 
 const CANONICAL_GOALS: ReadonlySet<string> = new Set<PrimaryGoal>([

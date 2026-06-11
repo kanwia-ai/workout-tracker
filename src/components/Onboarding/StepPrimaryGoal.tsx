@@ -1,7 +1,13 @@
-// StepPrimaryGoal — the 7-value primary_goal picker, NOW MULTI-SELECT (max 2).
+// StepPrimaryGoal — the primary_goal picker, MULTI-SELECT (max 2).
 // First tap = dominant goal (drives split + rep ranges). Second tap adds a
 // secondary emphasis. Tapping a selected chip un-selects it. Min 1 required
 // to advance.
+//
+// 2026-06-10 — the 'lean_and_strong' hybrid card was REMOVED: the pick-two
+// multi-select expresses it directly (get_stronger + build_muscle), and
+// "lean" as a training outcome is the body-composition-is-diet framing the
+// research pass stripped everywhere else. The enum value survives for
+// stored profiles; profileRepo migrates it on load.
 
 import { useMemo, useState } from 'react'
 import { StepChrome } from './StepChrome'
@@ -28,12 +34,6 @@ const OPTIONS: {
     id: 'get_stronger',
     title: 'Get stronger',
     blurb: 'Chase the main lifts — heavier, lower reps',
-  },
-  {
-    id: 'lean_and_strong',
-    title: 'Strong + lean (hybrid)',
-    blurb:
-      'Strength-leaning programming on main lifts, hypertrophy-style accessories. Body composition is still diet.',
   },
   {
     id: 'fat_loss',

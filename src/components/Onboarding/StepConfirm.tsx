@@ -19,7 +19,9 @@ interface Props {
 const PRIMARY_GOAL_LABELS: Record<PrimaryGoal, string> = {
   build_muscle: 'Build muscle',
   get_stronger: 'Get stronger',
-  lean_and_strong: 'Strong + lean (hybrid)',
+  // Legacy value (unselectable since 2026-06-10, migrated on load) — labeled
+  // honestly if an unmigrated snapshot ever reaches this screen.
+  lean_and_strong: 'Get stronger + build muscle',
   fat_loss: 'Fat loss',
   mobility: 'Mobility / rehab',
   athletic: 'Athletic',

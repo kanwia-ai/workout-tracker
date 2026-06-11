@@ -12,6 +12,10 @@ export const Goal = z.enum(['glutes', 'strength', 'longevity', 'aesthetics', 're
 export const PrimaryGoal = z.enum([
   'build_muscle',
   'get_stronger',
+  // LEGACY ONLY (2026-06-10): no longer selectable in onboarding — the
+  // pick-two multi-select expresses it as get_stronger + build_muscle.
+  // Kept so stored profiles and plan snapshots parse; profileRepo migrates
+  // it on load.
   'lean_and_strong',
   'fat_loss',
   'mobility',

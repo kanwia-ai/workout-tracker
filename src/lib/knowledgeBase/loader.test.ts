@@ -173,3 +173,21 @@ describe('loadKnowledgeBase (glob-backed)', () => {
     expect(phantoms).toEqual([])
   })
 })
+
+describe('legacy-goal gating guard', () => {
+  it('no live KB entry is reachable ONLY via lean_and_strong (unselectable since 2026-06-10)', () => {
+    const entries = loadKnowledgeBase()
+    const selectable = new Set([
+      'build_muscle', 'get_stronger', 'fat_loss', 'mobility', 'athletic',
+      'general_fitness', 'any',
+    ])
+    const orphaned = entries
+      .filter((e) => {
+        const goals = e.frontmatter.applicability.goals
+        if (!goals || goals.length === 0) return false
+        return !goals.some((g) => selectable.has(g))
+      })
+      .map((e) => e.frontmatter.id)
+    expect(orphaned).toEqual([])
+  })
+})

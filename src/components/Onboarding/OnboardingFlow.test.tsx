@@ -136,7 +136,10 @@ describe('OnboardingFlow', () => {
       target: { value: 'Kyra' },
     })
     fireEvent.click(screen.getByTestId('step-name-next'))
-    fireEvent.click(screen.getByRole('checkbox', { name: /strong \+ lean/i }))
+    // Pick-two replaces the removed 'Strong + lean (hybrid)' card: first
+    // tap = dominant goal, second adds the emphasis.
+    fireEvent.click(screen.getByRole('checkbox', { name: /get stronger/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /build muscle/i }))
     fireEvent.click(screen.getByTestId('step-primary-goal-next'))
 
     // muscle priority — pick glutes then back (order = priority rank)
@@ -185,12 +188,13 @@ describe('OnboardingFlow', () => {
     // confirm
     expectStep('confirm')
     const confirmPanel = screen.getByTestId('onboarding-step-confirm')
-    expect(within(confirmPanel).getByText(/strong \+ lean/i)).toBeInTheDocument()
+    expect(within(confirmPanel).getByText(/get stronger/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Save and generate/i }))
 
     expect(onComplete).toHaveBeenCalled()
     const [profile] = onComplete.mock.calls[0]
-    expect(profile.primary_goal).toBe('lean_and_strong')
+    expect(profile.primary_goal).toBe('get_stronger')
+    expect(profile.primary_goals).toEqual(['get_stronger', 'build_muscle'])
     expect(profile.muscle_priority).toEqual(['glutes', 'back'])
     expect(profile.weight_kg).toBe(65)
     expect(profile.exercise_dislikes).toEqual(['burpees'])

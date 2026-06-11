@@ -391,3 +391,54 @@ describe('profileRepo', () => {
     })
   })
 })
+
+describe('lean_and_strong hybrid migration (card removed 2026-06-10)', () => {
+  const base = {
+    goal: 'strength',
+    sessions_per_week: 4,
+    training_age_months: 24,
+    equipment: ['full_gym'],
+    injuries: [],
+    time_budget_min: 60,
+    sex: 'female',
+    posture_notes: '',
+  }
+
+  async function loadStored(userId: string, profile: Record<string, unknown>) {
+    await db.userProgramProfiles.put({
+      user_id: userId,
+      profile_json: JSON.stringify(profile),
+      updated_at: '2026-05-01T10:00:00.000Z',
+      synced: true,
+    })
+    return loadProfileLocal(userId)
+  }
+
+  it('expands a sole hybrid pick to get_stronger + build_muscle', async () => {
+    const p = await loadStored('hyb-1', {
+      ...base,
+      primary_goal: 'lean_and_strong',
+      primary_goals: ['lean_and_strong'],
+    })
+    expect(p?.primary_goal).toBe('get_stronger')
+    expect(p?.primary_goals).toEqual(['get_stronger', 'build_muscle'])
+  })
+
+  it("keeps the user's OTHER explicit pick over the implied half", async () => {
+    const p = await loadStored('hyb-2', {
+      ...base,
+      primary_goal: 'fat_loss',
+      primary_goals: ['fat_loss', 'lean_and_strong'],
+    })
+    expect(p?.primary_goals).toEqual(['fat_loss', 'get_stronger'])
+  })
+
+  it('dedupes when get_stronger was already picked alongside the hybrid', async () => {
+    const p = await loadStored('hyb-3', {
+      ...base,
+      primary_goal: 'get_stronger',
+      primary_goals: ['get_stronger', 'lean_and_strong'],
+    })
+    expect(p?.primary_goals).toEqual(['get_stronger', 'build_muscle'])
+  })
+})
