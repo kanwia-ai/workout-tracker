@@ -526,7 +526,7 @@ export function SettingsScreen({
                 padding: '0 4px',
               }}
             >
-              Clears your profile, plan, check-ins, and logs. Sends you back to onboarding.
+              Clears your profile, plan, check-ins, and logs — here and in your cloud backup. Signs you out and sends you back to onboarding.
             </div>
           </Section>
         )}
@@ -628,7 +628,7 @@ export function SettingsScreen({
                 margin: '0 0 20px',
               }}
             >
-              Deletes your profile, plan, logs, check-ins, and PRs. You'll land back on onboarding. Cannot be undone.
+              Deletes your profile, plan, logs, check-ins, and PRs — on this device AND your cloud backup. You'll be signed out and land back on onboarding. Cannot be undone.
             </p>
             <div
               style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}

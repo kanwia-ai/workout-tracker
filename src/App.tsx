@@ -33,6 +33,7 @@ import type { ProgrammingDirectives } from './types/directives'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { loadProfileLocal, saveProfileLocal } from './lib/profileRepo'
 import { wipeUserData } from './lib/db'
+import { supabase } from './lib/supabase'
 import { BackendStatusBanner } from './components/BackendStatusBanner'
 import { generatePlan } from './lib/planGen'
 import type { TimerState } from './types'
@@ -581,6 +582,31 @@ function App() {
           onReplanApply={handleReplanApply}
           onReplanClose={handleReplanClose}
           onResetApp={async () => {
+            // Cloud FIRST: with the backend alive, a local-only wipe is
+            // undone on the next sign-in by pullProfileFromCloud (this
+            // exact bug shipped — "wipe just signed me out and didn't do
+            // anything"). Only real signed-in users have cloud rows; the
+            // dev-bypass identity never syncs (non-uuid id).
+            try {
+              const { data } = await supabase.auth.getSession()
+              const cloudUserId = data.session?.user?.id
+              if (cloudUserId) {
+                const { wipeCloudData } = await import('./lib/wipeCloud')
+                const result = await wipeCloudData(cloudUserId)
+                if (!result.ok) {
+                  window.alert(
+                    "couldn't clear your cloud backup (offline, maybe?). nothing was wiped — try again with a connection.",
+                  )
+                  return
+                }
+              }
+            } catch (err) {
+              console.error('cloud wipe failed', err)
+              window.alert(
+                "couldn't clear your cloud backup (offline, maybe?). nothing was wiped — try again with a connection.",
+              )
+              return
+            }
             try {
               await wipeUserData()
             } finally {
