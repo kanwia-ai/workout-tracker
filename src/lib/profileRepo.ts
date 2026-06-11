@@ -177,7 +177,13 @@ export async function syncProfileUp(userId: string): Promise<void> {
  *
  * Refuses to overwrite a dirty local row — if the user has unsynced local
  * edits, those win and this pull is a no-op that returns the local profile.
- * TODO: compare updated_at and offer last-write-wins or a merge prompt before MVP ships.
+ *
+ * Last-write-wins guard (2026-06-10 resurrection-sweep audit): when the
+ * LOCAL row is synced but strictly NEWER than the cloud copy (only possible
+ * when the cloud rolled back — e.g. a backup restore around a project
+ * pause), we keep the local profile, flip it dirty, and push it back up to
+ * repair the cloud. Without this the older cloud copy silently replaced the
+ * fresh local one AND got marked synced, making the rollback permanent.
  */
 export async function pullProfileFromCloud(userId: string): Promise<UserProgramProfile | null> {
   const localRow = await db.userProgramProfiles.get(userId)
@@ -195,6 +201,23 @@ export async function pullProfileFromCloud(userId: string): Promise<UserProgramP
     .maybeSingle()
   if (error) throw error
   if (!data) return null
+
+  // Date.parse instead of string compare: local timestamps are
+  // `toISOString()` ("...Z") while Postgres returns "+00:00" offsets —
+  // lexicographic comparison across the two formats is not safe.
+  const localMs = localRow ? Date.parse(localRow.updated_at) : NaN
+  const cloudMs = typeof data.updated_at === 'string' ? Date.parse(data.updated_at) : NaN
+  if (localRow && Number.isFinite(localMs) && Number.isFinite(cloudMs) && localMs > cloudMs) {
+    // Cloud is older than our already-synced local row — keep local,
+    // mark it dirty, and repair the cloud in the background.
+    await db.userProgramProfiles.update(userId, { synced: false })
+    void syncProfileUp(userId).catch((err) => {
+      console.warn('pullProfileFromCloud: cloud-repair push failed', err)
+    })
+    return ensurePrimaryGoal(
+      UserProgramProfileSchema.parse(migrateLegacyProfile(JSON.parse(localRow.profile_json))),
+    )
+  }
 
   const profile = ensurePrimaryGoal(UserProgramProfileSchema.parse(migrateLegacyProfile(data.profile)))
   // Single write: validated profile + synced flag in one put.

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { pullProfileFromCloud } from '../lib/profileRepo'
-import { pullCheckinsFromCloud, syncDirtyCheckins } from '../lib/checkins'
+import { pullCheckinsFromCloud } from '../lib/checkins'
+import { flushDirtyToCloud } from '../lib/syncBackfill'
 import { wipeUserData } from '../lib/db'
 
 interface Profile {
@@ -30,8 +31,11 @@ export interface AppUser {
 
 // Dev bypass: skip auth entirely in development. Mounts a stable fake
 // user so localhost work doesn't require a Supabase session every reload.
-// PROD builds ignore this flag completely.
-const DEV_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_BYPASS === 'true'
+// PROD builds ignore this flag completely. Also OFF under vitest
+// (import.meta.env.TEST) — `.env` carries VITE_DEV_BYPASS=true for local
+// dev serving and would otherwise leak the fake user into hook tests.
+const DEV_BYPASS =
+  import.meta.env.DEV && !import.meta.env.TEST && import.meta.env.VITE_DEV_BYPASS === 'true'
 const DEV_USER: AppUser = { id: 'dev-user', email: 'dev@localhost' }
 const DEV_PROFILE: Profile = {
   id: 'dev-user',
@@ -82,6 +86,14 @@ export function useAuth() {
   // capture their generation at call time and no-op if a new auth event
   // has superseded them (stale sign-ins, rapid user switches).
   const authGenRef = useRef(0)
+  // Identity of the user we last ran the full sign-in resolution for.
+  // supabase-js re-emits auth events for the SAME session (TOKEN_REFRESHED
+  // ~hourly, SIGNED_IN again on tab refocus, INITIAL_SESSION on subscribe).
+  // Before this guard, every one of those re-ran the full pull with
+  // setLoading(true) — which swapped the whole app for a spinner and
+  // unmounted onboarding/workout screens mid-flow. Only an actual identity
+  // change should restart resolution.
+  const lastAuthUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (DEV_BYPASS) {
@@ -104,6 +116,12 @@ export function useAuth() {
         const { data } = await supabase.auth.getSession()
         const session = data.session
         if (session?.user) {
+          if (lastAuthUserIdRef.current === session.user.id) {
+            // The INITIAL_SESSION emission already kicked off resolution
+            // for this user — don't run the whole pull twice.
+            return
+          }
+          lastAuthUserIdRef.current = session.user.id
           setUser({
             id: session.user.id,
             email: session.user.email ?? null,
@@ -131,9 +149,18 @@ export function useAuth() {
     let subscription: { unsubscribe: () => void } | null = null
     try {
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        const nextUserId = session?.user?.id ?? null
+        if (nextUserId && nextUserId === lastAuthUserIdRef.current) {
+          // Same user, refreshed token (TOKEN_REFRESHED / focus re-emit /
+          // USER_UPDATED). Identity didn't change — re-running the full
+          // pull here used to flash the app to a loading spinner roughly
+          // hourly, destroying in-progress onboarding answers. No-op.
+          return
+        }
         authGenRef.current += 1
         const gen = authGenRef.current
         if (session?.user) {
+          lastAuthUserIdRef.current = session.user.id
           setUser({
             id: session.user.id,
             email: session.user.email ?? null,
@@ -143,6 +170,7 @@ export function useAuth() {
           void resolveProgramProfile(session.user.id, gen)
         } else {
           // Signed out — drop to null, App routes to LoginScreen.
+          lastAuthUserIdRef.current = null
           setUser(null)
           setProfile(null)
           setHasProfile(false)
@@ -213,20 +241,27 @@ export function useAuth() {
         if (stale()) return
         if (local) setHasProfile(true)
       }
-      // Pull check-ins (and flush any locally-dirty ones) in parallel.
-      // These run after the profile pull so a fresh-Dexie device gets
-      // the user's history back even if they signed in on a new browser.
-      let checkinError = false
+      // Pull check-ins after the profile pull so a fresh-Dexie device
+      // gets the user's history back even on a brand-new browser.
+      let syncError = false
       try {
         await pullCheckinsFromCloud(userId)
         if (stale()) return
-        await syncDirtyCheckins(userId)
       } catch (err) {
-        console.warn('checkin sync on sign-in failed', err)
-        checkinError = true
+        console.warn('checkin pull on sign-in failed', err)
+        syncError = true
       }
+      // The backend is reachable right now — push everything that never
+      // made it up: profile, check-ins, and workout rows (sessions, sets,
+      // PRs, weights, cardio). Before this sweep existed here, rows
+      // written while the backend was down stayed dirty forever (their
+      // one-shot background push had already failed) and were silently
+      // destroyed by the sign-out wipe. The pull guards above never
+      // clobber dirty rows, so pull-then-flush is safe in this order.
+      const flush = await flushDirtyToCloud(userId)
+      if (!flush.ok) syncError = true
       if (stale()) return
-      setSyncStatus(checkinError ? 'error' : 'idle')
+      setSyncStatus(syncError ? 'error' : 'idle')
     } catch (err) {
       console.warn('pullProfileFromCloud failed', err)
       if (!stale()) {
@@ -271,8 +306,35 @@ export function useAuth() {
   }
 
   async function signOut() {
-    authGenRef.current += 1  // invalidate any in-flight resolvers
     const previousUserId = user?.id
+    // Flush dirty rows BEFORE killing the session — RLS only accepts the
+    // upserts while the user is still authenticated. Without this, any
+    // row whose background push had failed (offline workout, backend
+    // outage) was destroyed by the wipe below with zero warning.
+    if (previousUserId && previousUserId !== 'dev-user') {
+      let flushOk = false
+      try {
+        const result = await flushDirtyToCloud(previousUserId)
+        flushOk = result.ok
+        if (!result.ok) {
+          console.warn(
+            'signOut: rows still dirty after flush — at risk of deletion',
+            result.stillDirty,
+          )
+        }
+      } catch (err) {
+        console.warn('signOut: dirty flush failed', err)
+      }
+      if (!flushOk) {
+        // Plain-language stakes: signing out wipes this device's copy.
+        const proceed = window.confirm(
+          "Some of your recent workout data hasn't backed up to the cloud yet (you might be offline). " +
+            'Signing out will remove it from this device for good. Sign out anyway?',
+        )
+        if (!proceed) return
+      }
+    }
+    authGenRef.current += 1  // invalidate any in-flight resolvers
     try {
       await supabase.auth.signOut()
     } catch (err) {

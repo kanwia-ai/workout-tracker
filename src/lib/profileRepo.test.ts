@@ -308,5 +308,86 @@ describe('profileRepo', () => {
       const row = await db.userProgramProfiles.get('user-1')
       expect(row?.synced).toBe(false)
     })
+
+    // ─── Last-write-wins rollback guard (2026-06-10 sync audit) ──────
+    // If the cloud copy is OLDER than an already-synced local row (only
+    // possible when the cloud rolled back, e.g. a backup restore around a
+    // project pause), the pull must keep the local profile and repair the
+    // cloud — not silently install the stale copy and mark it synced.
+    describe('rollback guard (cloud older than synced local)', () => {
+      function mockCloudWithUpsert(data: unknown) {
+        const maybeSingle = vi.fn().mockResolvedValue({ data, error: null })
+        const eq = vi.fn().mockReturnValue({ maybeSingle })
+        const select = vi.fn().mockReturnValue({ eq })
+        const upsert = vi.fn().mockResolvedValue({ error: null })
+        vi.spyOn(supabase, 'from').mockReturnValue({ select, upsert } as any)
+        return { upsert }
+      }
+
+      async function seedSyncedLocal(profile: UserProgramProfile, updatedAt: string) {
+        await db.userProgramProfiles.put({
+          user_id: 'user-1',
+          profile_json: JSON.stringify(profile),
+          updated_at: updatedAt,
+          synced: true,
+        })
+      }
+
+      it('keeps the newer local profile, flips it dirty, and pushes the repair', async () => {
+        const localProfile: UserProgramProfile = { ...VALID_PROFILE, goal: 'rehab' }
+        await seedSyncedLocal(localProfile, '2026-06-10T12:00:00.000Z')
+        // Cloud copy is 9 days older AND uses the Postgres +00:00 offset
+        // format — the compare must work across both timestamp styles.
+        const staleCloud = { ...VALID_PROFILE, goal: 'glutes' }
+        const { upsert } = mockCloudWithUpsert({
+          profile: staleCloud,
+          updated_at: '2026-06-01T00:00:00+00:00',
+        })
+
+        const result = await pullProfileFromCloud('user-1')
+
+        // Local wins.
+        expect(result).toMatchObject(localProfile)
+        const row = await db.userProgramProfiles.get('user-1')
+        expect(JSON.parse(row!.profile_json)).toMatchObject(localProfile)
+        // Marked dirty so the repair push (or any later sweep) re-uploads it.
+        expect(row?.synced).toBe(false)
+        // Background repair push fired against the cloud table.
+        await new Promise((r) => setTimeout(r, 10))
+        expect(upsert).toHaveBeenCalled()
+        const pushed = upsert.mock.calls[0][0]
+        expect(pushed.user_id).toBe('user-1')
+        expect(pushed.profile).toMatchObject(localProfile)
+      })
+
+      it('still lets a NEWER cloud copy replace an older synced local row', async () => {
+        const localProfile: UserProgramProfile = { ...VALID_PROFILE, goal: 'rehab' }
+        await seedSyncedLocal(localProfile, '2026-06-01T00:00:00.000Z')
+        const freshCloud = { ...VALID_PROFILE, goal: 'glutes' }
+        mockCloudWithUpsert({
+          profile: freshCloud,
+          updated_at: '2026-06-10T12:00:00+00:00',
+        })
+
+        const result = await pullProfileFromCloud('user-1')
+
+        expect(result).toMatchObject(freshCloud)
+        const row = await db.userProgramProfiles.get('user-1')
+        expect(JSON.parse(row!.profile_json)).toMatchObject(freshCloud)
+        expect(row?.synced).toBe(true)
+      })
+
+      it('treats an unparseable timestamp as no-rollback and takes the cloud copy', async () => {
+        const localProfile: UserProgramProfile = { ...VALID_PROFILE, goal: 'rehab' }
+        await seedSyncedLocal(localProfile, 'not-a-timestamp')
+        const cloud = { ...VALID_PROFILE, goal: 'glutes' }
+        mockCloudWithUpsert({ profile: cloud, updated_at: '2026-06-10T12:00:00+00:00' })
+
+        const result = await pullProfileFromCloud('user-1')
+        expect(result).toMatchObject(cloud)
+        const row = await db.userProgramProfiles.get('user-1')
+        expect(row?.synced).toBe(true)
+      })
+    })
   })
 })

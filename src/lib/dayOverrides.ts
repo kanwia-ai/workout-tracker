@@ -30,8 +30,12 @@ export async function getOverrideForDate(
 
 /**
  * Upsert an override: "on {date}, use session {sessionId} from the plan".
- * Writes to Dexie, marks as unsynced so the Supabase sync layer can pick it
- * up later.
+ * Writes to Dexie only. NOTE (2026-06-10 sync audit): there is NO
+ * day_overrides cloud table and no sweep pushes these rows — `synced: false`
+ * is aspirational. Overrides (and the amendment_json riding on them) are
+ * device-local and pruned after 14 days, same as mesocycles. If a cloud
+ * table ships later, add it to wipeCloud.USER_TABLES and the
+ * flushDirtyToCloud sweep in the same change.
  */
 export async function setOverrideForDate(
   userId: string,
