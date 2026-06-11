@@ -138,9 +138,11 @@ function chipStyle(on: boolean, onColor?: string): React.CSSProperties {
 
 interface ExerciseBrowserProps {
   onBack: () => void
+  /** Route to the video-capture flow (paste a YouTube short → exercise). */
+  onNavigateToCapture?: () => void
 }
 
-export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
+export function ExerciseBrowser({ onBack, onNavigateToCapture }: ExerciseBrowserProps) {
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null)
@@ -333,25 +335,47 @@ export function ExerciseBrowser({ onBack }: ExerciseBrowserProps) {
               {filtered.length + visibleCustom.length} exercise{(filtered.length + visibleCustom.length) !== 1 ? 's' : ''}
             </p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            disabled={!userId}
-            aria-label="Add your own exercise"
-            className="active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1"
-            style={{
-              padding: '8px 12px',
-              borderRadius: 14,
-              fontSize: 12,
-              fontWeight: 800,
-              background: 'var(--brand)',
-              color: 'var(--lumo-bg)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <Plus size={14} />
-            Add
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {onNavigateToCapture && (
+              <button
+                onClick={onNavigateToCapture}
+                aria-label="Add an exercise from a video link"
+                data-testid="browser-from-video"
+                className="active:scale-95 transition-transform flex items-center gap-1"
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 14,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  background: 'transparent',
+                  color: 'var(--brand)',
+                  border: '1.5px solid var(--brand)',
+                  cursor: 'pointer',
+                }}
+              >
+                From video
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              disabled={!userId}
+              aria-label="Add your own exercise"
+              className="active:scale-95 transition-transform disabled:opacity-40 flex items-center gap-1"
+              style={{
+                padding: '8px 12px',
+                borderRadius: 14,
+                fontSize: 12,
+                fontWeight: 800,
+                background: 'var(--brand)',
+                color: 'var(--lumo-bg)',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={14} />
+              Add
+            </button>
+          </div>
         </div>
 
         {/* Search bar */}

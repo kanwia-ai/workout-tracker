@@ -23,6 +23,13 @@ type FlowStep = 'input' | 'loading' | 'review' | 'done'
 interface ExerciseCaptureProps {
   onBack: () => void
   onSaveToLibrary: (exercises: ExtractedExercise[]) => void
+  /**
+   * When provided, the review step offers "add to today's workout" — saves
+   * to the library AND appends to today's session via a day amendment.
+   * Returns true when today's session was amended (false = rest day; the
+   * exercises still landed in the library).
+   */
+  onAddToToday?: (exercises: ExtractedExercise[]) => Promise<boolean> | boolean
 }
 
 // ─── Shared styles ───────────────────────────────────────────────────────────
@@ -49,7 +56,7 @@ const INPUT_STYLE: React.CSSProperties = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProps) {
+export function ExerciseCapture({ onBack, onSaveToLibrary, onAddToToday }: ExerciseCaptureProps) {
   const [mode, setMode] = useState<CaptureMode>('choose')
   const [step, setStep] = useState<FlowStep>('input')
   const [url, setUrl] = useState('')
@@ -233,6 +240,21 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
     setSavedMessage(`${selected.length} exercise${selected.length > 1 ? 's' : ''} added to library`)
     setStep('done')
   }, [getSelectedExercises, onSaveToLibrary])
+
+  const handleAddToToday = useCallback(async () => {
+    if (!onAddToToday) return
+    const selected = getSelectedExercises()
+    if (selected.length === 0) return
+    // The handler saves to the library itself, then amends today.
+    const amendedToday = await onAddToToday(selected)
+    const plural = selected.length > 1 ? 's' : ''
+    setSavedMessage(
+      amendedToday
+        ? `${selected.length} exercise${plural} added to today's workout (and your library)`
+        : `${selected.length} exercise${plural} added to library — no session today to add to`,
+    )
+    setStep('done')
+  }, [getSelectedExercises, onAddToToday])
 
   // ─── Reset ─────────────────────────────────────────────────────────────────
 
@@ -995,6 +1017,27 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                   {selectedExercises.size} of {editingExercises.length} selected
                 </div>
 
+                {onAddToToday && (
+                  <button
+                    onClick={() => void handleAddToToday()}
+                    disabled={selectedExercises.size === 0}
+                    data-testid="capture-add-to-today"
+                    className="w-full active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100 flex items-center justify-center gap-2"
+                    style={{
+                      padding: 14,
+                      borderRadius: 22,
+                      fontSize: 15,
+                      fontWeight: 800,
+                      background: 'var(--brand)',
+                      color: 'var(--lumo-bg)',
+                      border: 'none',
+                      cursor: selectedExercises.size === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <Plus size={16} />
+                    Add to Today's Workout
+                  </button>
+                )}
                 <button
                   onClick={handleSaveToLibrary}
                   disabled={selectedExercises.size === 0}
@@ -1004,14 +1047,14 @@ export function ExerciseCapture({ onBack, onSaveToLibrary }: ExerciseCaptureProp
                     borderRadius: 22,
                     fontSize: 15,
                     fontWeight: 800,
-                    background: 'var(--brand)',
-                    color: 'var(--lumo-bg)',
-                    border: 'none',
+                    background: onAddToToday ? 'transparent' : 'var(--brand)',
+                    color: onAddToToday ? 'var(--brand)' : 'var(--lumo-bg)',
+                    border: onAddToToday ? '1.5px solid var(--brand)' : 'none',
                     cursor: selectedExercises.size === 0 ? 'not-allowed' : 'pointer',
                   }}
                 >
                   <Plus size={16} />
-                  Add to Library
+                  {onAddToToday ? 'Library Only' : 'Add to Library'}
                 </button>
               </div>
             )}

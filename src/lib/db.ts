@@ -163,6 +163,12 @@ interface LocalDayOverride {
   session_id: string                // refs PlannedSession.id
   created_at: string
   synced: boolean
+  /**
+   * Today-only session edits (added mobility/exercises, different-equipment
+   * swaps). JSON-stringified DayAmendment, applied at session resolution.
+   * Unindexed; absent on plain redirect overrides.
+   */
+  amendment_json?: string
 }
 
 // User-authored custom exercise (e.g. "incline push-ups"). Lives alongside the

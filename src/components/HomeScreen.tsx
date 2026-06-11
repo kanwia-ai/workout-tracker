@@ -17,8 +17,10 @@ import { useDayOverrides } from '../hooks/useDayOverrides'
 import {
   getWeekView,
   getSessionForDate,
+  getScheduledSessionForDate,
   getNextUpcomingSession,
 } from '../lib/planSelectors'
+import { AdjustTodaySheet } from './AdjustTodaySheet'
 import { loadPRs, loadSessionHistory } from '../lib/persistence'
 import { loadProfileLocal } from '../lib/profileRepo'
 import {
@@ -71,6 +73,8 @@ interface HomeScreenProps {
   /** Triggered from the end-of-block card ("build my next block"). Calls
    *  back into App — replan when enough check-ins exist, else regenerate. */
   onStartNextBlock?: () => void
+  /** Route to the video-capture flow (adjust-today "add from a video"). */
+  onNavigateToCapture?: () => void
 }
 
 const DAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -119,6 +123,7 @@ export function HomeScreen({
   onStartSession,
   onRetryGeneration,
   onStartNextBlock,
+  onNavigateToCapture,
 }: HomeScreenProps) {
   // _profile (DisplayProfile.streak) is no longer surfaced — the day-streak
   // counter was replaced with an adherence (sessions completed / scheduled
@@ -138,6 +143,7 @@ export function HomeScreen({
   // persist to localStorage keyed by today's ISO date so they don't bleed
   // into tomorrow but survive a tab refresh.
   const [bodyCheckOpen, setBodyCheckOpen] = useState(false)
+  const [adjustTodayOpen, setAdjustTodayOpen] = useState(false)
   const [bodyCheck, setBodyCheck] = useState<BodyCheckState | null>(null)
 
   const today = new Date()
@@ -215,7 +221,15 @@ export function HomeScreen({
   const isViewingToday = selectedDow === todayDow && viewedWeek === currentTrainingWeek
   const selectedDateISO = localDateISO(selectedDate)
   const todayISO = localDateISO(today)
-  const selectedHasOverride = overrides.some((o) => o.date === selectedDateISO)
+  // A row is only a REDIRECT override ("pulled from your plan") when it
+  // points somewhere other than the dow-scheduled session. Amend-today rows
+  // reuse the scheduled session's id and must not trigger the rest-day badge.
+  const dowScheduledId = plan?.sessions.find(
+    (s) => s.week_number === viewedWeek && s.day_of_week === selectedDow,
+  )?.id
+  const selectedHasOverride = overrides.some(
+    (o) => o.date === selectedDateISO && o.session_id !== dowScheduledId,
+  )
 
   const cheek = DEFAULT_CHEEK
   // Only trust the name the user typed into onboarding. Supabase's
@@ -424,11 +438,36 @@ export function HomeScreen({
             {/* "anything off today?" — opt-in body check. Mounts only on
                 today's view, only on a lifting day, and only when the
                 user has tracked body parts. */}
-            {isViewingToday && selectedSession && trackedBodyParts.length > 0 && (
-              <BodyCheckPill
-                flaggedCount={bodyCheck?.flagged.length ?? 0}
-                onOpen={() => setBodyCheckOpen(true)}
-              />
+            {isViewingToday && selectedSession && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {trackedBodyParts.length > 0 && (
+                  <BodyCheckPill
+                    flaggedCount={bodyCheck?.flagged.length ?? 0}
+                    onOpen={() => setBodyCheckOpen(true)}
+                  />
+                )}
+                <button
+                  type="button"
+                  data-testid="adjust-today-pill"
+                  onClick={() => setAdjustTodayOpen(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '7px 14px',
+                    borderRadius: 999,
+                    border: '1px solid color-mix(in srgb, var(--brand) 35%, transparent)',
+                    background: 'color-mix(in srgb, var(--brand) 9%, transparent)',
+                    color: 'var(--brand)',
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginBottom: 10,
+                  }}
+                >
+                  adjust today
+                </button>
+              </div>
             )}
             {loading ? (
               <LoadingCard />
@@ -511,6 +550,21 @@ export function HomeScreen({
           }}
         />
       )}
+      {adjustTodayOpen && (() => {
+        // Edit against the un-amended baseline so equipment swaps stay
+        // keyed original → today (idempotent re-edits).
+        const baseline = getScheduledSessionForDate(plan, overrides, selectedDate, viewedWeek)
+        if (!baseline) return null
+        return (
+          <AdjustTodaySheet
+            userId={userId}
+            dateISO={todayISO}
+            scheduledSession={baseline}
+            onClose={() => setAdjustTodayOpen(false)}
+            onNavigateToCapture={onNavigateToCapture}
+          />
+        )
+      })()}
     </div>
   )
 }

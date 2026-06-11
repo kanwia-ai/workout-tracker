@@ -75,6 +75,44 @@ function isAppView(x: unknown): x is AppView {
   return typeof x === 'string' && (KNOWN_VIEWS as readonly string[]).includes(x)
 }
 
+/**
+ * Persist captured (video/screenshot) exercises to the custom-exercises
+ * table so the ExerciseBrowser "mine" filter picks them up. Returns the
+ * saved rows in input order so callers can link library ids back to the
+ * extracted exercises. Equipment maps to the CustomExerciseEquipment enum;
+ * anything novel falls back to 'other'.
+ */
+async function saveCapturedToLibrary(
+  userId: string,
+  exercises: ExtractedExercise[],
+): Promise<Awaited<ReturnType<typeof saveCustomExercise>>[]> {
+  const allowed = new Set<CustomExerciseEquipment>([
+    'bodyweight', 'dumbbell', 'barbell', 'cable', 'machine',
+    'kettlebell', 'bands', 'other',
+  ])
+  const saved: Awaited<ReturnType<typeof saveCustomExercise>>[] = []
+  for (const ex of exercises) {
+    const first = ex.equipment[0]?.toLowerCase()
+    const equipment = (first && allowed.has(first as CustomExerciseEquipment)
+      ? first
+      : 'other') as CustomExerciseEquipment
+    const noteBits: string[] = []
+    if (ex.form_cues.length > 0) noteBits.push(`cues: ${ex.form_cues.join('; ')}`)
+    if (ex.notes) noteBits.push(ex.notes)
+    saved.push(
+      await saveCustomExercise(userId, {
+        name: ex.name,
+        primary_muscles: ex.muscle_groups,
+        secondary_muscles: [],
+        equipment,
+        video_url: null,
+        notes: noteBits.length > 0 ? noteBits.join(' | ') : null,
+      }),
+    )
+  }
+  return saved
+}
+
 function readPersistedView(): AppView {
   if (typeof window === 'undefined') return 'workout'
   try {
@@ -644,6 +682,7 @@ function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           onStartSession={() => setSessionStarted(true)}
           onStartNextBlock={() => { void startNextBlock() }}
+          onNavigateToCapture={() => setView('capture')}
           onRetryGeneration={async () => {
             // Retry from the plan-less empty state. Load the profile
             // captured during onboarding out of Dexie and re-run the
@@ -679,7 +718,10 @@ function App() {
       )}
 
       {view === 'exercises' && (
-        <ExerciseBrowser onBack={() => setView('workout')} />
+        <ExerciseBrowser
+          onBack={() => setView('workout')}
+          onNavigateToCapture={() => setView('capture')}
+        />
       )}
 
       {view === 'mobility' && (
@@ -705,31 +747,43 @@ function App() {
           onBack={() => setView('workout')}
           onSaveToLibrary={async (exercises: ExtractedExercise[]) => {
             if (!user?.id) return
-            // Persist each reviewed exercise to the custom-exercises table so
-            // the ExerciseBrowser "mine" filter picks them up. We pick the
-            // first equipment string that fits the CustomExerciseEquipment
-            // enum; anything novel falls back to 'other'.
-            const allowed = new Set<CustomExerciseEquipment>([
-              'bodyweight', 'dumbbell', 'barbell', 'cable', 'machine',
-              'kettlebell', 'bands', 'other',
-            ])
-            for (const ex of exercises) {
-              const first = ex.equipment[0]?.toLowerCase()
-              const equipment = (first && allowed.has(first as CustomExerciseEquipment)
-                ? first
-                : 'other') as CustomExerciseEquipment
-              const noteBits: string[] = []
-              if (ex.form_cues.length > 0) noteBits.push(`cues: ${ex.form_cues.join('; ')}`)
-              if (ex.notes) noteBits.push(ex.notes)
-              await saveCustomExercise(user.id, {
-                name: ex.name,
-                primary_muscles: ex.muscle_groups,
-                secondary_muscles: [],
-                equipment,
-                video_url: null,
-                notes: noteBits.length > 0 ? noteBits.join(' | ') : null,
-              })
-            }
+            await saveCapturedToLibrary(user.id, exercises)
+          }}
+          onAddToToday={async (exercises: ExtractedExercise[]) => {
+            if (!user?.id) return false
+            // Library first (the exercises exist permanently), then amend
+            // today's session with the saved ids.
+            const saved = await saveCapturedToLibrary(user.id, exercises)
+            const { loadLatestMesocycleForUser } = await import('./lib/planGen')
+            const { getScheduledSessionForDate } = await import('./lib/planSelectors')
+            const { loadOverridesForUser, localDateISO } = await import('./lib/dayOverrides')
+            const { loadAmendmentForDate, saveAmendmentForDate, plannedExerciseFromExtracted } =
+              await import('./lib/amendToday')
+            const { mondayOfDate } = await import('./components/EndOfBlockCard')
+
+            const meso = await loadLatestMesocycleForUser(user.id)
+            if (!meso) return false
+            const today = new Date()
+            const anchor = mondayOfDate(new Date(meso.generated_at))
+            const week = Math.min(
+              Math.max(1, Math.floor((today.getTime() - anchor.getTime()) / 86_400_000 / 7) + 1),
+              meso.length_weeks,
+            )
+            const overrides = await loadOverridesForUser(user.id)
+            const scheduled = getScheduledSessionForDate(meso, overrides, today, week)
+            if (!scheduled) return false
+
+            const dateISO = localDateISO(today)
+            const amendment = await loadAmendmentForDate(user.id, dateISO)
+            const existing = new Set(amendment.added_exercises.map((e) => e.library_id))
+            const additions = saved
+              .map((row, i) => plannedExerciseFromExtracted(exercises[i], row.id))
+              .filter((e) => !existing.has(e.library_id))
+            await saveAmendmentForDate(user.id, dateISO, scheduled.id, {
+              ...amendment,
+              added_exercises: [...amendment.added_exercises, ...additions],
+            })
+            return true
           }}
         />
       )}

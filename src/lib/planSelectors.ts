@@ -1,5 +1,6 @@
 import type { Mesocycle, PlannedSession } from '../types/plan'
 import { db, type LocalDayOverride, type LocalSessionLog } from './db'
+import { applyAmendment, parseAmendment } from './amendToday'
 import {
   computeGapFromLogs,
   computeRecalibration,
@@ -76,13 +77,36 @@ export function getSessionForDate(
   const dd = String(date.getDate()).padStart(2, '0')
   const dateISO = `${yyyy}-${mm}-${dd}`
   const override = overrides.find((o) => o.date === dateISO)
+  const amendment = parseAmendment(override?.amendment_json)
+  const withAmendment = (s: PlannedSession): PlannedSession =>
+    amendment ? applyAmendment(s, amendment) : s
+
+  const base = getScheduledSessionForDate(meso, overrides, date, weekNumber)
+  return base ? withAmendment(base) : null
+}
+
+/**
+ * Same resolution as getSessionForDate but WITHOUT the day-amendment applied.
+ * The adjust-today flow edits against this baseline so amendments stay
+ * idempotent (equipment swaps are always keyed original → today).
+ */
+export function getScheduledSessionForDate(
+  meso: Mesocycle | null,
+  overrides: LocalDayOverride[],
+  date: Date,
+  weekNumber = 1,
+): PlannedSession | null {
+  if (!meso) return null
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const dateISO = `${yyyy}-${mm}-${dd}`
+  const override = overrides.find((o) => o.date === dateISO)
   if (override) {
     const hit = meso.sessions.find((s) => s.id === override.session_id)
     if (hit) return hit
     // Dangling override (session removed from plan) — fall through to scheduled.
   }
-
-  // 2. Scheduled session at this dow in the current week.
   const dow = dowMon0(date)
   const scheduled = meso.sessions.find(
     (s) => s.week_number === weekNumber && s.day_of_week === dow,
