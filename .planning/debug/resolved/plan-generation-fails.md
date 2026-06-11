@@ -149,3 +149,9 @@ verification: |
 files_changed:
   - supabase/functions/generate/index.ts
   - src/App.tsx
+
+## Resolution (2026-06-10)
+
+root_cause: Moot — the symptom belonged to the edge `generate_plan` path (Claude output truncated at max_tokens → sessions array missing → client Zod reject). The app has since defaulted to the LOCAL planner (VITE_USE_LOCAL_PLANNER), and the 2026-06-09/10 revamp verified generation end-to-end repeatedly (onboarding → plan in browser, 5,880-combo fuzz green).
+fix: Path retired; local planner is the production default. Edge function redeployed 2026-06-10 (Opus 4.8) for the ops that remain live (annotate_plan, replan_mesocycle, swap, extract).
+verification: Multiple E2E browser runs 2026-06-09/10; suite 1,207 green.
